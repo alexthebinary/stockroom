@@ -1,0 +1,22 @@
+{
+  "name": "inventory-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lightweight warehouse/inventory management demo \u2014 Express + Prisma + React",
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "setup": "npm run install:all && npm --prefix backend run prisma:generate && npm --prefix backend run migrate:deploy && npm run seed",
+    "seed": "npm --prefix backend run seed",
+    "reset": "npm --prefix backend run reset",
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "dev:api": "npm --prefix backend run dev",
+    "dev:web": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build && npm --prefix backend run build",
+    "serve": "npm --prefix backend run start",
+    "share": "npm run build && npm --prefix backend run start",
+    "tunnel": "cloudflared tunnel --url http://localhost:4000"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

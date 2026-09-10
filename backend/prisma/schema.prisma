@@ -1,0 +1,531 @@
+// Inventory demo schema. SQLite has no native enums, so enum-ish columns are
+// Strings; the allowed values are listed above each field and enforced in the
+// API layer (src/domain.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Prisma will not accept env() here, so the provider is literal and the
+  // deploy script rewrites this one line for Postgres (npm run schema:pg).
+  // Nothing else in this schema is vendor-specific — no native enums, no
+  // Decimal, no Json, and the app issues no raw SQL. Money is integer cents,
+  // which both databases store exactly.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id          Int     @id @default(autoincrement())
+  sku         String  @unique
+  name        String
+  description String?
+  barcode     String?
+  category    String?
+  categoryId  Int?
+  brand       String?
+
+  /// Money is in integer cents throughout.
+  defaultCostCents  Int @default(0)
+  defaultPriceCents Int @default(0)
+
+  length Float?
+  width  Float?
+  height Float?
+  weight Float?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  productCategory    ProductCategory?    @relation(fields: [categoryId], references: [id])
+  lots               InventoryLot[]
+  balances           InventoryBalance[]
+  movements          InventoryMovement[]
+  salesOrderLines    SalesOrderLine[]
+  purchaseOrderLines PurchaseOrderLine[]
+  adjustments        StockAdjustment[]
+  transfers          StockTransfer[]
+
+  @@index([name])
+}
+
+model Warehouse {
+  id      Int     @id @default(autoincrement())
+  name    String
+  code    String  @unique
+  address String?
+  notes   String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  balances           InventoryBalance[]
+  movementsFrom      InventoryMovement[] @relation("MovementFrom")
+  movementsTo        InventoryMovement[] @relation("MovementTo")
+  salesOrderLines    SalesOrderLine[]
+  purchaseOrderLines PurchaseOrderLine[]
+  adjustments        StockAdjustment[]
+  transfersFrom      StockTransfer[]     @relation("TransferFrom")
+  transfersTo        StockTransfer[]     @relation("TransferTo")
+  lots               InventoryLot[]
+  shipments          Shipment[]
+  goodsReceipts      GoodsReceipt[]
+}
+
+/// Current stock for a [product, warehouse] pair.
+/// availableQty is derived (onHandQty - reservedQty) and computed in the API.
+model InventoryBalance {
+  id            Int      @id @default(autoincrement())
+  productId     Int
+  warehouseId   Int
+  onHandQty     Int      @default(0)
+  reservedQty   Int      @default(0)
+  incomingQty   Int      @default(0)
+  reorderPoint  Int      @default(0)
+  lastUpdatedAt DateTime @updatedAt
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, warehouseId])
+  @@index([warehouseId])
+}
+
+/// Immutable audit trail. movementType is one of:
+/// ADJUSTMENT_IN | ADJUSTMENT_OUT | TRANSFER_OUT | TRANSFER_IN | SALE_SHIP | PURCHASE_RECEIPT
+model InventoryMovement {
+  id              Int      @id @default(autoincrement())
+  productId       Int
+  fromWarehouseId Int?
+  toWarehouseId   Int?
+  quantity        Int
+  movementType    String
+  reason          String?
+  referenceType   String?
+  referenceId     Int?
+  /// Cost of the goods that moved, from the FIFO layers they came out of.
+  /// Zero where a movement carries no cost.
+  totalCostCents  Int      @default(0)
+  actor           String   @default("demo@user.com")
+  createdAt       DateTime @default(now())
+
+  // Restrict, not Cascade: the audit trail must outlive a careless product
+  // delete. The API soft-deletes any product that has movements.
+  product         Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  fromWarehouse   Warehouse?       @relation("MovementFrom", fields: [fromWarehouseId], references: [id])
+  toWarehouse     Warehouse?       @relation("MovementTo", fields: [toWarehouseId], references: [id])
+  lotConsumptions LotConsumption[]
+
+  @@index([productId, createdAt])
+  @@index([createdAt])
+}
+
+/// status: DRAFT | CONFIRMED | SHIPPED | CANCELED
+/// The scope gives sales orders TWO independent axes, not one status:
+///   readinessStatus: NOT_PACKED | PACKED | SHIPPED | CANCELED
+///   paymentStatus:   AWAITING_PAYMENT | INVOICED | PAID | VOIDED
+/// `channel` records where the order came from (DIRECT, SHOPIFY, ...).
+model SalesOrder {
+  id              Int      @id @default(autoincrement())
+  orderNumber     String   @unique
+  customerId      Int?
+  customerName    String
+  employeeId      Int?
+  readinessStatus String   @default("NOT_PACKED")
+  paymentStatus   String   @default("AWAITING_PAYMENT")
+  channel         String   @default("DIRECT")
+  notes           String?
+  subtotalCents   Int      @default(0)
+  taxCents        Int      @default(0)
+  shippingCents   Int      @default(0)
+  totalCents      Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  customer  Customer?        @relation(fields: [customerId], references: [id])
+  employee  Employee?        @relation(fields: [employeeId], references: [id])
+  lines     SalesOrderLine[]
+  invoices  Invoice[]
+  shipments Shipment[]
+}
+
+/// status: PENDING | RESERVED | SHIPPED | CANCELED
+model SalesOrderLine {
+  id             Int    @id @default(autoincrement())
+  salesOrderId   Int
+  productId      Int
+  warehouseId    Int
+  quantity       Int
+  unitPriceCents Int    @default(0)
+  lineTotalCents Int    @default(0)
+  status         String @default("PENDING")
+
+  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id])
+  warehouse  Warehouse  @relation(fields: [warehouseId], references: [id])
+}
+
+/// status: DRAFT | ORDERED | RECEIVED | CANCELED
+/// The scope's purchase order lifecycle is SAVED -> POSTED -> PAID ->
+/// DELIVERED, each step posting its own journal entry. `status` carries the
+/// furthest step reached; CANCELED ends it.
+model PurchaseOrder {
+  id            Int      @id @default(autoincrement())
+  poNumber      String   @unique
+  vendorId      Int?
+  supplierName  String
+  employeeId    Int?
+  status        String   @default("SAVED")
+  notes         String?
+  subtotalCents Int      @default(0)
+  taxCents      Int      @default(0)
+  shippingCents Int      @default(0)
+  totalCents    Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  vendor        Vendor?             @relation(fields: [vendorId], references: [id])
+  employee      Employee?           @relation(fields: [employeeId], references: [id])
+  lines         PurchaseOrderLine[]
+  bills         Bill[]
+  goodsReceipts GoodsReceipt[]
+}
+
+/// status: PENDING | ORDERED | RECEIVED | CANCELED
+model PurchaseOrderLine {
+  id              Int    @id @default(autoincrement())
+  purchaseOrderId Int
+  productId       Int
+  warehouseId     Int
+  quantity        Int
+  unitCostCents   Int    @default(0)
+  lineTotalCents  Int    @default(0)
+  status          String @default("PENDING")
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id])
+  warehouse     Warehouse     @relation(fields: [warehouseId], references: [id])
+}
+
+/// adjustmentType: INCREASE | DECREASE
+model StockAdjustment {
+  id             Int      @id @default(autoincrement())
+  productId      Int
+  warehouseId    Int
+  adjustmentType String
+  quantity       Int
+  reason         String
+  actor          String   @default("demo@user.com")
+  createdAt      DateTime @default(now())
+
+  product   Product   @relation(fields: [productId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@index([createdAt])
+}
+
+/// status: DRAFT | IN_TRANSIT | COMPLETED | CANCELED
+model StockTransfer {
+  id              Int      @id @default(autoincrement())
+  productId       Int
+  fromWarehouseId Int
+  toWarehouseId   Int
+  quantity        Int
+  /// Carrying cost of the goods in transit, set when the transfer starts.
+  costCents       Int      @default(0)
+  status          String   @default("DRAFT")
+  notes           String?
+  actor           String   @default("demo@user.com")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  product       Product   @relation(fields: [productId], references: [id])
+  fromWarehouse Warehouse @relation("TransferFrom", fields: [fromWarehouseId], references: [id])
+  toWarehouse   Warehouse @relation("TransferTo", fields: [toWarehouseId], references: [id])
+
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// CATALOGS (master data)
+// ---------------------------------------------------------------------------
+
+/// Two-level tree only: a category with a parent may not itself be a parent.
+/// Enforced in the API, since SQLite cannot express it.
+model ProductCategory {
+  id       Int     @id @default(autoincrement())
+  name     String
+  parentId Int?
+  isActive Boolean @default(true)
+
+  parent   ProductCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children ProductCategory[] @relation("CategoryTree")
+  products Product[]
+
+  @@unique([name, parentId])
+}
+
+model Customer {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  salesOrders SalesOrder[]
+  invoices    Invoice[]
+  payments    Payment[]
+}
+
+model Vendor {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  purchaseOrders PurchaseOrder[]
+  bills          Bill[]
+  payments       Payment[]
+}
+
+/// "Employees (Managers)" in the scope — Sales reports filter by this.
+model Employee {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String?
+  role      String   @default("MANAGER")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  salesOrders    SalesOrder[]
+  purchaseOrders PurchaseOrder[]
+}
+
+// ---------------------------------------------------------------------------
+// DOUBLE-ENTRY LEDGER
+//
+// Money is stored as INTEGER MINOR UNITS (cents) everywhere. Floats cannot
+// represent money exactly and a ledger that does not balance to the cent is
+// worthless.
+// ---------------------------------------------------------------------------
+
+/// accountType: ASSET | LIABILITY | EQUITY | INCOME | EXPENSE
+model Account {
+  id          Int     @id @default(autoincrement())
+  code        String  @unique
+  name        String
+  accountType String
+  /// DEBIT or CREDIT — the side that increases this account.
+  normalSide  String
+  isActive    Boolean @default(true)
+
+  lines JournalLine[]
+}
+
+/// A financial transaction. status: SAVED | POSTED | VOID
+/// Only POSTED entries affect the ledger. A SAVED entry may be edited or
+/// deleted; a POSTED one may only be unposted, and only when nothing depends
+/// on it.
+model JournalEntry {
+  id              Int       @id @default(autoincrement())
+  entryNumber     String    @unique
+  transactionType String
+  entryDate       DateTime  @default(now())
+  memo            String?
+  status          String    @default("SAVED")
+  postedAt        DateTime?
+  referenceType   String?
+  referenceId     Int?
+  actor           String    @default("demo@user.com")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  lines JournalLine[]
+
+  @@index([transactionType, entryDate])
+  @@index([referenceType, referenceId])
+}
+
+/// One side of an entry. Exactly one of debitCents/creditCents is non-zero,
+/// and the two sums must be equal across the entry.
+model JournalLine {
+  id             Int     @id @default(autoincrement())
+  journalEntryId Int
+  accountId      Int
+  debitCents     Int     @default(0)
+  creditCents    Int     @default(0)
+  memo           String?
+  /// Optional analytics so a report can slice the ledger without joins.
+  productId      Int?
+  warehouseId    Int?
+
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  account      Account      @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+  @@index([journalEntryId])
+}
+
+/// Maps a transaction type to the accounts it posts against, so the postings
+/// are configuration rather than code. "Common Journal Entry Templates
+/// corresponding to Financial Transaction Types" in the scope.
+model JournalTemplate {
+  id                Int    @id @default(autoincrement())
+  transactionType   String @unique
+  description       String
+  debitAccountCode  String
+  creditAccountCode String
+}
+
+// ---------------------------------------------------------------------------
+// FIFO COST LAYERS
+// ---------------------------------------------------------------------------
+
+/// One receipt of stock at a known unit cost. FIFO consumes the oldest
+/// remaining layer first. A quantity balance cannot answer "what did this
+/// cost" — these rows can.
+model InventoryLot {
+  id            Int      @id @default(autoincrement())
+  productId     Int
+  warehouseId   Int
+  unitCostCents Int
+  originalQty   Int
+  remainingQty  Int
+  receivedAt    DateTime @default(now())
+  sourceType    String
+  sourceId      Int?
+
+  product      Product          @relation(fields: [productId], references: [id])
+  warehouse    Warehouse        @relation(fields: [warehouseId], references: [id])
+  consumptions LotConsumption[]
+
+  @@index([productId, warehouseId, receivedAt])
+}
+
+/// Which layers a given issue drew from, and at what cost. This is the audit
+/// trail behind every COGS number.
+model LotConsumption {
+  id            Int      @id @default(autoincrement())
+  lotId         Int
+  quantity      Int
+  unitCostCents Int
+  movementId    Int?
+  sourceType    String
+  sourceId      Int?
+  createdAt     DateTime @default(now())
+
+  lot      InventoryLot       @relation(fields: [lotId], references: [id])
+  movement InventoryMovement? @relation(fields: [movementId], references: [id])
+
+  @@index([lotId])
+}
+
+// ---------------------------------------------------------------------------
+// FINANCIAL DOCUMENTS
+//
+// Each is a document in its own right that posts its own journal entry, rather
+// than a side effect of an order transition.
+// ---------------------------------------------------------------------------
+
+/// status: SAVED | POSTED | VOID
+model Invoice {
+  id            Int      @id @default(autoincrement())
+  invoiceNumber String   @unique
+  salesOrderId  Int?
+  customerId    Int
+  issueDate     DateTime @default(now())
+  subtotalCents Int      @default(0)
+  taxCents      Int      @default(0)
+  shippingCents Int      @default(0)
+  totalCents    Int      @default(0)
+  status        String   @default("SAVED")
+  createdAt     DateTime @default(now())
+
+  salesOrder SalesOrder? @relation(fields: [salesOrderId], references: [id])
+  customer   Customer    @relation(fields: [customerId], references: [id])
+  payments   Payment[]
+}
+
+/// A vendor bill. status: SAVED | POSTED | VOID
+model Bill {
+  id              Int      @id @default(autoincrement())
+  billNumber      String   @unique
+  purchaseOrderId Int?
+  vendorId        Int
+  issueDate       DateTime @default(now())
+  subtotalCents   Int      @default(0)
+  taxCents        Int      @default(0)
+  shippingCents   Int      @default(0)
+  totalCents      Int      @default(0)
+  status          String   @default("SAVED")
+  createdAt       DateTime @default(now())
+
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  vendor        Vendor         @relation(fields: [vendorId], references: [id])
+  payments      Payment[]
+}
+
+/// direction: RECEIPT (from a customer) | DISBURSEMENT (to a vendor)
+/// status: SAVED | POSTED | VOID
+model Payment {
+  id            Int      @id @default(autoincrement())
+  paymentNumber String   @unique
+  direction     String
+  amountCents   Int
+  method        String   @default("BANK")
+  paidAt        DateTime @default(now())
+  status        String   @default("SAVED")
+  invoiceId     Int?
+  billId        Int?
+  customerId    Int?
+  vendorId      Int?
+  createdAt     DateTime @default(now())
+
+  invoice  Invoice?  @relation(fields: [invoiceId], references: [id])
+  bill     Bill?     @relation(fields: [billId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id])
+  vendor   Vendor?   @relation(fields: [vendorId], references: [id])
+}
+
+/// The outbound document. Posting it is what consumes FIFO layers and books COGS.
+model Shipment {
+  id             Int      @id @default(autoincrement())
+  shipmentNumber String   @unique
+  salesOrderId   Int
+  /// Null when the order ships from more than one warehouse — the lines are
+  /// the authority on where each item came from.
+  warehouseId    Int?
+  shippedAt      DateTime @default(now())
+  carrier        String?
+  trackingNumber String?
+  status         String   @default("SAVED")
+  cogsCents      Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id])
+  warehouse  Warehouse? @relation(fields: [warehouseId], references: [id])
+}
+
+/// Goods Receipt Note. Posting it creates the FIFO cost layers.
+model GoodsReceipt {
+  id              Int      @id @default(autoincrement())
+  grnNumber       String   @unique
+  purchaseOrderId Int
+  /// Null when the receipt lands in more than one warehouse.
+  warehouseId     Int?
+  receivedAt      DateTime @default(now())
+  status          String   @default("SAVED")
+  totalCostCents  Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  warehouse     Warehouse?    @relation(fields: [warehouseId], references: [id])
+}

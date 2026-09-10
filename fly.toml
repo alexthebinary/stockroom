@@ -1,0 +1,44 @@
+# Runner-up path: Fly.io keeping SQLite on a persistent volume.
+#
+# Viable here precisely because this app is a single-writer monolith with a
+# few hundred KB of data. It removes the Postgres migration and the connection
+# pooling question entirely.
+#
+# The constraint that comes with it: ONE machine. Two machines on separate
+# volumes would each hold a different database and silently diverge, so
+# numReplicas must stay at 1 unless you move to LiteFS.
+app = "stockroom"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "4000"
+  DATABASE_URL = "file:/data/stockroom.db"
+
+[[mounts]]
+  source = "stockroom_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  # Never scale past one writer, and never stop: a stopped machine means a
+  # cold start mid-demo, and this app is cheap enough to leave running.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "20s"
+  method = "GET"
+  path = "/api/health"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

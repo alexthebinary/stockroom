@@ -1,0 +1,70 @@
+/*
+ * Design tokens.
+ *
+ * The visual language is a dense operations console: a dark command rail, a
+ * light data surface, and status carried in filled cells so a row can be read
+ * at a glance from across a warehouse. Contrast figures below are measured, not
+ * estimated.
+ */
+:root {
+  /* Command rail — the dark chrome across the top. */
+  --rail-bg: #12263f;
+  --rail-bg-hover: #1d3a5c;
+  --rail-fg: #e8eef6;
+  --rail-fg-dim: #a7b8cd;
+  --rail-accent: #4c8ff5;
+
+  /* Data surface */
+  --surface: #ffffff;
+  --surface-sunken: #f4f6f9;
+  --surface-border: #dfe4ec;
+
+  /* Mantine's default dimmed is gray-6 (#868e96) at 3.32:1 on white — below
+     the 4.5:1 body-text floor. gray-7 measures 8.18:1. */
+  --mantine-color-dimmed: var(--mantine-color-gray-7);
+}
+
+:root:not([data-theme="light"]) {
+  color-scheme: light;
+}
+
+/* Quantities and money are read down a column, so digits must align. */
+.mantine-Table-td,
+.mantine-Table-th {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dense grid: operations staff scan hundreds of rows, so vertical rhythm is
+   tightened and the header is made sticky rather than scrolling away. */
+.data-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--surface-border);
+  white-space: nowrap;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mantine-color-gray-7);
+}
+
+.data-grid tbody td {
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+  font-size: 13px;
+}
+
+.data-grid tbody tr:hover td {
+  background: var(--surface-sunken);
+}
+
+/* A status cell fills its whole cell, the way an ops board does, instead of
+   floating a pill in whitespace. */
+.status-cell {
+  display: block;
+  margin: -6px -10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}

@@ -1,0 +1,18 @@
+node_modules/
+dist/
+*.log
+
+# Local database — never committed. The hosted instance uses Postgres.
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+
+# Environment files hold credentials. .env.example documents the shape instead.
+.env
+.env.*
+!.env.example
+
+# Generated from prisma/schema.prisma by `npm run schema:pg`
+backend/prisma/postgres/schema.prisma
+
+# Playwright artifacts
+.playwright-mcp/
