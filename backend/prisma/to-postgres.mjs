@@ -33,3 +33,7 @@ const converted = original.replace(
 mkdirSync(outDir, { recursive: true });
 writeFileSync(out, converted);
 console.log("Wrote prisma/postgres/schema.prisma (postgresql)");
+console.log(
+  "NOTE: `generate:pg` overwrites the generated client with the Postgres one.\n" +
+    "      Run `npm run generate:local` before working against local SQLite again."
+);

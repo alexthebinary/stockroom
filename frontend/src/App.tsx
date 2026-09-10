@@ -2,6 +2,7 @@ import { AppShell, Burger, Group, Menu, Text, UnstyledButton } from "@mantine/co
 import { useDisclosure } from "@mantine/hooks";
 import {
   IconAdjustments,
+  IconInfoCircle,
   IconArrowsExchange,
   IconBook2,
   IconBuildingWarehouse,
@@ -16,6 +17,7 @@ import {
 } from "@tabler/icons-react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
+import About from "./pages/About";
 import Adjustments from "./pages/Adjustments";
 import Catalogs from "./pages/Catalogs";
 import Dashboard from "./pages/Dashboard";
@@ -71,6 +73,7 @@ const SECTIONS: Section[] = [
   { label: "Accounting", icon: IconBook2, to: "/ledger" },
   { label: "Reports", icon: IconChartBar, to: "/reports" },
   { label: "Catalogs", icon: IconUsers, to: "/catalogs" },
+  { label: "About", icon: IconInfoCircle, to: "/about" },
 ];
 
 function RailButton({ section, active }: { section: Section; active: boolean }) {
@@ -179,6 +182,7 @@ export default function App() {
           <Route path="/ledger" element={<Ledger />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/catalogs" element={<Catalogs />} />
+          <Route path="/about" element={<About />} />
           <Route path="*" element={<Text>Page not found.</Text>} />
         </Routes>
       </AppShell.Main>

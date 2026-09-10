@@ -15,7 +15,8 @@
     "migrate:deploy": "prisma migrate deploy",
     "schema:pg": "node prisma/to-postgres.mjs",
     "generate:pg": "npm run schema:pg && prisma generate --schema prisma/postgres/schema.prisma",
-    "push:pg": "npm run schema:pg && prisma db push --schema prisma/postgres/schema.prisma --skip-generate"
+    "push:pg": "npm run schema:pg && prisma db push --schema prisma/postgres/schema.prisma --skip-generate",
+    "generate:local": "prisma generate --schema prisma/schema.prisma"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

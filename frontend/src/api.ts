@@ -220,6 +220,17 @@ export type LotConsumption = {
   movementId: number | null;
 };
 
+export type SystemMeta = {
+  database: string;
+  tableCount: number;
+  groups: {
+    name: string;
+    blurb: string;
+    entities: { name: string; rows: number; note?: string }[];
+  }[];
+  vocabularies: Record<string, readonly string[]>;
+};
+
 export type Movement = {
   id: number;
   productId: number;
