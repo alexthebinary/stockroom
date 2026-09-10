@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { Router } from "express";
 import { prisma } from "../db";
 import { asyncHandler } from "../http";
@@ -11,6 +13,30 @@ import {
 } from "../domain";
 
 export const metaRouter = Router();
+
+/**
+ * Counts `model` blocks in the Prisma schema.
+ *
+ * A hardcoded number would drift the moment someone adds a table, and the page
+ * would keep claiming completeness while omitting it. Falls back to the number
+ * described if the file cannot be read (a packaged deploy may not ship it),
+ * which is the honest degradation: no false claim either way.
+ */
+function countModelsInSchema(): number | null {
+  const candidates = [
+    path.resolve(__dirname, "../../prisma/schema.prisma"),
+    path.resolve(__dirname, "../../../prisma/schema.prisma"),
+  ];
+  for (const file of candidates) {
+    try {
+      const text = fs.readFileSync(file, "utf8");
+      return (text.match(/^model /gm) ?? []).length;
+    } catch {
+      // try the next candidate
+    }
+  }
+  return null;
+}
 
 /**
  * Describes the system to itself, for the About page.
@@ -81,8 +107,12 @@ metaRouter.get(
       database: (process.env.DATABASE_URL ?? "").startsWith("postgres")
         ? "PostgreSQL"
         : "SQLite",
-      /** Every table in the schema is listed below — no quiet omissions. */
-      tableCount: 25,
+      /**
+       * Read from the schema file rather than typed here, so adding a model
+       * makes the page report a mismatch instead of quietly under-describing
+       * itself. The About page compares this against what it renders.
+       */
+      tableCount: countModelsInSchema(),
       groups: [
         {
           name: "Catalogs",

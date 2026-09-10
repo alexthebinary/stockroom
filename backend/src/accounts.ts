@@ -17,6 +17,7 @@ export const ACCOUNT = {
   INVENTORY_GAIN: "4900",
   COGS: "5000",
   INVENTORY_SHRINKAGE: "5100",
+  ROUNDING_VARIANCE: "5200",
 } as const;
 
 export const CHART_OF_ACCOUNTS = [
@@ -29,6 +30,7 @@ export const CHART_OF_ACCOUNTS = [
   { code: ACCOUNT.INVENTORY_GAIN, name: "Inventory Gain", accountType: "INCOME", normalSide: "CREDIT" },
   { code: ACCOUNT.COGS, name: "Cost of Goods Sold", accountType: "EXPENSE", normalSide: "DEBIT" },
   { code: ACCOUNT.INVENTORY_SHRINKAGE, name: "Inventory Shrinkage", accountType: "EXPENSE", normalSide: "DEBIT" },
+  { code: ACCOUNT.ROUNDING_VARIANCE, name: "Rounding Variance", accountType: "EXPENSE", normalSide: "DEBIT" },
 ];
 
 /** Financial transaction types — every one of these posts to the ledger. */

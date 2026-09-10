@@ -104,11 +104,30 @@ export default function About() {
           documentation — so it cannot drift from the system it describes.{" "}
           {meta.data && (
             <>
-              This instance is backed by <strong>{meta.data.database}</strong>, and all{" "}
-              <strong>
-                {listed} of {meta.data.tableCount} tables
-              </strong>{" "}
-              are described below.
+              This instance is backed by <strong>{meta.data.database}</strong>, and{" "}
+              {meta.data.tableCount === null ? (
+                <>
+                  <strong>{listed} tables</strong> are described below.
+                </>
+              ) : listed === meta.data.tableCount ? (
+                <>
+                  all{" "}
+                  <strong>
+                    {listed} of {meta.data.tableCount} tables
+                  </strong>{" "}
+                  are described below.
+                </>
+              ) : (
+                /* Say so rather than claim completeness — the count is read
+                   from the schema, so a new model surfaces here immediately. */
+                <>
+                  <strong>
+                    {listed} of {meta.data.tableCount} tables
+                  </strong>{" "}
+                  are described below —{" "}
+                  <strong>{meta.data.tableCount - listed} are not yet documented</strong>.
+                </>
+              )}
             </>
           )}
         </Text>
@@ -135,9 +154,14 @@ export default function About() {
       >
         <List spacing="sm" size="sm">
           <List.Item>
-            <strong>Money is an integer number of cents.</strong> No floating point touches a
-            money path anywhere. A ledger that does not balance to the cent is worthless, and
-            floats cannot represent money exactly.
+            <strong>Money is stored and summed as an integer number of cents.</strong> A ledger
+            that does not balance to the cent is worthless, and floats cannot represent money
+            exactly. Division appears in exactly two places — allocating a purchase order&apos;s
+            tax and shipping across its lines, and converting a typed dollar amount on input —
+            and both round straight back to whole cents. Where the parts cannot sum to the whole,
+            the remainder is <em>named</em> rather than dropped: the last line of an allocation
+            takes it, and a landed-cost rounding residue is posted to a Rounding Variance
+            account so the purchase clears completely.
           </List.Item>
           <List.Item>
             <strong>
@@ -291,6 +315,13 @@ export default function About() {
               A journal entry is refused unless each line is one-sided and total debits equal
               total credits to the cent. Postings are configuration, not code — the pairs below
               are rows in <Code>JournalTemplate</Code>.
+            </Text>
+            <Text size="xs" c="dimmed" mb="sm">
+              Most entries are a simple pair. A goods receipt is the exception and carries three
+              lines: Inventory takes exactly what the new cost layers are worth, Prepaid
+              Inventory is cleared by exactly what the bill put there, and any rounding
+              difference between the two is posted to Rounding Variance rather than stranded in
+              either.
             </Text>
             <QueryState
               isLoading={templates.isLoading}

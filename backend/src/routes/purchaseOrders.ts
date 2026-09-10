@@ -6,7 +6,8 @@ import { badRequest, conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, pagination, parseBody } from "../http";
 import { applyBalanceDelta, recordMovement } from "../inventory";
 import { createLot } from "../costing";
-import { postSimple, reverseDocumentEntry } from "../ledger";
+import { createEntry, postSimple, reverseDocumentEntry, type DraftLine } from "../ledger";
+import { ACCOUNT } from "../accounts";
 import { TRANSACTION_TYPE } from "../accounts";
 import { assertReferencesUsable } from "../refs";
 import {
@@ -384,9 +385,49 @@ purchaseOrdersRouter.post(
 
       await tx.goodsReceipt.update({ where: { id: grn.id }, data: { totalCostCents } });
 
-      const entry = await postSimple(tx, {
+      /**
+       * The bill debited Prepaid Inventory for the vendor's exact total. The
+       * cost layers hold `landedUnitCost * quantity`, which cannot always equal
+       * that total — a unit cost is a whole number of cents, so any line whose
+       * cost does not divide evenly by its quantity leaves a residue.
+       *
+       * Posting only the layer value would strand that residue in Prepaid
+       * forever; posting only the bill value would break the reconciliation
+       * between the layers and the Inventory account. So the entry carries
+       * three lines: Inventory gets exactly what the layers are worth, Prepaid
+       * is cleared by exactly what the bill put there, and the difference is
+       * named as a rounding variance rather than hidden in either.
+       */
+      const varianceCents = current.totalCents - totalCostCents;
+      const lines: DraftLine[] = [
+        {
+          accountCode: ACCOUNT.INVENTORY,
+          debitCents: totalCostCents,
+          memo: "Value of the cost layers created",
+        },
+        {
+          accountCode: ACCOUNT.PREPAID_INVENTORY,
+          creditCents: current.totalCents,
+          memo: `Clears ${current.poNumber}`,
+        },
+      ];
+      if (varianceCents > 0) {
+        lines.push({
+          accountCode: ACCOUNT.ROUNDING_VARIANCE,
+          debitCents: varianceCents,
+          memo: "Landed cost rounding",
+        });
+      } else if (varianceCents < 0) {
+        lines.push({
+          accountCode: ACCOUNT.ROUNDING_VARIANCE,
+          creditCents: -varianceCents,
+          memo: "Landed cost rounding",
+        });
+      }
+
+      const entry = await createEntry(tx, {
         transactionType: TRANSACTION_TYPE.GOODS_RECEIPT,
-        amountCents: totalCostCents,
+        lines,
         memo: `Goods receipt ${grn.grnNumber} for ${current.poNumber}`,
         referenceType: "GOODS_RECEIPT",
         referenceId: grn.id,

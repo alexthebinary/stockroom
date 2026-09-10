@@ -222,7 +222,8 @@ export type LotConsumption = {
 
 export type SystemMeta = {
   database: string;
-  tableCount: number;
+  /** Read from the schema file; null if it could not be read. */
+  tableCount: number | null;
   groups: {
     name: string;
     blurb: string;
