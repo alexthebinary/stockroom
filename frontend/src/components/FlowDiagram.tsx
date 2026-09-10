@@ -1,5 +1,5 @@
 /**
- * The two order lifecycles, drawn rather than described.
+ * The three lifecycles, drawn rather than described.
  *
  * Inline SVG on purpose: a diagram library would be a dependency for two
  * static pictures, and hand-drawn boxes let the ledger postings sit directly
@@ -93,30 +93,51 @@ function Lane({
 
 export function SalesFlow() {
   return (
-    <Lane
-      title="SALES ORDER"
-      accent="blue"
-      steps={[
-        { label: "Not packed", stock: "nothing reserved" },
-        { label: "Packed", stock: "reserved ↑ available ↓" },
-        { label: "Invoiced", posting: "Dr Receivable / Cr Revenue" },
-        { label: "Paid", posting: "Dr Bank / Cr Receivable" },
-        { label: "Shipped", stock: "on hand ↓ reserved ↓", posting: "Dr COGS / Cr Inventory" },
-      ]}
-    />
+    <>
+      {/*
+        Two rows, not one. The axes are independent: an order can be invoiced
+        while still unpacked, and can ship before it is paid. Drawing them as a
+        single sequence would assert an ordering the API does not enforce.
+      */}
+      <Lane
+        title="SALES ORDER · FULFILMENT"
+        accent="blue"
+        steps={[
+          { label: "Not packed", stock: "nothing reserved" },
+          { label: "Packed", stock: "reserved ↑ available ↓" },
+          { label: "Shipped", stock: "on hand ↓ reserved ↓", posting: "Dr COGS / Cr Inventory" },
+        ]}
+      />
+      <div style={{ height: 14 }} />
+      <Lane
+        title="SALES ORDER · BILLING (independent of fulfilment)"
+        accent="cyan"
+        steps={[
+          { label: "Awaiting payment" },
+          { label: "Invoiced", posting: "Dr Receivable / Cr Revenue" },
+          { label: "Paid", posting: "Dr Bank / Cr Receivable" },
+        ]}
+      />
+    </>
   );
 }
 
 export function PurchaseFlow() {
   return (
     <Lane
-      title="PURCHASE ORDER"
+      title="PURCHASE ORDER · paying and receiving are interchangeable"
       accent="teal"
       steps={[
         { label: "Saved", stock: "incoming ↑" },
         { label: "Posted", posting: "Dr Prepaid / Cr Payable" },
+        // A vendor may deliver before invoicing, so /pay accepts a DELIVERED
+        // order too — the last two steps can happen in either order.
         { label: "Paid", posting: "Dr Payable / Cr Bank" },
-        { label: "Delivered", stock: "incoming ↓ on hand ↑", posting: "Dr Inventory / Cr Prepaid" },
+        {
+          label: "Delivered",
+          stock: "incoming ↓ on hand ↑",
+          posting: "Dr Inventory + variance / Cr Prepaid",
+        },
       ]}
     />
   );
@@ -129,8 +150,18 @@ export function TransferFlow() {
       accent="grape"
       steps={[
         { label: "Draft", stock: "nothing moved" },
-        { label: "In transit", stock: "source on hand ↓", posting: "layers consumed, cost held" },
-        { label: "Completed", stock: "destination on hand ↑", posting: "layers rebuilt, age kept" },
+        {
+          label: "In transit",
+          stock: "source on hand ↓, layers consumed",
+          // The one journal entry a transfer makes happens here, moving the
+          // carrying cost between warehouses within the Inventory account.
+          posting: "Dr Inventory / Cr Inventory",
+        },
+        {
+          label: "Completed",
+          stock: "destination on hand ↑, layers rebuilt at original cost and age",
+          // Deliberately no posting: the cost already moved at dispatch.
+        },
       ]}
     />
   );

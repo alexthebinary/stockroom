@@ -87,6 +87,7 @@ export async function createEntry(
       memo: input.memo ?? null,
       status: post ? "POSTED" : "SAVED",
       postedAt: post ? new Date() : null,
+      hasBeenPosted: post,
       referenceType: input.referenceType ?? null,
       referenceId: input.referenceId ?? null,
       actor: input.actor,
@@ -170,6 +171,21 @@ export async function dependenciesOf(tx: Tx, entry: {
 }): Promise<string | null> {
   const { referenceType, referenceId } = entry;
   if (!referenceType || !referenceId) return null;
+
+  // A reversal standing against this entry is the strongest dependency there
+  // is: deleting the original would leave a contra entry with nothing to
+  // contra, silently moving the books with no record of why.
+  const reversal = await tx.journalEntry.findFirst({
+    where: {
+      referenceType,
+      referenceId,
+      transactionType: { endsWith: "_REVERSAL" },
+      status: "POSTED",
+    },
+  });
+  if (reversal) {
+    return `${reversal.entryNumber} already reverses it — deleting the original would orphan that reversal`;
+  }
 
   switch (referenceType) {
     case "BILL": {
@@ -267,6 +283,7 @@ export async function reverseEntry(
       memo: input.memo ?? `Reversal of ${original.entryNumber}`,
       status: "POSTED",
       postedAt: new Date(),
+      hasBeenPosted: true,
       referenceType: original.referenceType,
       referenceId: original.referenceId,
       actor: input.actor,

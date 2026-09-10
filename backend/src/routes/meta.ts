@@ -182,7 +182,11 @@ metaRouter.get(
             { name: "Invoice", rows: invoices, note: "Dr Accounts Receivable / Cr Sales Revenue" },
             { name: "Shipment", rows: shipments, note: "Consumes FIFO layers, books COGS" },
             { name: "PurchaseOrder", rows: purchaseOrders, note: "Saved → Posted → Paid → Delivered" },
-            { name: "PurchaseOrderLine", rows: purchaseOrderLines, note: "Unit cost here becomes the cost layer on receipt" },
+            {
+              name: "PurchaseOrderLine",
+              rows: purchaseOrderLines,
+              note: "Landed cost — this unit cost plus its share of tax and shipping — becomes the layer",
+            },
             { name: "Bill", rows: bills, note: "Dr Prepaid Inventory / Cr Accounts Payable" },
             { name: "GoodsReceipt", rows: receipts, note: "Creates the cost layers" },
             { name: "Payment", rows: payments, note: "Receipt from a customer, or disbursement to a vendor" },

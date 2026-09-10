@@ -342,6 +342,10 @@ model JournalEntry {
   memo            String?
   status          String    @default("SAVED")
   postedAt        DateTime?
+  /// Set true the first time this entry is posted and never cleared. Unposting
+  /// clears `postedAt`, so without this an entry could be posted, unposted and
+  /// then deleted — erasing history the ledger promises to keep.
+  hasBeenPosted   Boolean   @default(false)
   referenceType   String?
   referenceId     Int?
   actor           String    @default("demo@user.com")

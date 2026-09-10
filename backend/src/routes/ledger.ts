@@ -100,7 +100,14 @@ ledgerRouter.delete(
     const current = await prisma.journalEntry.findUnique({ where: { id } });
     if (!current) throw notFound("Journal entry not found");
     if (current.status === "POSTED") {
-      throw conflict("A posted entry cannot be deleted — unpost it first");
+      throw conflict("A posted entry cannot be deleted — reverse it instead");
+    }
+    // Unposting clears `status` and `postedAt`, so status alone cannot tell us
+    // whether this entry was ever on the books. Once it has been, it stays.
+    if (current.hasBeenPosted) {
+      throw conflict(
+        `${current.entryNumber} has been posted before and cannot be deleted — reverse it instead, so the history shows what happened`
+      );
     }
     await prisma.journalEntry.delete({ where: { id } });
     res.json({ deleted: true });
@@ -110,19 +117,29 @@ ledgerRouter.delete(
 /**
  * GET /api/trial-balance?asOf=YYYY-MM-DD
  *
- * Note on what is actually being proved here.
+ * What is actually being proved here, stated carefully — because two of the
+ * obvious candidates prove nothing.
  *
- * Summing every debit against every credit CANNOT fail while all entries go
- * through `createEntry`, which refuses an unbalanced one — so that total on
- * its own is decorative, not a check. Two things that can genuinely fail are
- * reported instead:
+ * `totalDebitCents === totalCreditCents` cannot fail while every entry goes
+ * through `createEntry`, which refuses an unbalanced one.
  *
- *  - `unbalancedEntries`: each entry re-checked independently, which catches
- *    anything that wrote journal lines without going through the engine.
- *  - `equationVarianceCents`: the accounting equation, assets = liabilities +
- *    equity + income - expenses. This fails when entries are individually
- *    balanced but post to the wrong SIDE of the books — the failure a
- *    debit-equals-credit total is blind to.
+ * The accounting equation is the SAME quantity wearing a disguise. Because
+ * asset and expense accounts are debit-normal and liability, equity and income
+ * accounts are credit-normal, `assets - (liabilities + equity + income -
+ * expenses)` telescopes to exactly `totalDebits - totalCredits`. It is
+ * reported for the reader's benefit but it is not evidence, and a comment
+ * saying otherwise was wrong.
+ *
+ * These three can genuinely fail:
+ *
+ *  - `unbalancedEntries` — each entry re-proved on its own, which catches
+ *    anything that wrote journal lines around the engine.
+ *  - `chartInconsistencies` — an account whose normalSide disagrees with its
+ *    accountType. That is a configuration bug the equation cannot see, and it
+ *    silently inverts every balance on that account.
+ *  - `orphanedReversals` — a posted reversal whose original has been deleted.
+ *    The books are then moved by an entry with nothing to explain it, and no
+ *    sum of debits and credits will ever notice.
  */
 ledgerRouter.get(
   "/trial-balance",
@@ -197,6 +214,44 @@ ledgerRouter.get(
     const totalDebitCents = accounts.reduce((s, a) => s + a.debitCents, 0);
     const totalCreditCents = accounts.reduce((s, a) => s + a.creditCents, 0);
 
+    // An account typed one way and signed the other inverts its whole balance.
+    const EXPECTED_SIDE: Record<string, string> = {
+      ASSET: "DEBIT",
+      EXPENSE: "DEBIT",
+      LIABILITY: "CREDIT",
+      EQUITY: "CREDIT",
+      INCOME: "CREDIT",
+    };
+    const allAccounts = await prisma.account.findMany({ orderBy: { code: "asc" } });
+    const chartInconsistencies = allAccounts
+      .filter((a) => EXPECTED_SIDE[a.accountType] && EXPECTED_SIDE[a.accountType] !== a.normalSide)
+      .map((a) => ({
+        code: a.code,
+        name: a.name,
+        accountType: a.accountType,
+        normalSide: a.normalSide,
+        expectedSide: EXPECTED_SIDE[a.accountType],
+      }));
+
+    // A reversal whose original is gone moves the books with no explanation.
+    const reversals = await prisma.journalEntry.findMany({
+      where: { transactionType: { endsWith: "_REVERSAL" }, status: "POSTED" },
+    });
+    const orphanedReversals: { entryNumber: string; transactionType: string }[] = [];
+    for (const r of reversals) {
+      const originalType = r.transactionType.replace(/_REVERSAL$/, "");
+      const original = await prisma.journalEntry.findFirst({
+        where: {
+          transactionType: originalType,
+          referenceType: r.referenceType,
+          referenceId: r.referenceId,
+        },
+      });
+      if (!original) {
+        orphanedReversals.push({ entryNumber: r.entryNumber, transactionType: r.transactionType });
+      }
+    }
+
     res.json({
       asOf: asOf || null,
       accounts,
@@ -209,12 +264,23 @@ ledgerRouter.get(
       equityCents,
       incomeCents,
       expensesCents,
+      /**
+       * Reported for the reader, NOT relied on: this is algebraically the same
+       * number as totalDebits - totalCredits, so it cannot fail on its own.
+       */
       equationVarianceCents,
-      /** True only when every entry balances AND the equation holds. */
+      chartInconsistencies,
+      orphanedReversals,
+      /** True only when the three checks that can actually fail all pass. */
+      sound:
+        unbalancedEntries.length === 0 &&
+        chartInconsistencies.length === 0 &&
+        orphanedReversals.length === 0,
+      /** Retained for compatibility; prefer `sound`. */
       balanced:
         unbalancedEntries.length === 0 &&
-        equationVarianceCents === 0 &&
-        totalDebitCents === totalCreditCents,
+        chartInconsistencies.length === 0 &&
+        orphanedReversals.length === 0,
     });
   })
 );

@@ -91,6 +91,12 @@ export default function About() {
 
   const listed = meta.data?.groups.reduce((s, g) => s + g.entities.length, 0) ?? 0;
 
+  const describedMovements = MOVEMENT_EFFECTS.map(([type]) => type);
+  /** Movement types the API knows about that this page does not describe. */
+  const movementDrift = (meta.data?.vocabularies.movementTypes ?? []).filter(
+    (t) => !describedMovements.includes(t)
+  );
+
   return (
     <>
       <PageHeader
@@ -156,9 +162,11 @@ export default function About() {
           <List.Item>
             <strong>Money is stored and summed as an integer number of cents.</strong> A ledger
             that does not balance to the cent is worthless, and floats cannot represent money
-            exactly. Division appears in exactly two places — allocating a purchase order&apos;s
-            tax and shipping across its lines, and converting a typed dollar amount on input —
-            and both round straight back to whole cents. Where the parts cannot sum to the whole,
+            exactly. Division does appear on money paths — allocating a purchase order&apos;s tax
+            and shipping across its lines, computing a tax percentage, and converting typed
+            dollar amounts on input — but <strong>every one of them rounds straight back to a
+            whole cent</strong>, and no fractional value is ever stored or summed. Where the
+            parts cannot sum to the whole,
             the remainder is <em>named</em> rather than dropped: the last line of an allocation
             takes it, and a landed-cost rounding residue is posted to a Rounding Variance
             account so the purchase clears completely.
@@ -171,9 +179,12 @@ export default function About() {
             stored copy is a second source of truth waiting to disagree with the first.
           </List.Item>
           <List.Item>
-            <strong>Nothing posted is ever deleted.</strong> Catalog records in use are archived;
-            a posted journal entry is reversed by a mirror-image contra entry, so the trail shows
-            both what happened and that it was undone.
+            <strong>History is reversed, not rewritten.</strong> Catalog records in use are
+            archived rather than deleted. A posted journal entry that something depends on — a
+            bill with a payment against it, say — can only be undone by a mirror-image contra
+            entry, so the trail shows both what happened and that it was reversed. An entry that
+            nothing depends on may be unposted back to draft and then deleted; that is the one
+            case where a record leaves the system, and it is gated on having no dependents.
           </List.Item>
         </List>
       </Section>
@@ -226,7 +237,7 @@ export default function About() {
 
       <Section
         title="How a document moves through the system"
-        subtitle="Stock effects in grey, ledger postings in blue. Each step is its own document, not a side effect of a status change."
+        subtitle="Stock effects in grey, ledger postings in blue. Each step is its own document, not a side effect of a status change — and these are the common paths, not enforced sequences."
       >
         <SalesFlow />
         <div style={{ height: 18 }} />
@@ -240,7 +251,21 @@ export default function About() {
         </Text>
       </Section>
 
-      <Section title="The six physical movements" subtitle="Everything that can change stock, and its full effect.">
+      <Section
+        title={`The ${describedMovements.length} physical movements`}
+        subtitle="Everything that can change stock, and its full effect."
+      >
+        {movementDrift.length > 0 && (
+          <Alert color="orange" mb="sm" icon={<IconInfoCircle size={16} />}>
+            <Text size="sm">
+              {/* The prose below is written by hand; the vocabulary is read from
+                  the API. If they diverge the page says so instead of quietly
+                  describing a stale set. */}
+              The API reports movement types not described here:{" "}
+              <strong>{movementDrift.join(", ")}</strong>. This page needs updating.
+            </Text>
+          </Alert>
+        )}
         <Table.ScrollContainer minWidth={720}>
           <Table className="data-grid" verticalSpacing={6}>
             <Table.Thead>
@@ -384,47 +409,67 @@ export default function About() {
 
       <Section
         title="What is actually checked, and what only looks checked"
-        subtitle="Worth being precise about, because one of these is a tautology."
+        subtitle="Two of the obvious candidates prove nothing, and it took a review to notice the second one."
       >
         <Grid>
-          <Grid.Col span={{ base: 12, md: 6 }}>
+          <Grid.Col span={{ base: 12, md: 5 }}>
             <Text size="sm" fw={700} mb={4}>
-              Not a real check
+              Not real checks
             </Text>
-            <Text size="sm" c="dimmed">
-              Summing every debit against every credit. Because the ledger engine refuses an
-              unbalanced entry, the sum of balanced entries balances by construction — it can
-              never report a problem no matter how wrong the books are.
-            </Text>
+            <List size="sm" spacing={6}>
+              <List.Item>
+                <strong>Debits equal credits.</strong> The ledger engine refuses an unbalanced
+                entry, so the sum of balanced entries balances by construction.
+              </List.Item>
+              <List.Item>
+                <strong>The accounting equation.</strong> This one is subtler and we had it wrong
+                at first. Because assets and expenses are debit-normal while liabilities, equity
+                and income are credit-normal,{" "}
+                <Code>assets − (liabilities + equity + income − expenses)</Code> telescopes to
+                exactly <Code>debits − credits</Code> — the same quantity, wearing a disguise. It
+                is shown below for orientation, not as evidence.
+              </List.Item>
+            </List>
           </Grid.Col>
-          <Grid.Col span={{ base: 12, md: 6 }}>
+          <Grid.Col span={{ base: 12, md: 7 }}>
             <Text size="sm" fw={700} mb={4}>
               Checks that can genuinely fail
             </Text>
-            <List size="sm" spacing={4}>
+            <List size="sm" spacing={6}>
               <List.Item>
-                Each entry re-proved on its own — catches anything that wrote journal lines
-                around the engine.
+                <strong>Each entry re-proved on its own</strong> — catches anything that wrote
+                journal lines around the engine.
                 {trial.data && (
                   <Text span size="xs" c="dimmed">
                     {" "}
-                    (currently {trial.data.unbalancedEntries.length} unbalanced)
+                    ({trial.data.unbalancedEntries.length} unbalanced)
                   </Text>
                 )}
               </List.Item>
               <List.Item>
-                The accounting equation — catches entries that balance internally but post to the
-                wrong side.
+                <strong>Chart-of-accounts consistency</strong> — an account typed one way and
+                signed the other inverts every balance on it. A configuration bug no sum of
+                debits and credits can see.
                 {trial.data && (
                   <Text span size="xs" c="dimmed">
                     {" "}
-                    (variance {money(trial.data.equationVarianceCents)})
+                    ({trial.data.chartInconsistencies.length} inconsistent)
                   </Text>
                 )}
               </List.Item>
               <List.Item>
-                Cost layers summed against the Inventory account — two independent paths to one
-                number.
+                <strong>Orphaned reversals</strong> — a posted contra entry whose original is
+                gone. The books move with nothing to explain why, and every total still adds up.
+                {trial.data && (
+                  <Text span size="xs" c="dimmed">
+                    {" "}
+                    ({trial.data.orphanedReversals.length} orphaned)
+                  </Text>
+                )}
+              </List.Item>
+              <List.Item>
+                <strong>Cost layers against the Inventory account</strong> — two genuinely
+                independent derivations of one number, which is what makes it a real check.
                 {valuation.data && (
                   <Text span size="xs" c="dimmed">
                     {" "}
@@ -435,6 +480,28 @@ export default function About() {
             </List>
           </Grid.Col>
         </Grid>
+      </Section>
+
+      <Section
+        title="Status vocabularies"
+        subtitle="Closed sets, read live from the API. A value added in code appears here without anyone editing this page."
+      >
+        <QueryState isLoading={meta.isLoading} error={meta.error} onRetry={meta.refetch}>
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm">
+            {Object.entries(meta.data?.vocabularies ?? {}).map(([name, values]) => (
+              <Card key={name} withBorder radius="sm" p="sm">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={6}>
+                  {name.replace(/([A-Z])/g, " $1")}
+                </Text>
+                <Group gap={4}>
+                  {values.map((v) => (
+                    <StatusBadge key={v} value={v} />
+                  ))}
+                </Group>
+              </Card>
+            ))}
+          </SimpleGrid>
+        </QueryState>
       </Section>
 
       <Section
@@ -476,10 +543,15 @@ export default function About() {
       >
         <Text size="sm" c="dimmed">
           No marketplace or carrier integrations. No bin or shelf locations — stock is held at
-          warehouse level. No multi-currency, no tax engine beyond a per-order figure, no
-          forecasting or reorder automation, and no real authentication: the sign-in page is a
-          formality and every API route behind it is open. This is a demo, and it should not hold
-          real data.
+          warehouse level. No multi-currency, no tax engine beyond a per-order figure, and no
+          forecasting or reorder automation.
+        </Text>
+        <Text size="sm" c="dimmed" mt="sm">
+          <strong>On authentication, precisely:</strong> a hosted instance sits behind HTTP Basic
+          auth, which is a real boundary — without the credential nothing responds but the health
+          check. What it is not is an authorisation model. The sign-in page inside is a
+          formality, and once past the door every API route is equally open to every visitor,
+          with no per-user permissions. This is a demo, and it should not hold real data.
         </Text>
       </Section>
     </>

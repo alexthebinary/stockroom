@@ -90,8 +90,22 @@ export type TrialBalance = {
   equityCents: number;
   incomeCents: number;
   expensesCents: number;
-  /** Assets - (Liabilities + Equity + Income - Expenses). Zero when sound. */
+  /**
+   * Assets - (Liabilities + Equity + Income - Expenses). Informational only:
+   * it is algebraically the same number as totalDebits - totalCredits, so it
+   * cannot fail on its own.
+   */
   equationVarianceCents: number;
+  chartInconsistencies: {
+    code: string;
+    name: string;
+    accountType: string;
+    normalSide: string;
+    expectedSide: string;
+  }[];
+  orphanedReversals: { entryNumber: string; transactionType: string }[];
+  /** True only when the three checks that can actually fail all pass. */
+  sound: boolean;
   balanced: boolean;
 };
 
