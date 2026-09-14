@@ -15,6 +15,7 @@ import {
 import { IconAlertTriangle, IconCheck } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { Navigate, useParams } from "react-router-dom";
 import {
   api,
   qs,
@@ -66,12 +67,18 @@ function GroupTable({
   );
 }
 
+const REPORT_TABS = ["sales", "purchases", "stock", "valuation"] as const;
+
 export default function Reports() {
+  const { tab } = useParams();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [salesGroup, setSalesGroup] = useState("customer");
   const [purchaseGroup, setPurchaseGroup] = useState("vendor");
   const [asOf, setAsOf] = useState("");
+
+  // An unknown tab in the URL is a dead page, not an empty one.
+  const valid = REPORT_TABS.includes((tab ?? "") as (typeof REPORT_TABS)[number]);
 
   const sales = useQuery({
     queryKey: ["report-sales", { from, to, salesGroup }],
@@ -90,6 +97,8 @@ export default function Reports() {
     queryKey: ["report-valuation"],
     queryFn: () => api.get<ValuationReport>("/reports/inventory-valuation"),
   });
+
+  if (!valid) return <Navigate to="/reports/sales" replace />;
 
   return (
     <>
@@ -116,13 +125,9 @@ export default function Reports() {
         }
       />
 
-      <Tabs defaultValue="sales">
-        <Tabs.List mb="md">
-          <Tabs.Tab value="sales">Sales</Tabs.Tab>
-          <Tabs.Tab value="purchases">Purchases</Tabs.Tab>
-          <Tabs.Tab value="stock">Stock on hand</Tabs.Tab>
-          <Tabs.Tab value="valuation">Valuation</Tabs.Tab>
-        </Tabs.List>
+      {/* The tab list lives in the app's second navigation row, so the panel
+          is driven by the URL and nothing is rendered twice. */}
+      <Tabs value={tab}>
 
         <Tabs.Panel value="sales">
           <QueryState isLoading={sales.isLoading} error={sales.error} onRetry={sales.refetch}>

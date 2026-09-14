@@ -14,6 +14,7 @@ import {
 import { useDisclosure } from "@mantine/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Navigate, useParams } from "react-router-dom";
 import { api, type Paginated, type Party, type ProductCategory } from "../api";
 import { PageHeader, QueryState, toastErr, toastOk } from "../components/ui";
 
@@ -350,21 +351,22 @@ function PostingRulesPanel() {
   );
 }
 
+const CATALOG_TABS = ["customers", "vendors", "employees", "categories", "posting"] as const;
+
 export default function Catalogs() {
+  const { tab } = useParams();
+  if (!CATALOG_TABS.includes((tab ?? "") as (typeof CATALOG_TABS)[number])) {
+    return <Navigate to="/catalogs/customers" replace />;
+  }
+
   return (
     <>
       <PageHeader
         title="Catalogs"
         subtitle="The master data every transaction references. Records in use are archived, never deleted."
       />
-      <Tabs defaultValue="customers">
-        <Tabs.List mb="md">
-          <Tabs.Tab value="customers">Customers</Tabs.Tab>
-          <Tabs.Tab value="vendors">Vendors</Tabs.Tab>
-          <Tabs.Tab value="employees">Managers</Tabs.Tab>
-          <Tabs.Tab value="categories">Categories</Tabs.Tab>
-          <Tabs.Tab value="posting">Posting rules</Tabs.Tab>
-        </Tabs.List>
+      {/* The tab list lives in the app's second navigation row. */}
+      <Tabs value={tab}>
         <Tabs.Panel value="customers">
           <PartyPanel kind="customers" />
         </Tabs.Panel>
