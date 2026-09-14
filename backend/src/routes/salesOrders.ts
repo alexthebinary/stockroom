@@ -4,6 +4,7 @@ import { prisma } from "../db";
 import { contains } from "../search";
 import { badRequest, conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, pagination, parseBody } from "../http";
+import { requireMoney, requireStock } from "../auth";
 import { companyDetails, renderInvoice } from "../pdf";
 import { CARRIERS, trackingUrl } from "../carriers";
 import { applyBalanceDelta, claimStatusTransition, recordMovement, reserveStock } from "../inventory";
@@ -108,6 +109,7 @@ salesOrdersRouter.get(
 
 salesOrdersRouter.post(
   "/",
+  requireStock,
   asyncHandler(async (req, res) => {
     const body = parseBody(createSchema, req.body);
 
@@ -177,6 +179,7 @@ salesOrdersRouter.post(
  */
 salesOrdersRouter.post(
   "/:id/pack",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
 
@@ -220,6 +223,7 @@ salesOrdersRouter.post(
 /** Invoicing is a financial transaction: Dr Accounts Receivable, Cr Sales Revenue. */
 salesOrdersRouter.post(
   "/:id/invoice",
+  requireMoney,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
@@ -278,6 +282,7 @@ salesOrdersRouter.post(
 /** Payment: Dr Bank, Cr Accounts Receivable. */
 salesOrdersRouter.post(
   "/:id/pay",
+  requireMoney,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
@@ -352,6 +357,7 @@ const trackingSchema = z.object({
  */
 salesOrdersRouter.post(
   "/shipments/:shipmentId/tracking",
+  requireStock,
   asyncHandler(async (req, res) => {
     const shipmentId = intParam(req.params.shipmentId, "shipmentId");
     const body = parseBody(trackingSchema, req.body ?? {});
@@ -422,6 +428,7 @@ salesOrdersRouter.get(
  */
 salesOrdersRouter.post(
   "/:id/reverse-payment",
+  requireMoney,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
@@ -475,6 +482,7 @@ salesOrdersRouter.post(
  */
 salesOrdersRouter.post(
   "/:id/ship",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
@@ -580,6 +588,7 @@ salesOrdersRouter.post(
 /** Cancelling releases any reservation. Posted financials are never deleted. */
 salesOrdersRouter.post(
   "/:id/cancel",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
 
@@ -654,6 +663,7 @@ salesOrdersRouter.post(
  */
 salesOrdersRouter.post(
   "/:id/void-invoice",
+  requireMoney,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
@@ -693,6 +703,7 @@ salesOrdersRouter.post(
 /** Only an untouched order can be deleted — nothing posted, nothing reserved. */
 salesOrdersRouter.delete(
   "/:id",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const current = await prisma.salesOrder.findUnique({

@@ -18,10 +18,16 @@ export function parseBody<T>(schema: ZodSchema<T>, body: unknown): T {
   return result.data;
 }
 
-/** The demo has no real auth; the actor is whatever the client claims to be. */
+/**
+ * Who did this, for the audit trail.
+ *
+ * Read from the VERIFIED token, never from a header. It used to trust
+ * `X-Demo-User`, which meant every actor field in the system recorded whatever
+ * the caller typed — an audit trail anyone could forge is worse than none,
+ * because it looks like evidence.
+ */
 export function actorOf(req: Request): string {
-  const header = req.header("X-Demo-User");
-  return header && header.trim() ? header.trim() : "demo@user.com";
+  return req.user?.email ?? "system";
 }
 
 export function intParam(value: unknown, name: string): number {

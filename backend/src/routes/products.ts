@@ -4,6 +4,7 @@ import { prisma } from "../db";
 import { contains } from "../search";
 import { notFound } from "../errors";
 import { asyncHandler, intParam, pagination, parseBody } from "../http";
+import { requireStock } from "../auth";
 
 export const productsRouter = Router();
 
@@ -95,6 +96,7 @@ productsRouter.get(
 
 productsRouter.post(
   "/",
+  requireStock,
   asyncHandler(async (req, res) => {
     const data = parseBody(productSchema, req.body);
     const product = await prisma.product.create({ data });
@@ -104,6 +106,7 @@ productsRouter.post(
 
 productsRouter.put(
   "/:id",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const data = parseBody(productSchema.partial(), req.body);
@@ -120,6 +123,7 @@ productsRouter.put(
  */
 productsRouter.delete(
   "/:id",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
 

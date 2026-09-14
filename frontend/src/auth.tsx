@@ -1,7 +1,14 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { api, DEMO_USER_KEY } from "./api";
+import { api, AUTH_TOKEN_KEY, DEMO_USER_KEY } from "./api";
 
-export type DemoUser = { email: string; name: string; role: string };
+export type Capabilities = { stock: boolean; money: boolean; users: boolean };
+export type DemoUser = {
+  id: number;
+  email: string;
+  name: string;
+  role: string;
+  can: Capabilities;
+};
 
 type AuthValue = {
   user: DemoUser | null;
@@ -21,20 +28,27 @@ function readStoredUser(): DemoUser | null {
 }
 
 /**
- * Demo auth only: the backend checks a hard-coded pair and returns a user
- * object we keep in localStorage. There is no token and no session — every API
- * route is open. Do not model real auth on this.
+ * Real sessions now: the backend verifies a password and returns a signed
+ * token, which every request carries. The user object here is a CONVENIENCE for
+ * rendering — it decides which buttons to show, never what is permitted. The
+ * server re-checks the role on every mutating route, because anything the
+ * browser holds is editable by whoever holds it.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<DemoUser | null>(readStoredUser);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await api.post<{ user: DemoUser }>("/auth/login", { email, password });
+    const res = await api.post<{ token: string; user: DemoUser }>("/auth/login", {
+      email,
+      password,
+    });
+    localStorage.setItem(AUTH_TOKEN_KEY, res.token);
     localStorage.setItem(DEMO_USER_KEY, JSON.stringify(res.user));
     setUser(res.user);
   }, []);
 
   const logout = useCallback(() => {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(DEMO_USER_KEY);
     setUser(null);
   }, []);

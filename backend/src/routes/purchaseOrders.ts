@@ -4,6 +4,7 @@ import { prisma } from "../db";
 import { contains } from "../search";
 import { badRequest, conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, pagination, parseBody } from "../http";
+import { requireMoney, requireStock } from "../auth";
 import { applyBalanceDelta, recordMovement } from "../inventory";
 import { createLot } from "../costing";
 import { createEntry, postSimple, reverseDocumentEntry, type DraftLine } from "../ledger";
@@ -92,6 +93,7 @@ purchaseOrdersRouter.get(
 /** SAVED: appears on reports as incoming inventory. No ledger effect yet. */
 purchaseOrdersRouter.post(
   "/",
+  requireStock,
   asyncHandler(async (req, res) => {
     const body = parseBody(createSchema, req.body);
 
@@ -167,6 +169,7 @@ purchaseOrdersRouter.post(
 /** POSTED creates the Vendor Bill: Dr Prepaid Inventory, Cr Accounts Payable. */
 purchaseOrdersRouter.post(
   "/:id/post",
+  requireMoney,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
@@ -227,6 +230,7 @@ purchaseOrdersRouter.post(
 /** PAID: Dr Accounts Payable, Cr Bank. */
 purchaseOrdersRouter.post(
   "/:id/pay",
+  requireMoney,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
@@ -295,6 +299,7 @@ purchaseOrdersRouter.post(
  */
 purchaseOrdersRouter.post(
   "/:id/reverse-payment",
+  requireMoney,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
@@ -342,6 +347,7 @@ purchaseOrdersRouter.post(
 
 purchaseOrdersRouter.post(
   "/:id/receive",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
@@ -502,6 +508,7 @@ purchaseOrdersRouter.post(
  */
 purchaseOrdersRouter.post(
   "/:id/void-bill",
+  requireMoney,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
@@ -547,6 +554,7 @@ purchaseOrdersRouter.post(
 
 purchaseOrdersRouter.post(
   "/:id/cancel",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
 
@@ -600,6 +608,7 @@ purchaseOrdersRouter.post(
 
 purchaseOrdersRouter.delete(
   "/:id",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
 

@@ -1,3 +1,4 @@
+import { hashPassword } from "../src/auth";
 import { PrismaClient } from "@prisma/client";
 import { CHART_OF_ACCOUNTS, JOURNAL_TEMPLATES } from "../src/accounts";
 
@@ -199,6 +200,24 @@ async function main() {
         totalCostCents: valueCents,
         actor: "seed@demo",
       },
+    });
+  }
+
+  // Four accounts, one per role, so the demo can actually show what the roles
+  // do rather than describing them. Passwords are seed-only and obvious by
+  // design; SEED_PASSWORD overrides them for anything hosted.
+  const seedPassword = process.env.SEED_PASSWORD ?? "stockroom";
+  for (const u of [
+    { email: "admin@user.com", name: "Avery Admin", role: "ADMIN" },
+    { email: "demo@user.com", name: "Demo User", role: "ADMIN" },
+    { email: "warehouse@user.com", name: "Wes Warehouse", role: "WAREHOUSE" },
+    { email: "finance@user.com", name: "Fran Finance", role: "FINANCE" },
+    { email: "viewer@user.com", name: "Val Viewer", role: "VIEWER" },
+  ]) {
+    await prisma.user.upsert({
+      where: { email: u.email },
+      update: {},
+      create: { ...u, passwordHash: hashPassword(seedPassword) },
     });
   }
 

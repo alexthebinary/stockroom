@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
 import { actorOf, asyncHandler, optionalInt, pagination, parseBody } from "../http";
+import { requireStock } from "../auth";
 import { applyBalanceDelta, recordMovement } from "../inventory";
 import { consumeFifo, createLot } from "../costing";
 import { postSimple } from "../ledger";
@@ -51,6 +52,7 @@ stockAdjustmentsRouter.get(
 
 stockAdjustmentsRouter.post(
   "/",
+  requireStock,
   asyncHandler(async (req, res) => {
     const body = parseBody(createSchema, req.body);
     const actor = actorOf(req);

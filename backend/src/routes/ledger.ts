@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../db";
 import { conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, optionalInt, pagination } from "../http";
+import { requireMoney, requireStock } from "../auth";
 import { balanceOf, dependenciesOf, repostEntry, reverseEntry, unpostEntry } from "../ledger";
 import { getLockDate, setLockDate } from "../period";
 
@@ -74,6 +75,7 @@ ledgerRouter.get(
  */
 ledgerRouter.post(
   "/journal-entries/:id/unpost",
+  requireMoney,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     // unpostEntry walks forward from the document this entry belongs to and
@@ -99,6 +101,7 @@ ledgerRouter.get(
 
 ledgerRouter.put(
   "/ledger-settings/lock-date",
+  requireMoney,
   asyncHandler(async (req, res) => {
     const raw = req.body?.lockDate;
     const lockDate = await setLockDate(raw === null || raw === "" ? null : String(raw));
@@ -109,6 +112,7 @@ ledgerRouter.put(
 /** Re-post an entry that was unposted, so unposting is not a one-way door. */
 ledgerRouter.post(
   "/journal-entries/:id/post",
+  requireMoney,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const entry = await prisma.$transaction((tx) => repostEntry(tx, id));
@@ -132,6 +136,7 @@ ledgerRouter.post(
  */
 ledgerRouter.post(
   "/journal-entries/:id/reverse",
+  requireMoney,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
@@ -153,6 +158,7 @@ ledgerRouter.post(
 
 ledgerRouter.delete(
   "/journal-entries/:id",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const current = await prisma.journalEntry.findUnique({ where: { id } });

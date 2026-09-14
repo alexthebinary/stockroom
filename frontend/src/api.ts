@@ -1,6 +1,7 @@
 /** Thin fetch wrapper. The dev server proxies /api to the backend. */
 
 const DEMO_USER_KEY = "inventory-demo-user";
+const AUTH_TOKEN_KEY = "stockroom-token";
 
 export type Paginated<T> = {
   data: T[];
@@ -387,13 +388,11 @@ export class ApiError extends Error {
   }
 }
 
-function currentUserEmail(): string {
+function authToken(): string | null {
   try {
-    const raw = localStorage.getItem(DEMO_USER_KEY);
-    if (!raw) return "demo@user.com";
-    return (JSON.parse(raw).email as string) ?? "demo@user.com";
+    return localStorage.getItem(AUTH_TOKEN_KEY);
   } catch {
-    return "demo@user.com";
+    return null;
   }
 }
 
@@ -402,7 +401,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      "X-Demo-User": currentUserEmail(),
+      // The signed token, not a claimed identity. The server reads the actor
+      // from this; a header the client fills in is not an audit trail.
+      ...(authToken() ? { Authorization: `Bearer ${authToken()}` } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -436,4 +437,4 @@ export const api = {
   del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };
 
-export { DEMO_USER_KEY };
+export { DEMO_USER_KEY, AUTH_TOKEN_KEY };

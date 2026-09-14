@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { notFound } from "../errors";
 import { asyncHandler, intParam, parseBody } from "../http";
+import { requireStock } from "../auth";
 
 export const warehousesRouter = Router();
 
@@ -55,6 +56,7 @@ warehousesRouter.get(
 
 warehousesRouter.post(
   "/",
+  requireStock,
   asyncHandler(async (req, res) => {
     const data = parseBody(warehouseSchema, req.body);
     res.status(201).json(await prisma.warehouse.create({ data }));
@@ -63,6 +65,7 @@ warehousesRouter.post(
 
 warehousesRouter.put(
   "/:id",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const data = parseBody(warehouseSchema.partial(), req.body);
@@ -75,6 +78,7 @@ warehousesRouter.put(
 /** Refuses to delete a warehouse that still holds stock; deactivates instead. */
 warehousesRouter.delete(
   "/:id",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
 

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { badRequest, conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, optionalInt, pagination, parseBody } from "../http";
+import { requireStock } from "../auth";
 import { applyBalanceDelta, claimStatusTransition, recordMovement } from "../inventory";
 import { attachConsumptionsToMovement, consumeFifo, createLot } from "../costing";
 import { ACCOUNT, TRANSACTION_TYPE } from "../accounts";
@@ -67,6 +68,7 @@ stockTransfersRouter.get(
 
 stockTransfersRouter.post(
   "/",
+  requireStock,
   asyncHandler(async (req, res) => {
     const body = parseBody(createSchema, req.body);
     await assertReferencesUsable(prisma, [
@@ -85,6 +87,7 @@ stockTransfersRouter.post(
 /** START pulls stock out of the source warehouse; it is in transit, owned by neither side. */
 stockTransfersRouter.post(
   "/:id/start",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
@@ -184,6 +187,7 @@ stockTransfersRouter.post(
 /** COMPLETE lands the in-transit stock in the destination warehouse. */
 stockTransfersRouter.post(
   "/:id/complete",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
@@ -285,6 +289,7 @@ stockTransfersRouter.post(
 /** A DRAFT transfer can be dropped outright; an IN_TRANSIT one returns stock to the source. */
 stockTransfersRouter.post(
   "/:id/cancel",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
@@ -360,6 +365,7 @@ stockTransfersRouter.post(
 
 stockTransfersRouter.delete(
   "/:id",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const current = await prisma.stockTransfer.findUnique({ where: { id } });

@@ -17,6 +17,7 @@ import { stockTransfersRouter } from "./routes/stockTransfers";
 import { warehousesRouter } from "./routes/warehouses";
 import { errorMiddleware } from "./http";
 import { basicAuthGate } from "./auth-gate";
+import { attachUser, requireSession } from "./auth";
 import { syncChartOfAccounts } from "./accounts";
 import { ensureDocumentCounters } from "./numbering";
 
@@ -33,6 +34,12 @@ app.use(express.json());
 app.use(basicAuthGate());
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
+
+// Identify the caller before any router runs. Never rejects — each route
+// declares what it requires, so reads stay open to anyone signed in and the
+// login route stays reachable to nobody.
+app.use("/api", attachUser);
+app.use("/api", requireSession);
 
 app.use("/api/auth", authRouter);
 app.use("/api/dashboard", dashboardRouter);

@@ -346,6 +346,23 @@ model DocumentCounter {
   updatedAt DateTime @updatedAt
 }
 
+/// A person who can sign in.
+///
+/// Roles are coarse on purpose: the useful split in a warehouse is between the
+/// people who MOVE STOCK and the people who POST MONEY, and a finer grid would
+/// be configuration nobody maintains. ADMIN additionally manages users.
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  name         String
+  /// scrypt, salted per user. Format: scrypt$N$r$p$salt$hash, all base64.
+  passwordHash String
+  role         String   @default("VIEWER")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  lastLoginAt  DateTime?
+}
+
 model LedgerSetting {
   key       String   @id
   value     String

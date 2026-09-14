@@ -4,6 +4,7 @@ import { prisma } from "../db";
 import { contains } from "../search";
 import { badRequest, notFound } from "../errors";
 import { asyncHandler, intParam, pagination, parseBody } from "../http";
+import { requireStock } from "../auth";
 
 export const catalogsRouter = Router();
 
@@ -130,6 +131,7 @@ catalogsRouter.get(
 
 catalogsRouter.post(
   "/product-categories",
+  requireStock,
   asyncHandler(async (req, res) => {
     const data = parseBody(categorySchema, req.body);
 
@@ -150,6 +152,7 @@ catalogsRouter.post(
 
 catalogsRouter.delete(
   "/product-categories/:id",
+  requireStock,
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const existing = await prisma.productCategory.findUnique({

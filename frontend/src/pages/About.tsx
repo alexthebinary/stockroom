@@ -571,11 +571,13 @@ export default function About() {
         </Text>
         <Text size="sm" c="dimmed" mt="sm">
           <strong>On authentication, precisely:</strong> a hosted instance sits behind HTTP Basic
-          auth, which is a real boundary — without the credential nothing responds but the health
-          check. What it is not is an authorisation model. The sign-in page inside is a
-          formality, and once past the door every API route is equally open to every visitor,
-          with no per-user permissions. This is a demo, and it should not hold real data.
-        </Text>
+          auth, which says who may reach the app at all. Inside it, every person has an account
+          with a role: a viewer reads, a warehouse role moves stock, a finance role posts and
+          reverses money, and an administrator does both and manages people. Passwords are
+          scrypt-hashed and sessions are signed tokens, both from the standard library rather
+          than a dependency. Every action is attributed to the verified account, not to a header
+          the caller fills in. What is still absent: password reset, multi-factor, and any
+          organisation or tenancy model.</Text>
       </Section>
     </>
   );
