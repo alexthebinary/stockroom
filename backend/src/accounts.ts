@@ -39,6 +39,9 @@ export const CHART_OF_ACCOUNTS = [
   { code: ACCOUNT.INVENTORY_GAIN, name: "Inventory Gain", accountType: "INCOME", normalSide: "CREDIT" },
   { code: ACCOUNT.COGS, name: "Cost of Goods Sold", accountType: "EXPENSE", normalSide: "DEBIT" },
   { code: ACCOUNT.INVENTORY_SHRINKAGE, name: "Inventory Shrinkage", accountType: "EXPENSE", normalSide: "DEBIT" },
+  // Reported inside cost of sales rather than as an operating expense: it
+  // originates in the purchase cost of goods, so it belongs in gross margin.
+  // An operating-expense line would imply a cost of running the business.
   { code: ACCOUNT.ROUNDING_VARIANCE, name: "Rounding Variance", accountType: "EXPENSE", normalSide: "DEBIT" },
 ];
 
@@ -162,5 +165,12 @@ export async function syncChartOfAccounts() {
   await prisma.account.createMany({ data: missing });
   return missing.map((a) => `${a.code} ${a.name}`);
 }
+
+/** The expense accounts that belong inside gross margin, not below it. */
+export const COGS_ACCOUNT_CODES: string[] = [
+  ACCOUNT.COGS,
+  ACCOUNT.INVENTORY_SHRINKAGE,
+  ACCOUNT.ROUNDING_VARIANCE,
+];
 
 export const ENTRY_STATUSES = ["SAVED", "POSTED", "VOID"] as const;

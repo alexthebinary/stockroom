@@ -3,13 +3,12 @@ import { useDisclosure } from "@mantine/hooks";
 import {
   IconBook2,
   IconChartBar,
-  IconInfoCircle,
   IconLayoutDashboard,
   IconPackage,
   IconReceipt,
   IconStack2,
   IconTruckDelivery,
-  IconUsers,
+  IconSettings,
 } from "@tabler/icons-react";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -56,8 +55,24 @@ type Section = {
 
 const SECTIONS: Section[] = [
   { label: "Home", icon: IconLayoutDashboard, to: "/" },
-  { label: "Sales", icon: IconReceipt, to: "/sales-orders" },
-  { label: "Purchases", icon: IconTruckDelivery, to: "/purchase-orders" },
+  {
+    label: "Sales",
+    icon: IconReceipt,
+    to: "/sales-orders",
+    items: [
+      { to: "/sales-orders", label: "Orders" },
+      { to: "/catalogs/customers", label: "Customers" },
+    ],
+  },
+  {
+    label: "Purchases",
+    icon: IconTruckDelivery,
+    to: "/purchase-orders",
+    items: [
+      { to: "/purchase-orders", label: "Orders" },
+      { to: "/catalogs/vendors", label: "Vendors" },
+    ],
+  },
   {
     label: "Inventory",
     icon: IconStack2,
@@ -83,18 +98,20 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    label: "Catalogs",
-    icon: IconUsers,
-    to: "/catalogs",
+    // Customers and Vendors deliberately live under Sales and Purchases rather
+    // than here: maintaining master data is rare, looking it up mid-task is
+    // constant, and the frequent path is the one to optimise for. What is left
+    // is genuinely configuration.
+    label: "Settings",
+    icon: IconSettings,
+    to: "/catalogs/categories",
     items: [
-      { to: "/catalogs/customers", label: "Customers" },
-      { to: "/catalogs/vendors", label: "Vendors" },
-      { to: "/catalogs/employees", label: "Managers" },
       { to: "/catalogs/categories", label: "Categories" },
+      { to: "/catalogs/employees", label: "Managers" },
       { to: "/catalogs/posting", label: "Posting rules" },
+      { to: "/about", label: "About" },
     ],
   },
-  { label: "About", icon: IconInfoCircle, to: "/about" },
 ];
 
 /**
@@ -165,6 +182,36 @@ function LedgerHealth() {
         </Text>
       </UnstyledButton>
     </Tooltip>
+  );
+}
+
+/**
+ * On a phone, the sections an operator actually reaches for while holding a
+ * device stay permanently in thumb reach; the rest keep the drawer.
+ *
+ * Forcing all six into one pattern is what made this look like a hard choice.
+ * Reports, Settings and the master-data pages are desk work — nobody does them
+ * one-handed on a warehouse floor — so they do not earn a permanent slot.
+ */
+const PHONE_SECTIONS = ["Home", "Sales", "Purchases", "Inventory"];
+
+function BottomBar({ current }: { current?: Section }) {
+  return (
+    <Box component="nav" className="bottom-bar" hiddenFrom="sm" aria-label="Main sections">
+      {SECTIONS.filter((s) => PHONE_SECTIONS.includes(s.label)).map((s) => (
+        <UnstyledButton
+          key={s.label}
+          component={NavLink}
+          to={s.to}
+          className="bottom-link"
+          data-active={s === current || undefined}
+          aria-current={s === current ? "page" : undefined}
+        >
+          <s.icon size={19} stroke={1.7} />
+          <span>{s.label}</span>
+        </UnstyledButton>
+      ))}
+    </Box>
   );
 }
 
@@ -281,7 +328,7 @@ export default function App() {
         </ScrollArea>
       </AppShell.Navbar>
 
-      <AppShell.Main className="app-main">
+      <AppShell.Main className="app-main has-bottom-bar">
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/products" element={<Products />} />
@@ -305,6 +352,8 @@ export default function App() {
           <Route path="*" element={<Text>Page not found.</Text>} />
         </Routes>
       </AppShell.Main>
+
+      <BottomBar current={section} />
     </AppShell>
   );
 }
