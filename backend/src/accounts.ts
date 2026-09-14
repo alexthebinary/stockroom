@@ -139,4 +139,28 @@ export const JOURNAL_TEMPLATES: {
   },
 ];
 
+/**
+ * Make the stored chart match this file.
+ *
+ * The chart was only ever written by the seed, and the seed runs only on an
+ * EMPTY database — so every account added after a deployment was created never
+ * reached it, and the first posting that referenced one failed with "not in the
+ * chart of accounts". That is not hypothetical: 5200 Rounding Variance was
+ * added on 2026-09-10 and was still missing from the live database four days
+ * later, which would have failed any goods receipt whose landed-cost
+ * allocation left a remainder.
+ *
+ * Running this at boot fixes the whole class rather than each instance. It only
+ * ever inserts: renaming or retyping an existing account is a migration with
+ * consequences for history, not something a boot step should do silently.
+ */
+export async function syncChartOfAccounts() {
+  const { prisma } = await import("./db");
+  const existing = new Set((await prisma.account.findMany({ select: { code: true } })).map((a) => a.code));
+  const missing = CHART_OF_ACCOUNTS.filter((a) => !existing.has(a.code));
+  if (missing.length === 0) return [];
+  await prisma.account.createMany({ data: missing });
+  return missing.map((a) => `${a.code} ${a.name}`);
+}
+
 export const ENTRY_STATUSES = ["SAVED", "POSTED", "VOID"] as const;
