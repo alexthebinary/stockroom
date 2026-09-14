@@ -2,6 +2,7 @@
 
 const DEMO_USER_KEY = "inventory-demo-user";
 const AUTH_TOKEN_KEY = "stockroom-token";
+const ACTING_ROLE_KEY = "stockroom-acting-role";
 
 export type Paginated<T> = {
   data: T[];
@@ -388,6 +389,14 @@ export class ApiError extends Error {
   }
 }
 
+function actingRole(): string | null {
+  try {
+    return localStorage.getItem(ACTING_ROLE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 function authToken(): string | null {
   try {
     return localStorage.getItem(AUTH_TOKEN_KEY);
@@ -404,6 +413,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       // The signed token, not a claimed identity. The server reads the actor
       // from this; a header the client fills in is not an audit trail.
       ...(authToken() ? { Authorization: `Bearer ${authToken()}` } : {}),
+      // Honoured only for an administrator, and only to REDUCE capability. The
+      // server checks both; this header grants nothing on its own.
+      ...(actingRole() ? { "X-Act-As-Role": actingRole()! } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -437,4 +449,4 @@ export const api = {
   del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };
 
-export { DEMO_USER_KEY, AUTH_TOKEN_KEY };
+export { DEMO_USER_KEY, AUTH_TOKEN_KEY, ACTING_ROLE_KEY };

@@ -1,19 +1,26 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { api, AUTH_TOKEN_KEY, DEMO_USER_KEY } from "./api";
+import { api, ACTING_ROLE_KEY, AUTH_TOKEN_KEY, DEMO_USER_KEY } from "./api";
 
 export type Capabilities = { stock: boolean; money: boolean; users: boolean };
 export type DemoUser = {
   id: number;
   email: string;
   name: string;
+  /** What this session may currently do. */
   role: string;
   can: Capabilities;
+  /** What the account actually holds, when acting as a lesser role. */
+  actualRole?: string;
+  actualCan?: Capabilities;
+  actingAs?: string;
 };
 
 type AuthValue = {
   user: DemoUser | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  /** Administrators only: work as a lesser role, or null to stop. */
+  actAs: (role: string | null) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -50,10 +57,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(DEMO_USER_KEY);
+    localStorage.removeItem(ACTING_ROLE_KEY);
     setUser(null);
   }, []);
 
-  const value = useMemo(() => ({ user, login, logout }), [user, login, logout]);
+  const actAs = useCallback(async (role: string | null) => {
+    try {
+      if (role) localStorage.setItem(ACTING_ROLE_KEY, role);
+      else localStorage.removeItem(ACTING_ROLE_KEY);
+    } catch {
+      /* private browsing; the header simply will not be sent */
+    }
+    // Re-ask the server rather than assuming the switch worked. It decides
+    // whether the role was allowed, and this is how we find out.
+    const res = await api.get<{ user: DemoUser }>("/auth/me");
+    localStorage.setItem(DEMO_USER_KEY, JSON.stringify(res.user));
+    setUser(res.user);
+  }, []);
+
+  const value = useMemo(() => ({ user, login, logout, actAs }), [user, login, logout, actAs]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

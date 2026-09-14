@@ -217,7 +217,7 @@ function BottomBar({ current }: { current?: Section }) {
 
 export default function App() {
   const [opened, { toggle, close }] = useDisclosure();
-  const { user, logout } = useAuth();
+  const { user, logout, actAs } = useAuth();
   const location = useLocation();
   const section = sectionFor(location.pathname);
   const subItems = section?.items;
@@ -267,7 +267,25 @@ export default function App() {
                 </UnstyledButton>
               </Menu.Target>
               <Menu.Dropdown>
-                <Menu.Label>{user.name}</Menu.Label>
+                <Menu.Label>
+                  {user.name} · {String(user.actualRole ?? user.role).toLowerCase()}
+                </Menu.Label>
+                {user.actualCan?.users && (
+                  <>
+                    <Menu.Divider />
+                    <Menu.Label>Work as</Menu.Label>
+                    {["ADMIN", "FINANCE", "WAREHOUSE", "VIEWER"].map((r) => (
+                      <Menu.Item
+                        key={r}
+                        onClick={() => actAs(r === user.actualRole ? null : r)}
+                        rightSection={user.role === r ? "✓" : undefined}
+                      >
+                        {r.charAt(0) + r.slice(1).toLowerCase()}
+                      </Menu.Item>
+                    ))}
+                  </>
+                )}
+                <Menu.Divider />
                 <Menu.Item onClick={logout}>Sign out</Menu.Item>
               </Menu.Dropdown>
             </Menu>
@@ -329,6 +347,19 @@ export default function App() {
       </AppShell.Navbar>
 
       <AppShell.Main className="app-main has-bottom-bar">
+        {user.actingAs && (
+          <Box className="acting-banner" role="status">
+            <Text span size="sm" fw={600}>
+              Working as {user.actingAs.toLowerCase()}
+            </Text>
+            <Text span size="sm">
+              You are {user.name}, an administrator. This view is limited on purpose.
+            </Text>
+            <UnstyledButton className="acting-stop" onClick={() => actAs(null)}>
+              Back to administrator
+            </UnstyledButton>
+          </Box>
+        )}
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/products" element={<Products />} />

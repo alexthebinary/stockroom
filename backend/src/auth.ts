@@ -89,7 +89,17 @@ function readToken(token: string): { sub: number; role: Role; exp: number } | nu
   }
 }
 
-export type AuthedUser = { id: number; email: string; name: string; role: Role };
+export type AuthedUser = {
+  id: number;
+  email: string;
+  name: string;
+  /** The EFFECTIVE role — what this request may do. */
+  role: Role;
+  /** The role the account actually holds. Differs only while acting as another. */
+  actualRole: Role;
+  /** Set when an administrator is deliberately working as a lesser role. */
+  actingAs?: Role;
+};
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -114,7 +124,38 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
   // The ROW is the authority, not the token: deactivating someone must take
   // effect immediately rather than when their token happens to expire.
   if (!user || !user.isActive) return next();
-  req.user = { id: user.id, email: user.email, name: user.name, role: user.role as Role };
+  const actualRole = user.role as Role;
+  req.user = { id: user.id, email: user.email, name: user.name, role: actualRole, actualRole };
+
+  /**
+   * Acting as another role.
+   *
+   * An administrator cannot see what a warehouse user sees without becoming
+   * one, and "log in as somebody else" is how shared credentials start. This
+   * lets them drop into a lesser role on their own account.
+   *
+   * Three properties hold it safe:
+   *  - only an ADMIN may do it, so a lesser role sending the header is ignored;
+   *  - the assumed role must grant a SUBSET of what the real role grants, so
+   *    this can only ever take capability away. Checked, not assumed, because
+   *    the role table will be edited by someone who has not read this;
+   *  - the audit trail keeps the REAL account. Impersonation that rewrites who
+   *    did something is a way to launder actions, not a convenience.
+   */
+  const requested = req.header("X-Act-As-Role")?.trim().toUpperCase();
+  if (requested && requested !== actualRole && (ROLES as readonly string[]).includes(requested)) {
+    const assumed = requested as Role;
+    const real = CAN[actualRole];
+    const wanted = CAN[assumed];
+    const isSubset = (Object.keys(wanted) as (keyof typeof wanted)[]).every(
+      (k) => !wanted[k] || real[k]
+    );
+    if (CAN[actualRole].users && isSubset) {
+      req.user.role = assumed;
+      req.user.actingAs = assumed;
+    }
+  }
+
   next();
 }
 

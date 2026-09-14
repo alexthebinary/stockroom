@@ -32,7 +32,9 @@ authRouter.post(
         email: user.email,
         name: user.name,
         role: user.role,
+        actualRole: user.role,
         can: CAN[user.role as keyof typeof CAN] ?? CAN.VIEWER,
+        actualCan: CAN[user.role as keyof typeof CAN] ?? CAN.VIEWER,
       },
     });
   })
@@ -43,7 +45,14 @@ authRouter.get(
   "/me",
   asyncHandler(async (req, res) => {
     if (!req.user) throw new ApiError(401, "Not signed in");
-    res.json({ user: { ...req.user, can: CAN[req.user.role] } });
+    res.json({
+      user: {
+        ...req.user,
+        can: CAN[req.user.role],
+        // What the account could do if it stopped acting as another role.
+        actualCan: CAN[req.user.actualRole],
+      },
+    });
   })
 );
 
