@@ -4,6 +4,7 @@ import { prisma } from "../db";
 import { contains } from "../search";
 import { badRequest, conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, pagination, parseBody } from "../http";
+import { companyDetails, renderInvoice } from "../pdf";
 import { applyBalanceDelta, claimStatusTransition, recordMovement, reserveStock } from "../inventory";
 import { attachConsumptionsToMovement, consumeFifo } from "../costing";
 import { postSimple, reverseDocumentEntry } from "../ledger";
@@ -315,6 +316,37 @@ salesOrdersRouter.post(
     });
 
     res.status(201).json(result);
+  })
+);
+
+/**
+ * An invoice as a PDF.
+ *
+ * This is the document that leaves the building, so it is rendered server-side
+ * rather than printed from the browser: the recipient gets the same bytes
+ * regardless of who opened what where.
+ */
+salesOrdersRouter.get(
+  "/invoices/:invoiceId/pdf",
+  asyncHandler(async (req, res) => {
+    const invoiceId = intParam(req.params.invoiceId, "invoiceId");
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        customer: true,
+        salesOrder: { include: { lines: { include: { product: true } } } },
+        payments: true,
+      },
+    });
+    if (!invoice) throw notFound("Invoice not found");
+
+    // Derived, never stored: a voided payment must stop counting against the
+    // balance the moment it is voided.
+    const amountPaidCents = invoice.payments
+      .filter((p) => p.status !== "VOID")
+      .reduce((sum, p) => sum + p.amountCents, 0);
+
+    renderInvoice(res, { ...invoice, amountPaidCents }, companyDetails());
   })
 );
 

@@ -230,6 +230,20 @@ export default function SalesOrderDetail() {
                               </Text>
                             </Table.Td>
                             <Table.Td ta="right">{money(inv.totalCents)}</Table.Td>
+                            <Table.Td ta="right" w={110}>
+                              {/* A plain link, not a fetch-and-blob: the browser
+                                  already knows how to open a PDF, and this way
+                                  the URL can be copied, bookmarked and sent. */}
+                              <Anchor
+                                href={`/api/sales-orders/invoices/${inv.id}/pdf`}
+                                target="_blank"
+                                rel="noopener"
+                                size="xs"
+                                fw={500}
+                              >
+                                Open PDF
+                              </Anchor>
+                            </Table.Td>
                           </Table.Tr>
                         ))}
                         {data.shipments?.map((sh) => (
@@ -243,6 +257,7 @@ export default function SalesOrderDetail() {
                               </Text>
                             </Table.Td>
                             <Table.Td ta="right">{money(sh.cogsCents)}</Table.Td>
+                                      <Table.Td w={110} />
                           </Table.Tr>
                         ))}
                       </Table.Tbody>
