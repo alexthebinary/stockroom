@@ -13,6 +13,7 @@ import { productsRouter } from "./routes/products";
 import { purchaseOrdersRouter } from "./routes/purchaseOrders";
 import { salesOrdersRouter } from "./routes/salesOrders";
 import { stockAdjustmentsRouter } from "./routes/stockAdjustments";
+import { stockCountsRouter } from "./routes/stockCounts";
 import { stockTransfersRouter } from "./routes/stockTransfers";
 import { warehousesRouter } from "./routes/warehouses";
 import { errorMiddleware } from "./http";
@@ -48,6 +49,7 @@ app.use("/api/warehouses", warehousesRouter);
 app.use("/api/sales-orders", salesOrdersRouter);
 app.use("/api/purchase-orders", purchaseOrdersRouter);
 app.use("/api/stock-adjustments", stockAdjustmentsRouter);
+app.use("/api/stock-counts", stockCountsRouter);
 app.use("/api/stock-transfers", stockTransfersRouter);
 app.use("/api/reports", reportsRouter);
 // catalogsRouter and ledgerRouter each own several sibling paths, so like

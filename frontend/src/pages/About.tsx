@@ -565,8 +565,9 @@ export default function About() {
           No marketplace or carrier INTEGRATIONS — no rate shopping, no label buying, no address
           validation, no polling a carrier for status. A shipment records which carrier took it
           and the number the customer quotes, because that is warehouse record keeping; the rest
-          is a shipping platform and a different product. No bin or shelf locations — stock is
-          held at warehouse level. No multi-currency, no tax engine beyond a per-order figure,
+          is a shipping platform and a different product. Stock counts are a session — freeze, count, post the variance once — rather
+          than a pile of one-SKU adjustments. No bin or shelf locations — stock is held at
+          warehouse level. No multi-currency, no tax engine beyond a per-order figure,
           and no forecasting or reorder automation.
         </Text>
         <Text size="sm" c="dimmed" mt="sm">

@@ -49,6 +49,7 @@ model Product {
   transfers          StockTransfer[]
 
   @@index([name])
+  stockCountLines StockCountLine[]
 }
 
 model Warehouse {
@@ -73,6 +74,7 @@ model Warehouse {
   lots               InventoryLot[]
   shipments          Shipment[]
   goodsReceipts      GoodsReceipt[]
+  stockCounts     StockCount[]
 }
 
 /// Current stock for a [product, warehouse] pair.
@@ -223,6 +225,49 @@ model PurchaseOrderLine {
 }
 
 /// adjustmentType: INCREASE | DECREASE
+/// A physical count, as a session rather than a pile of adjustments.
+///
+/// Counting is event-shaped: you freeze what the system believes, walk the
+/// aisles, record what is actually there, then post the difference ONCE. Doing
+/// it as individual adjustments loses the fact that they were one count, posts
+/// a journal entry per SKU, and gives no answer to "what did we find on the
+/// 30th".
+model StockCount {
+  id          Int      @id @default(autoincrement())
+  countNumber String   @unique
+  warehouseId Int
+  /// DRAFT while lines are being counted, POSTED once the variance is booked,
+  /// CANCELED if abandoned. A posted count is immutable.
+  status      String   @default("DRAFT")
+  notes       String?
+  countedAt   DateTime @default(now())
+  postedAt    DateTime?
+  actor       String   @default("system")
+  createdAt   DateTime @default(now())
+
+  warehouse Warehouse        @relation(fields: [warehouseId], references: [id])
+  lines     StockCountLine[]
+}
+
+model StockCountLine {
+  id           Int  @id @default(autoincrement())
+  stockCountId Int
+  productId    Int
+  /// What the system believed when the count was opened. Frozen at that moment
+  /// on purpose: the variance must be against what was expected when counting
+  /// began, not against a number that moved while someone walked the aisle.
+  expectedQty  Int
+  /// Null until somebody actually counts it. Null is NOT zero — "not counted"
+  /// and "counted, none there" are different findings and only one is a
+  /// variance.
+  countedQty   Int?
+
+  stockCount StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id])
+
+  @@unique([stockCountId, productId])
+}
+
 model StockAdjustment {
   id             Int      @id @default(autoincrement())
   productId      Int
