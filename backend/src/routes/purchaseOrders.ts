@@ -289,6 +289,57 @@ purchaseOrdersRouter.post(
  * This is the only place stock acquires a cost from a purchase, which is why
  * the layers are created here and not when the PO was posted.
  */
+/**
+ * REVERSE A PAYMENT — an error correction, not a refund. See the matching
+ * route on sales orders for why those are deliberately different verbs.
+ */
+purchaseOrdersRouter.post(
+  "/:id/reverse-payment",
+  asyncHandler(async (req, res) => {
+    const id = intParam(req.params.id, "id");
+    const actor = actorOf(req);
+    const reason = String(req.body?.reason ?? "").trim();
+    if (!reason) throw badRequest("A reason is required — this reverses money already recorded");
+
+    const result = await prisma.$transaction(async (tx) => {
+      const current = await tx.purchaseOrder.findUnique({ where: { id }, include });
+      if (!current) throw notFound("Purchase order not found");
+
+      const billIds = current.bills.map((b) => b.id);
+      const payment = await tx.payment.findFirst({
+        where: { billId: { in: billIds }, status: { not: "VOID" } },
+        orderBy: { id: "desc" },
+      });
+      if (!payment) throw conflict("There is no live payment on this purchase order to reverse");
+
+      // PAID walks back to POSTED. A DELIVERED order stays delivered: the goods
+      // arrived regardless of what happened to the money.
+      if (current.status === "PAID") {
+        const claimed = await tx.purchaseOrder.updateMany({
+          where: { id, status: "PAID" },
+          data: { status: "POSTED" },
+        });
+        if (claimed.count === 0) throw conflict("This purchase order was already changed");
+      }
+
+      await tx.payment.update({ where: { id: payment.id }, data: { status: "VOID" } });
+
+      const reversal = await reverseDocumentEntry(tx, "PAYMENT", payment.id, {
+        actor,
+        memo: `Payment ${payment.paymentNumber} reversed: ${reason}`,
+      });
+
+      return {
+        payment: await tx.payment.findUniqueOrThrow({ where: { id: payment.id } }),
+        reversal,
+        order: await tx.purchaseOrder.findUniqueOrThrow({ where: { id }, include }),
+      };
+    });
+
+    res.json(result);
+  })
+);
+
 purchaseOrdersRouter.post(
   "/:id/receive",
   asyncHandler(async (req, res) => {

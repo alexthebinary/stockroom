@@ -202,22 +202,30 @@ async function main() {
     });
   }
 
-  // One entry for the whole opening position: Dr Inventory, Cr Inventory Gain.
+  // One entry for the whole opening position: Dr Inventory, Cr Opening Balance
+  // Equity. NOT Inventory Gain — stock that existed before the books did is not
+  // revenue, and booking it as income overstates the first period by the entire
+  // opening position and shows sales with no cost against them.
   const inventory = await prisma.account.findUniqueOrThrow({ where: { code: "1200" } });
-  const gain = await prisma.account.findUniqueOrThrow({ where: { code: "4900" } });
+  const openingEquity = await prisma.account.findUniqueOrThrow({ where: { code: "3000" } });
   await prisma.journalEntry.create({
     data: {
       entryNumber: `JE-${String(++entryNo).padStart(6, "0")}`,
-      transactionType: "ADJUSTMENT_INCREASE",
+      transactionType: "OPENING_BALANCE",
       memo: "Opening inventory position (seed)",
       status: "POSTED",
       postedAt: new Date(),
-      referenceType: "SEED",
+      // The seed writes entries directly rather than through createEntry, so
+      // it has to set this itself. Leaving it to the column default wrote
+      // POSTED entries with the delete guard switched off — the exact hole
+      // the 2026-09-14 backfill had to close on the live database.
+      hasBeenPosted: true,
+      referenceType: "OPENING_BALANCE",
       actor: "seed@demo",
       lines: {
         create: [
           { accountId: inventory.id, debitCents: openingValueCents },
-          { accountId: gain.id, creditCents: openingValueCents },
+          { accountId: openingEquity.id, creditCents: openingValueCents },
         ],
       },
     },
@@ -317,6 +325,11 @@ async function main() {
       memo: `Invoice ${invoice.invoiceNumber} for ${packed.orderNumber}`,
       status: "POSTED",
       postedAt: new Date(),
+      // The seed writes entries directly rather than through createEntry, so
+      // it has to set this itself. Leaving it to the column default wrote
+      // POSTED entries with the delete guard switched off — the exact hole
+      // the 2026-09-14 backfill had to close on the live database.
+      hasBeenPosted: true,
       referenceType: "INVOICE",
       referenceId: invoice.id,
       actor: "seed@demo",
@@ -347,6 +360,11 @@ async function main() {
       memo: `Payment ${payment.paymentNumber} against ${invoice.invoiceNumber}`,
       status: "POSTED",
       postedAt: new Date(),
+      // The seed writes entries directly rather than through createEntry, so
+      // it has to set this itself. Leaving it to the column default wrote
+      // POSTED entries with the delete guard switched off — the exact hole
+      // the 2026-09-14 backfill had to close on the live database.
+      hasBeenPosted: true,
       referenceType: "PAYMENT",
       referenceId: payment.id,
       actor: "seed@demo",
@@ -442,6 +460,11 @@ async function main() {
       memo: `Bill ${bill.billNumber} for ${postedPo.poNumber}`,
       status: "POSTED",
       postedAt: new Date(),
+      // The seed writes entries directly rather than through createEntry, so
+      // it has to set this itself. Leaving it to the column default wrote
+      // POSTED entries with the delete guard switched off — the exact hole
+      // the 2026-09-14 backfill had to close on the live database.
+      hasBeenPosted: true,
       referenceType: "BILL",
       referenceId: bill.id,
       actor: "seed@demo",

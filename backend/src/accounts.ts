@@ -11,8 +11,10 @@ export const ACCOUNT = {
   BANK: "1000",
   ACCOUNTS_RECEIVABLE: "1100",
   INVENTORY: "1200",
+  INVENTORY_IN_TRANSIT: "1210",
   PREPAID_INVENTORY: "1250",
   ACCOUNTS_PAYABLE: "2000",
+  OPENING_BALANCE_EQUITY: "3000",
   SALES_REVENUE: "4000",
   INVENTORY_GAIN: "4900",
   COGS: "5000",
@@ -24,8 +26,15 @@ export const CHART_OF_ACCOUNTS = [
   { code: ACCOUNT.BANK, name: "Bank / Cash", accountType: "ASSET", normalSide: "DEBIT" },
   { code: ACCOUNT.ACCOUNTS_RECEIVABLE, name: "Accounts Receivable", accountType: "ASSET", normalSide: "DEBIT" },
   { code: ACCOUNT.INVENTORY, name: "Inventory", accountType: "ASSET", normalSide: "DEBIT" },
+  // Stock that has left one warehouse and not yet arrived at the other. It is
+  // owned, but it cannot be picked, so it is not Inventory either.
+  { code: ACCOUNT.INVENTORY_IN_TRANSIT, name: "Inventory In Transit", accountType: "ASSET", normalSide: "DEBIT" },
   { code: ACCOUNT.PREPAID_INVENTORY, name: "Prepaid Inventory", accountType: "ASSET", normalSide: "DEBIT" },
   { code: ACCOUNT.ACCOUNTS_PAYABLE, name: "Accounts Payable", accountType: "LIABILITY", normalSide: "CREDIT" },
+  // Where stock that existed before the books did comes from. Opening stock is
+  // not income: booking it to Inventory Gain overstates revenue by the whole
+  // opening position and shows a period with sales and no cost.
+  { code: ACCOUNT.OPENING_BALANCE_EQUITY, name: "Opening Balance Equity", accountType: "EQUITY", normalSide: "CREDIT" },
   { code: ACCOUNT.SALES_REVENUE, name: "Sales Revenue", accountType: "INCOME", normalSide: "CREDIT" },
   { code: ACCOUNT.INVENTORY_GAIN, name: "Inventory Gain", accountType: "INCOME", normalSide: "CREDIT" },
   { code: ACCOUNT.COGS, name: "Cost of Goods Sold", accountType: "EXPENSE", normalSide: "DEBIT" },
@@ -41,7 +50,9 @@ export const TRANSACTION_TYPE = {
   PURCHASE_BILL: "PURCHASE_BILL",
   PURCHASE_PAYMENT: "PURCHASE_PAYMENT",
   GOODS_RECEIPT: "GOODS_RECEIPT",
+  OPENING_BALANCE: "OPENING_BALANCE",
   INVENTORY_TRANSFER: "INVENTORY_TRANSFER",
+  INVENTORY_TRANSFER_IN: "INVENTORY_TRANSFER_IN",
   ADJUSTMENT_INCREASE: "ADJUSTMENT_INCREASE",
   ADJUSTMENT_DECREASE: "ADJUSTMENT_DECREASE",
 } as const;
@@ -95,10 +106,24 @@ export const JOURNAL_TEMPLATES: {
     creditAccountCode: ACCOUNT.PREPAID_INVENTORY,
   },
   {
-    transactionType: TRANSACTION_TYPE.INVENTORY_TRANSFER,
-    description: "Move stock between warehouses at carrying cost",
+    transactionType: TRANSACTION_TYPE.OPENING_BALANCE,
+    description: "Bring stock onto the books at go-live",
     debitAccountCode: ACCOUNT.INVENTORY,
+    creditAccountCode: ACCOUNT.OPENING_BALANCE_EQUITY,
+  },
+  {
+    // Despatch. The destination has not received anything yet, so debiting its
+    // Inventory at this point claims stock nobody can pick.
+    transactionType: TRANSACTION_TYPE.INVENTORY_TRANSFER,
+    description: "Despatch stock from a warehouse into transit",
+    debitAccountCode: ACCOUNT.INVENTORY_IN_TRANSIT,
     creditAccountCode: ACCOUNT.INVENTORY,
+  },
+  {
+    transactionType: TRANSACTION_TYPE.INVENTORY_TRANSFER_IN,
+    description: "Receive stock out of transit into a warehouse",
+    debitAccountCode: ACCOUNT.INVENTORY,
+    creditAccountCode: ACCOUNT.INVENTORY_IN_TRANSIT,
   },
   {
     transactionType: TRANSACTION_TYPE.ADJUSTMENT_INCREASE,

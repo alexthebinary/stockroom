@@ -1,6 +1,7 @@
 import { badRequest, conflict, notFound } from "./errors";
 import type { Tx } from "./inventory";
 import { JOURNAL_TEMPLATES, type TransactionType } from "./accounts";
+import { assertPeriodOpen } from "./period";
 
 export type DraftLine = {
   accountCode: string;
@@ -78,12 +79,14 @@ export async function createEntry(
   const idByCode = new Map(accounts.map((a) => [a.code, a.id]));
 
   const post = input.post !== false;
+  const entryDate = input.entryDate ?? new Date();
+  await assertPeriodOpen(tx, entryDate, "This entry cannot be posted");
 
   return tx.journalEntry.create({
     data: {
       entryNumber: await nextEntryNumber(tx),
       transactionType: input.transactionType,
-      entryDate: input.entryDate ?? new Date(),
+      entryDate,
       memo: input.memo ?? null,
       status: post ? "POSTED" : "SAVED",
       postedAt: post ? new Date() : null,
@@ -216,6 +219,32 @@ export async function dependenciesOf(tx: Tx, entry: {
 }
 
 /**
+ * The document this entry belongs to, when that document still claims to be
+ * posted. Returned as a human label because the caller only needs to name it.
+ */
+async function postedDocumentFor(tx: Tx, entry: { referenceType: string | null; referenceId: number | null }) {
+  const { referenceType, referenceId } = entry;
+  if (!referenceType || !referenceId) return null;
+
+  switch (referenceType) {
+    case "INVOICE": {
+      const doc = await tx.invoice.findUnique({ where: { id: referenceId } });
+      return doc && doc.status !== "VOID" && doc.status !== "SAVED" ? `invoice ${doc.invoiceNumber}` : null;
+    }
+    case "BILL": {
+      const doc = await tx.bill.findUnique({ where: { id: referenceId } });
+      return doc && doc.status !== "VOID" && doc.status !== "SAVED" ? `bill ${doc.billNumber}` : null;
+    }
+    case "PAYMENT": {
+      const doc = await tx.payment.findUnique({ where: { id: referenceId } });
+      return doc && doc.status !== "VOID" ? `payment ${doc.paymentNumber}` : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
  * Unpost an entry, but only when nothing downstream depends on it.
  */
 export async function unpostEntry(tx: Tx, id: number) {
@@ -223,9 +252,23 @@ export async function unpostEntry(tx: Tx, id: number) {
   if (!entry) throw notFound("Journal entry not found");
   if (entry.status !== "POSTED") throw conflict("Only a posted entry can be unposted");
 
+  await assertPeriodOpen(tx, entry.entryDate, `${entry.entryNumber} cannot be unposted`);
+
   const blocker = await dependenciesOf(tx, entry);
   if (blocker) {
     throw conflict(`${entry.entryNumber} cannot be unposted: ${blocker}`);
+  }
+
+  // The document is the source of truth and the entry is its accounting
+  // projection, so an entry off the books while its document still reads
+  // POSTED is incoherent — the money vanishes from every report while the
+  // paperwork insists it happened. Undo goes through the document instead.
+  const owner = await postedDocumentFor(tx, entry);
+  if (owner) {
+    throw conflict(
+      `${entry.entryNumber} belongs to ${owner}, which is still posted. ` +
+        `Void or cancel the document instead — that reverses this entry with it.`
+    );
   }
 
   // Claim the transition, so two concurrent unposts cannot both succeed.
@@ -254,6 +297,7 @@ export async function repostEntry(tx: Tx, id: number) {
   if (!entry) throw notFound("Journal entry not found");
   if (entry.status === "POSTED") throw conflict("This entry is already posted");
   if (entry.status === "VOID") throw conflict("A void entry cannot be posted — reverse it instead");
+  await assertPeriodOpen(tx, entry.entryDate, `${entry.entryNumber} cannot be re-posted`);
 
   // Claim the transition, so two concurrent re-posts cannot both succeed.
   const claimed = await tx.journalEntry.updateMany({

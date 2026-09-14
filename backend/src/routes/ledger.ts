@@ -3,6 +3,7 @@ import { prisma } from "../db";
 import { conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, optionalInt, pagination } from "../http";
 import { balanceOf, dependenciesOf, repostEntry, reverseEntry, unpostEntry } from "../ledger";
+import { getLockDate, setLockDate } from "../period";
 
 export const ledgerRouter = Router();
 
@@ -79,6 +80,29 @@ ledgerRouter.post(
     // refuses when anything depends on it, so no allowlist is needed here.
     const entry = await prisma.$transaction((tx) => unpostEntry(tx, id));
     res.json(entry);
+  })
+);
+
+/**
+ * The period lock. GET reads it; PUT moves it, or clears it with a null date.
+ *
+ * This is the control that makes a reported period mean something: below the
+ * lock date nothing can be posted, unposted, re-posted or reversed.
+ */
+ledgerRouter.get(
+  "/ledger-settings",
+  asyncHandler(async (_req, res) => {
+    const lockDate = await getLockDate();
+    res.json({ lockDate: lockDate ? lockDate.toISOString() : null });
+  })
+);
+
+ledgerRouter.put(
+  "/ledger-settings/lock-date",
+  asyncHandler(async (req, res) => {
+    const raw = req.body?.lockDate;
+    const lockDate = await setLockDate(raw === null || raw === "" ? null : String(raw));
+    res.json({ lockDate: lockDate ? lockDate.toISOString() : null });
   })
 );
 

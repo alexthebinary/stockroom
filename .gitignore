@@ -5,6 +5,9 @@ dist/
 # Local database — never committed. The hosted instance uses Postgres.
 backend/prisma/dev.db
 backend/prisma/dev.db-journal
+# `prisma migrate dev` with a relative DATABASE_URL resolves against the
+# schema directory and creates prisma/prisma/dev.db. Never commit it.
+backend/prisma/prisma/
 
 # Environment files hold credentials. .env.example documents the shape instead.
 .env

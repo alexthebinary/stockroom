@@ -24,9 +24,12 @@ export default function Login() {
     }
   }
 
+  // `w={380}` was a fixed width, so at 390px the card sat 5px from each edge
+  // with no gutter. A max-width plus page padding keeps the card its intended
+  // size on a desktop and lets it shrink on a phone.
   return (
-    <Center mih="100vh" bg="var(--mantine-color-gray-0)">
-      <Card withBorder shadow="sm" radius="md" p="xl" w={380}>
+    <Center mih="100vh" p="md" bg="var(--mantine-color-gray-0)">
+      <Card withBorder shadow="sm" radius="md" p="xl" w="100%" maw={380}>
         <form onSubmit={submit}>
           <Stack>
             <Stack gap={2}>

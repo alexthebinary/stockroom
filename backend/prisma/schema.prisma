@@ -318,6 +318,14 @@ model Employee {
 // ---------------------------------------------------------------------------
 
 /// accountType: ASSET | LIABILITY | EQUITY | INCOME | EXPENSE
+/// Single-row ledger configuration. A key/value table rather than columns on a
+/// settings model, so a new control does not need a migration.
+model LedgerSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 model Account {
   id          Int     @id @default(autoincrement())
   code        String  @unique

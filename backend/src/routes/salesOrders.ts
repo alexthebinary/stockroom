@@ -319,6 +319,68 @@ salesOrdersRouter.post(
 );
 
 /**
+ * REVERSE A PAYMENT — an error correction, not a refund.
+ *
+ * These are two different business events and collapsing them into one verb is
+ * how an AR ledger stops being auditable. This route is for money that should
+ * never have been recorded against this order: a keying error, the wrong
+ * customer, a cheque that bounced. It posts the mirror contra, voids the
+ * payment and returns the order to INVOICED so it can be cancelled or re-paid.
+ *
+ * Money the customer is genuinely getting back is a REFUND: a new outbound
+ * payment belonging to a returns flow, which does not exist yet and must not
+ * be faked with this route.
+ */
+salesOrdersRouter.post(
+  "/:id/reverse-payment",
+  asyncHandler(async (req, res) => {
+    const id = intParam(req.params.id, "id");
+    const actor = actorOf(req);
+    const reason = String(req.body?.reason ?? "").trim();
+    if (!reason) throw badRequest("A reason is required — this reverses money already recorded");
+
+    const result = await prisma.$transaction(async (tx) => {
+      const current = await tx.salesOrder.findUnique({ where: { id }, include });
+      if (!current) throw notFound("Sales order not found");
+      if (current.paymentStatus !== "PAID") {
+        throw conflict(`Only a paid order has a payment to reverse (this one is ${current.paymentStatus})`);
+      }
+
+      const invoiceIds = current.invoices.map((i) => i.id);
+      const payment = await tx.payment.findFirst({
+        where: { invoiceId: { in: invoiceIds }, status: { not: "VOID" } },
+        orderBy: { id: "desc" },
+      });
+      if (!payment) throw conflict("There is no live payment on this order to reverse");
+
+      const claimed = await tx.salesOrder.updateMany({
+        where: { id, paymentStatus: "PAID" },
+        data: { paymentStatus: "INVOICED" },
+      });
+      if (claimed.count === 0) throw conflict("This order was already changed");
+
+      // Void the payment BEFORE reversing its entry: unpostEntry now refuses an
+      // entry whose document still reads posted, and reverseDocumentEntry runs
+      // through the same document check.
+      await tx.payment.update({ where: { id: payment.id }, data: { status: "VOID" } });
+
+      const reversal = await reverseDocumentEntry(tx, "PAYMENT", payment.id, {
+        actor,
+        memo: `Payment ${payment.paymentNumber} reversed: ${reason}`,
+      });
+
+      return {
+        payment: await tx.payment.findUniqueOrThrow({ where: { id: payment.id } }),
+        reversal,
+        order: await tx.salesOrder.findUniqueOrThrow({ where: { id }, include }),
+      };
+    });
+
+    res.json(result);
+  })
+);
+
+/**
  * SHIP is where inventory and the ledger meet: stock leaves, FIFO layers are
  * consumed, and the cost of those exact layers is booked as COGS.
  */

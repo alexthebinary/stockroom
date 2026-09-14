@@ -143,21 +143,21 @@ stockTransfersRouter.post(
       });
       await attachConsumptionsToMovement(tx, consumed.consumptionIds, outMovement.id);
 
-      // Both sides are Inventory, so the entry is warehouse-to-warehouse
-      // within one account rather than a template pair.
+      // Despatch moves value OUT of the source and into transit. It must not
+      // debit the destination: nothing has arrived there, and claiming it as
+      // that warehouse's Inventory asserts stock nobody can pick.
       await createEntry(tx, {
         transactionType: TRANSACTION_TYPE.INVENTORY_TRANSFER,
-        memo: `Transfer #${current.id}: ${current.fromWarehouse.code} to ${current.toWarehouse.code}`,
+        memo: `Transfer #${current.id}: despatched from ${current.fromWarehouse.code}`,
         referenceType: "STOCK_TRANSFER",
         referenceId: current.id,
         actor,
         lines: [
           {
-            accountCode: ACCOUNT.INVENTORY,
+            accountCode: ACCOUNT.INVENTORY_IN_TRANSIT,
             debitCents: consumed.totalCostCents,
             productId: current.productId,
-            warehouseId: current.toWarehouseId,
-            memo: `Into ${current.toWarehouse.code}`,
+            memo: `In transit to ${current.toWarehouse.code}`,
           },
           {
             accountCode: ACCOUNT.INVENTORY,
@@ -247,6 +247,32 @@ stockTransfersRouter.post(
         referenceId: current.id,
         totalCostCents: current.costCents,
         actor,
+      });
+
+      // Arrival: value leaves transit and becomes the destination's Inventory.
+      // Until this posts, the balance sheet shows the stock as in transit,
+      // which is what it actually is.
+      await createEntry(tx, {
+        transactionType: TRANSACTION_TYPE.INVENTORY_TRANSFER_IN,
+        memo: `Transfer #${current.id}: received at ${current.toWarehouse.code}`,
+        referenceType: "STOCK_TRANSFER",
+        referenceId: current.id,
+        actor,
+        lines: [
+          {
+            accountCode: ACCOUNT.INVENTORY,
+            debitCents: current.costCents,
+            productId: current.productId,
+            warehouseId: current.toWarehouseId,
+            memo: `Into ${current.toWarehouse.code}`,
+          },
+          {
+            accountCode: ACCOUNT.INVENTORY_IN_TRANSIT,
+            creditCents: current.costCents,
+            productId: current.productId,
+            memo: `Out of transit`,
+          },
+        ],
       });
 
       return tx.stockTransfer.findUniqueOrThrow({ where: { id }, include });
