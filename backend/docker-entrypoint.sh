@@ -29,6 +29,17 @@ case "${DATABASE_URL}" in
 esac
 
 $MIGRATE
+
+# `db push` applies the SCHEMA but never the migration history, so a data
+# backfill has to be re-applied here or a Postgres database never receives it.
+# Every backfill in prisma/backfills/ must be idempotent for exactly this
+# reason: it runs on every boot, on databases that already have it applied.
+for f in prisma/backfills/*.sql; do
+  [ -e "$f" ] || break
+  echo "Backfill: $f"
+  npx prisma db execute --url "$DATABASE_URL" --file "$f"
+done
+
 npx prisma generate --schema "$SCHEMA"
 
 # Seed only an empty database, so a restart or redeploy never wipes what
