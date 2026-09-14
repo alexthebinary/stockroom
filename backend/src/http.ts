@@ -87,6 +87,12 @@ export function errorMiddleware(
       case "P2025":
         res.status(404).json({ error: "Record not found" });
         return;
+      // Postgres reports a serialisation failure or deadlock here. It is
+      // retryable, exactly like SQLITE_BUSY below — and without this case it
+      // fell through to 400, telling the client its request was malformed.
+      case "P2034":
+        res.status(409).json({ error: "The database was busy, please retry" });
+        return;
       default:
         res.status(400).json({ error: `Database rejected the request (${err.code})` });
         return;

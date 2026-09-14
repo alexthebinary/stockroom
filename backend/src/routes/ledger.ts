@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma } from "../db";
 import { conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, optionalInt, pagination } from "../http";
-import { balanceOf, reverseEntry, unpostEntry } from "../ledger";
+import { balanceOf, dependenciesOf, repostEntry, reverseEntry, unpostEntry } from "../ledger";
 
 export const ledgerRouter = Router();
 
@@ -82,13 +82,47 @@ ledgerRouter.post(
   })
 );
 
-/** Reverse a posted entry with a mirror-image contra entry. */
+/** Re-post an entry that was unposted, so unposting is not a one-way door. */
+ledgerRouter.post(
+  "/journal-entries/:id/post",
+  asyncHandler(async (req, res) => {
+    const id = intParam(req.params.id, "id");
+    const entry = await prisma.$transaction((tx) => repostEntry(tx, id));
+    res.json(entry);
+  })
+);
+
+/**
+ * Reverse a posted entry with a mirror-image contra entry.
+ *
+ * The dependency check lives HERE and not inside `reverseEntry`, because the
+ * two callers are not alike. `reverseDocumentEntry` is used by the cancel and
+ * void flows in salesOrders, purchaseOrders and stockTransfers, which reverse
+ * the physical movement first and then the ledger — for those, a SHIPMENT or
+ * STOCK_TRANSFER reference is exactly what they are entitled to reverse, and
+ * putting the guard in `reverseEntry` would break transfer cancellation.
+ *
+ * This endpoint has done no such thing. A GL-only mirror of a shipment entry
+ * credits COGS and re-debits Inventory for stock that has physically left,
+ * leaving the ledger overstating inventory against unchanged FIFO layers.
+ */
 ledgerRouter.post(
   "/journal-entries/:id/reverse",
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
-    const reversal = await prisma.$transaction((tx) => reverseEntry(tx, id, { actor }));
+    const reversal = await prisma.$transaction(async (tx) => {
+      const entry = await tx.journalEntry.findUnique({ where: { id } });
+      if (!entry) throw notFound("Journal entry not found");
+      const blocker = await dependenciesOf(tx, entry);
+      if (blocker) {
+        throw conflict(
+          `${entry.entryNumber} cannot be reversed from the ledger: ${blocker}. ` +
+            `Cancel or void the document instead, so the stock moves back too.`
+        );
+      }
+      return reverseEntry(tx, id, { actor });
+    });
     res.status(201).json(reversal);
   })
 );
@@ -252,6 +286,19 @@ ledgerRouter.get(
       }
     }
 
+    /**
+     * An entry that was posted and is now unposted has left the books while
+     * the document it belongs to still claims to be posted. Every total above
+     * is computed over POSTED entries only, so the money simply vanishes from
+     * this report with nothing flagging it. This is the check that catches it.
+     */
+    const withdrawnEntries = (
+      await prisma.journalEntry.findMany({
+        where: { hasBeenPosted: true, status: { not: "POSTED" } },
+        select: { id: true, entryNumber: true, status: true, transactionType: true, referenceType: true },
+      })
+    ).map((e) => ({ ...e }));
+
     res.json({
       asOf: asOf || null,
       accounts,
@@ -271,16 +318,19 @@ ledgerRouter.get(
       equationVarianceCents,
       chartInconsistencies,
       orphanedReversals,
-      /** True only when the three checks that can actually fail all pass. */
+      withdrawnEntries,
+      /** True only when the four checks that can actually fail all pass. */
       sound:
         unbalancedEntries.length === 0 &&
         chartInconsistencies.length === 0 &&
-        orphanedReversals.length === 0,
-      /** Retained for compatibility; prefer `sound`. */
+        orphanedReversals.length === 0 &&
+        withdrawnEntries.length === 0,
+      /** Retained for compatibility; an alias of `sound`. */
       balanced:
         unbalancedEntries.length === 0 &&
         chartInconsistencies.length === 0 &&
-        orphanedReversals.length === 0,
+        orphanedReversals.length === 0 &&
+        withdrawnEntries.length === 0,
     });
   })
 );

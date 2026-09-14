@@ -104,7 +104,14 @@ export type TrialBalance = {
     expectedSide: string;
   }[];
   orphanedReversals: { entryNumber: string; transactionType: string }[];
-  /** True only when the three checks that can actually fail all pass. */
+  withdrawnEntries: {
+    id: number;
+    entryNumber: string;
+    status: string;
+    transactionType: string;
+    referenceType: string | null;
+  }[];
+  /** True only when the four checks that can actually fail all pass. */
   sound: boolean;
   balanced: boolean;
 };

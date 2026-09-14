@@ -183,8 +183,9 @@ export default function About() {
             archived rather than deleted. A posted journal entry that something depends on — a
             bill with a payment against it, say — can only be undone by a mirror-image contra
             entry, so the trail shows both what happened and that it was reversed. An entry that
-            nothing depends on may be unposted back to draft and then deleted; that is the one
-            case where a record leaves the system, and it is gated on having no dependents.
+            has never been posted may be deleted; once an entry has been on the books it can be
+            unposted and re-posted, but never deleted, so nothing that ever counted can leave
+            the system silently.
           </List.Item>
         </List>
       </Section>
@@ -468,6 +469,18 @@ export default function About() {
                 )}
               </List.Item>
               <List.Item>
+                <strong>Withdrawn entries</strong> — an entry that was posted and is now
+                unposted. Every total on this page is computed over posted entries only, so
+                such an entry leaves the books while the document it belongs to still says it
+                is posted. Nothing else on the page would show it.
+                {trial.data && (
+                  <Text span size="xs" c="dimmed">
+                    {" "}
+                    ({trial.data.withdrawnEntries.length} withdrawn)
+                  </Text>
+                )}
+              </List.Item>
+              <List.Item>
                 <strong>Cost layers against the Inventory account</strong> — two genuinely
                 independent derivations of one number, which is what makes it a real check.
                 {valuation.data && (
@@ -532,7 +545,14 @@ export default function About() {
           </List.Item>
           <List.Item>
             A posted entry cannot be unposted while anything depends on it, such as a payment
-            made against its bill.
+            made against its bill. An unposted entry can be posted again, and is reported as
+            withdrawn until it is — unposting is not a one-way door.
+          </List.Item>
+          <List.Item>
+            The ledger&rsquo;s own reverse action refuses an entry that records a physical
+            movement. Reversing a shipment in the ledger alone would credit cost of goods sold
+            and re-debit inventory for stock that has already left the building; cancel or void
+            the document instead, so the stock moves back with the money.
           </List.Item>
         </List>
       </Section>

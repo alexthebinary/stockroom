@@ -239,6 +239,33 @@ export async function unpostEntry(tx: Tx, id: number) {
 }
 
 /**
+ * Re-post an entry that was unposted.
+ *
+ * Without this, unposting is a one-way door: the entry drops out of every
+ * POSTED-filtered report (the trial balance included) while the document it
+ * belongs to still says it is posted, and nothing can put it back. That is a
+ * silently wrong ledger reachable by one documented, intended action.
+ *
+ * `hasBeenPosted` is deliberately not cleared by unposting, so an entry that
+ * comes back through here keeps its history.
+ */
+export async function repostEntry(tx: Tx, id: number) {
+  const entry = await tx.journalEntry.findUnique({ where: { id } });
+  if (!entry) throw notFound("Journal entry not found");
+  if (entry.status === "POSTED") throw conflict("This entry is already posted");
+  if (entry.status === "VOID") throw conflict("A void entry cannot be posted — reverse it instead");
+
+  // Claim the transition, so two concurrent re-posts cannot both succeed.
+  const claimed = await tx.journalEntry.updateMany({
+    where: { id, status: entry.status },
+    data: { status: "POSTED", postedAt: new Date(), hasBeenPosted: true },
+  });
+  if (claimed.count === 0) throw conflict("This entry was already changed");
+
+  return tx.journalEntry.findUniqueOrThrow({ where: { id } });
+}
+
+/**
  * Reverse a posted entry by posting its mirror image.
  *
  * This is how a posted transaction is undone in double-entry bookkeeping: the

@@ -1,4 +1,4 @@
-import { badRequest } from "./errors";
+import { badRequest, conflict } from "./errors";
 import type { Tx } from "./inventory";
 
 /**
@@ -107,7 +107,10 @@ export async function consumeFifo(
       data: { remainingQty: lot.remainingQty - take },
     });
     if (written.count === 0) {
-      throw badRequest(`${input.context}: cost layers changed while this request was running, please retry`);
+      // A lost optimistic race is retryable, so it is a 409 like every other
+      // one in this codebase (inventory.ts, and the busy-database mapping in
+      // http.ts). Reporting it as 400 told a retrying client not to retry.
+      throw conflict(`${input.context}: cost layers changed while this request was running, please retry`);
     }
 
     const consumption = await tx.lotConsumption.create({

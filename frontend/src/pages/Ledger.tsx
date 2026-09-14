@@ -78,10 +78,10 @@ export default function Ledger() {
         {trial.data && (
           <Alert
             mb="md"
-            color={trial.data.balanced ? "teal" : "red"}
-            icon={trial.data.balanced ? <IconCheck size={18} /> : <IconAlertTriangle size={18} />}
+            color={trial.data.sound ? "teal" : "red"}
+            icon={trial.data.sound ? <IconCheck size={18} /> : <IconAlertTriangle size={18} />}
             title={
-              trial.data.balanced
+              trial.data.sound
                 ? `Books are sound across ${trial.data.entryCount} posted entries`
                 : "The books do not tie out"
             }
@@ -93,6 +93,14 @@ export default function Ledger() {
               {trial.data.unbalancedEntries.length === 0
                 ? "Every entry balances on its own"
                 : `${trial.data.unbalancedEntries.length} entr${trial.data.unbalancedEntries.length === 1 ? "y does" : "ies do"} not balance: ${trial.data.unbalancedEntries.map((e) => e.entryNumber).join(", ")}`}
+            </Text>
+            <Text size="sm">
+              {/* A withdrawn entry is invisible in every total above, because
+                  they are all computed over POSTED entries. Without naming it
+                  here the money simply disappears from the report. */}
+              {trial.data.withdrawnEntries.length === 0
+                ? "No entry has been withdrawn from the books"
+                : `${trial.data.withdrawnEntries.length} posted entr${trial.data.withdrawnEntries.length === 1 ? "y has" : "ies have"} been unposted and no longer count: ${trial.data.withdrawnEntries.map((e) => e.entryNumber).join(", ")}. Post them again to restore the books.`}
               {" · "}
               {trial.data.equationVarianceCents === 0
                 ? "and the accounting equation holds"
