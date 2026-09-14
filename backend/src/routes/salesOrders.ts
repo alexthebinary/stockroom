@@ -5,6 +5,7 @@ import { contains } from "../search";
 import { badRequest, conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, pagination, parseBody } from "../http";
 import { companyDetails, renderInvoice } from "../pdf";
+import { CARRIERS, trackingUrl } from "../carriers";
 import { applyBalanceDelta, claimStatusTransition, recordMovement, reserveStock } from "../inventory";
 import { attachConsumptionsToMovement, consumeFifo } from "../costing";
 import { postSimple, reverseDocumentEntry } from "../ledger";
@@ -82,6 +83,17 @@ salesOrdersRouter.get(
       totalPages: Math.max(1, Math.ceil(total / pageSize)),
     });
   })
+);
+
+/**
+ * The carriers the UI offers as suggestions; free text is still accepted.
+ *
+ * Declared BEFORE "/:id" — Express matches in declaration order, so after it
+ * this literal path is read as an order id and fails "id must be an integer".
+ */
+salesOrdersRouter.get(
+  "/shipping-carriers",
+  asyncHandler(async (_req, res) => res.json({ carriers: CARRIERS }))
 );
 
 salesOrdersRouter.get(
@@ -319,6 +331,51 @@ salesOrdersRouter.post(
   })
 );
 
+const shipSchema = z.object({
+  carrier: z.string().trim().min(1).max(40).optional(),
+  trackingNumber: z.string().trim().min(1).max(60).optional(),
+});
+
+const trackingSchema = z.object({
+  carrier: z.string().trim().max(40).optional().nullable(),
+  trackingNumber: z.string().trim().max(60).optional().nullable(),
+  delivered: z.boolean().optional(),
+});
+
+/**
+ * Record carrier and tracking against a shipment after the fact, and confirm
+ * delivery.
+ *
+ * Separate from /ship because the number usually arrives later, and because
+ * this must never touch stock or the ledger: the goods left when they left.
+ * This writes four fields and nothing else.
+ */
+salesOrdersRouter.post(
+  "/shipments/:shipmentId/tracking",
+  asyncHandler(async (req, res) => {
+    const shipmentId = intParam(req.params.shipmentId, "shipmentId");
+    const body = parseBody(trackingSchema, req.body ?? {});
+
+    const current = await prisma.shipment.findUnique({ where: { id: shipmentId } });
+    if (!current) throw notFound("Shipment not found");
+
+    const shipment = await prisma.shipment.update({
+      where: { id: shipmentId },
+      data: {
+        ...(body.carrier !== undefined ? { carrier: body.carrier || null } : {}),
+        ...(body.trackingNumber !== undefined ? { trackingNumber: body.trackingNumber || null } : {}),
+        // Delivery is a fact someone asserts, so it can be asserted and
+        // retracted. Stockroom has no way to observe it.
+        ...(body.delivered !== undefined
+          ? { deliveredAt: body.delivered ? (current.deliveredAt ?? new Date()) : null }
+          : {}),
+      },
+    });
+
+    res.json({ ...shipment, trackingUrl: trackingUrl(shipment.carrier, shipment.trackingNumber) });
+  })
+);
+
 /**
  * An invoice as a PDF.
  *
@@ -421,6 +478,7 @@ salesOrdersRouter.post(
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
+    const shipInput = parseBody(shipSchema, req.body ?? {});
 
     const result = await prisma.$transaction(async (tx) => {
       const current = await tx.salesOrder.findUnique({ where: { id }, include });
@@ -452,6 +510,11 @@ salesOrdersRouter.post(
           salesOrderId: current.id,
           warehouseId,
           status: "POSTED",
+          // Optional, because the tracking number often arrives after the van
+          // has gone. /tracking below fills it in later without reopening the
+          // shipment or touching stock.
+          carrier: shipInput.carrier ?? null,
+          trackingNumber: shipInput.trackingNumber ?? null,
         },
       });
 

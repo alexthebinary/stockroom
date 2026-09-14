@@ -551,8 +551,15 @@ model Shipment {
   /// the authority on where each item came from.
   warehouseId    Int?
   shippedAt      DateTime @default(now())
+  /// Who carried it and the number the customer quotes. RECORDED, never
+  /// fetched: Stockroom does not call a carrier API, buy labels or shop rates.
+  /// Knowing which parcel left and how it can be found is warehouse record
+  /// keeping; the rest is a shipping platform and a different product.
   carrier        String?
   trackingNumber String?
+  /// Set when delivery is confirmed. Null means in transit as far as this
+  /// system knows — which is all it can honestly claim without an integration.
+  deliveredAt    DateTime?
   status         String   @default("SAVED")
   cogsCents      Int      @default(0)
   createdAt      DateTime @default(now())
