@@ -18,7 +18,7 @@ import { stockTransfersRouter } from "./routes/stockTransfers";
 import { warehousesRouter } from "./routes/warehouses";
 import { errorMiddleware } from "./http";
 import { basicAuthGate } from "./auth-gate";
-import { attachUser, requireSession } from "./auth";
+import { attachUser, ensureBootstrapAdmin, requireSession } from "./auth";
 import { syncChartOfAccounts } from "./accounts";
 import { ensureDocumentCounters } from "./numbering";
 
@@ -112,6 +112,15 @@ syncChartOfAccounts()
   })
   .then((seeded) => {
     if (seeded?.length) console.log(`Document counters: seeded ${seeded.join(", ")}`);
+    return ensureBootstrapAdmin();
+  })
+  .then((admin) => {
+    if (!admin) return;
+    console.log(`Created the first administrator: ${admin.email}`);
+    if (admin.password) {
+      console.log(`  One-time password: ${admin.password}`);
+      console.log("  Change it after signing in, or set ADMIN_PASSWORD and redeploy.");
+    }
   })
   .catch((err) => console.error("Startup reconciliation failed:", err));
 

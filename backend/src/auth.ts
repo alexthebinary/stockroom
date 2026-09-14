@@ -194,3 +194,37 @@ export function require$(capability: "stock" | "money" | "users") {
 export const requireStock = require$("stock");
 export const requireMoney = require$("money");
 export const requireUsers = require$("users");
+
+
+/**
+ * Create the first administrator when there are none.
+ *
+ * The seed writes users, and the seed only runs on an EMPTY database — so
+ * deploying roles to a database that already had data locked everyone out:
+ * every route needs a session and no account existed to start one. Exactly the
+ * trap the chart of accounts hit, and the same answer.
+ *
+ * Fires ONLY when the user table is empty, so it cannot resurrect an
+ * administrator somebody deliberately removed. Uses ADMIN_EMAIL and
+ * ADMIN_PASSWORD when set; otherwise mints a random password and prints it
+ * once, because a hardcoded default would be a published credential.
+ */
+export async function ensureBootstrapAdmin() {
+  const { prisma } = await import("./db");
+  if ((await prisma.user.count()) > 0) return null;
+
+  const email = (process.env.ADMIN_EMAIL ?? "admin@user.com").trim().toLowerCase();
+  const generated = !process.env.ADMIN_PASSWORD;
+  const password = process.env.ADMIN_PASSWORD ?? randomBytes(9).toString("base64url");
+
+  await prisma.user.create({
+    data: {
+      email,
+      name: process.env.ADMIN_NAME ?? "Administrator",
+      role: "ADMIN",
+      passwordHash: hashPassword(password),
+    },
+  });
+
+  return { email, password: generated ? password : null };
+}
