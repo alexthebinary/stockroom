@@ -494,7 +494,19 @@ salesOrdersRouter.post(
       if (current.readinessStatus === "SHIPPED") throw conflict("A shipped order cannot be canceled");
       if (current.readinessStatus === "CANCELED") throw conflict("Order is already canceled");
       if (current.paymentStatus === "PAID") {
-        throw conflict("This order is paid — refund and void the payment before canceling");
+        // Naming an action without saying where it lives is a dead end: until
+        // now this told the user to void a payment and gave them nothing to
+        // click. The details carry the payment so the UI can offer it.
+        const live = await tx.payment.findFirst({
+          where: { invoiceId: { in: current.invoices.map((i) => i.id) }, status: { not: "VOID" } },
+          orderBy: { id: "desc" },
+        });
+        throw conflict(
+          live
+            ? `This order is paid by ${live.paymentNumber}. Reverse that payment first, then cancel.`
+            : "This order is paid — reverse the payment before canceling",
+          live ? { action: "reverse-payment", salesOrderId: current.id, paymentNumber: live.paymentNumber } : undefined
+        );
       }
       // An invoice has already put revenue and a receivable on the books.
       // Cancelling around it would leave both standing forever.

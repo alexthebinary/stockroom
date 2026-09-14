@@ -556,7 +556,16 @@ purchaseOrdersRouter.post(
       if (current.status === "DELIVERED") throw conflict("A delivered purchase order cannot be canceled");
       if (current.status === "CANCELED") throw conflict("Purchase order is already canceled");
       if (current.status === "PAID") {
-        throw conflict("This purchase order is paid — void the payment before canceling");
+        const live = await tx.payment.findFirst({
+          where: { billId: { in: current.bills.map((b) => b.id) }, status: { not: "VOID" } },
+          orderBy: { id: "desc" },
+        });
+        throw conflict(
+          live
+            ? `This purchase order is paid by ${live.paymentNumber}. Reverse that payment first, then cancel.`
+            : "This purchase order is paid — reverse the payment before canceling",
+          live ? { action: "reverse-payment", purchaseOrderId: current.id, paymentNumber: live.paymentNumber } : undefined
+        );
       }
       // A posted order has a bill on the books: Prepaid Inventory and Accounts
       // Payable are both standing. Cancelling around it strands them.

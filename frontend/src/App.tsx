@@ -12,6 +12,10 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Tooltip } from "@mantine/core";
+import { IconAlertTriangle } from "@tabler/icons-react";
+import { api, type TrialBalance } from "./api";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
 import About from "./pages/About";
@@ -129,6 +133,41 @@ function SectionButton({ section, active }: { section: Section; active: boolean 
   );
 }
 
+/**
+ * The books being wrong is the one condition worth interrupting for, and until
+ * now it was an alert on the ledger page — invisible to anyone working
+ * anywhere else. This is deliberately a badge and not a blocking dialog:
+ * stopping the whole app for a ledger problem halts work the problem does not
+ * touch, which teaches people to click through warnings.
+ */
+function LedgerHealth() {
+  const trial = useQuery({
+    queryKey: ["trial-balance", "health"],
+    queryFn: () => api.get<TrialBalance>("/trial-balance"),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  if (!trial.data || trial.data.sound) return null;
+
+  const counts = [
+    trial.data.unbalancedEntries.length && `${trial.data.unbalancedEntries.length} unbalanced`,
+    trial.data.withdrawnEntries.length && `${trial.data.withdrawnEntries.length} withdrawn`,
+    trial.data.orphanedReversals.length && `${trial.data.orphanedReversals.length} orphaned`,
+    trial.data.chartInconsistencies.length && `${trial.data.chartInconsistencies.length} mis-signed`,
+  ].filter(Boolean).join(", ");
+
+  return (
+    <Tooltip label={`The books do not tie out: ${counts}. Open the ledger.`} withArrow>
+      <UnstyledButton component={NavLink} to="/ledger" className="rail-alarm">
+        <IconAlertTriangle size={15} stroke={2} />
+        <Text span size="xs" fw={600} visibleFrom="sm">
+          Books
+        </Text>
+      </UnstyledButton>
+    </Tooltip>
+  );
+}
+
 export default function App() {
   const [opened, { toggle, close }] = useDisclosure();
   const { user, logout } = useAuth();
@@ -169,6 +208,8 @@ export default function App() {
                 ))}
               </Group>
             </Group>
+
+            <LedgerHealth />
 
             <Menu position="bottom-end" shadow="md" radius="md">
               <Menu.Target>

@@ -114,7 +114,7 @@ export default function Inventory() {
           emptyMessage={
             search || warehouseId || productId
               ? "No inventory rows match those filters."
-              : "No stock recorded yet. Receive a purchase order or make an adjustment to get started."
+              : "No stock recorded yet. Receive a purchase order to bring stock in — that is the path that carries a cost, so margin and valuation work afterwards. A positive adjustment also adds stock, but books it as a gain, which is for stock you found rather than stock you bought."
           }
           onRetry={refetch}
         >

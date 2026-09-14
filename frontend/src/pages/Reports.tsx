@@ -14,8 +14,7 @@ import {
 } from "@mantine/core";
 import { IconAlertTriangle, IconCheck } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useParams, useSearchParams } from "react-router-dom";
 import {
   api,
   qs,
@@ -71,11 +70,35 @@ const REPORT_TABS = ["sales", "purchases", "stock", "valuation"] as const;
 
 export default function Reports() {
   const { tab } = useParams();
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [salesGroup, setSalesGroup] = useState("customer");
-  const [purchaseGroup, setPurchaseGroup] = useState("vendor");
-  const [asOf, setAsOf] = useState("");
+
+  /**
+   * Filters live in the query string, not in component state.
+   *
+   * A report you cannot send to anyone is half a report: before this, the tab
+   * was addressable but the date range and grouping were not, so "the Q3
+   * numbers" could only ever be described rather than linked. `replaceState`
+   * rather than push, so the back button steps between reports instead of
+   * through every keystroke in a date field.
+   */
+  const [params, setParams] = useSearchParams();
+  const param = (k: string, fallback = "") => params.get(k) ?? fallback;
+  const setParam = (k: string, v: string) => {
+    const next = new URLSearchParams(params);
+    if (v) next.set(k, v);
+    else next.delete(k);
+    setParams(next, { replace: true });
+  };
+
+  const from = param("from");
+  const to = param("to");
+  const salesGroup = param("salesGroup", "customer");
+  const purchaseGroup = param("purchaseGroup", "vendor");
+  const asOf = param("asOf");
+  const setFrom = (v: string) => setParam("from", v);
+  const setTo = (v: string) => setParam("to", v);
+  const setSalesGroup = (v: string) => setParam("salesGroup", v);
+  const setPurchaseGroup = (v: string) => setParam("purchaseGroup", v);
+  const setAsOf = (v: string) => setParam("asOf", v);
 
   // An unknown tab in the URL is a dead page, not an empty one.
   const valid = REPORT_TABS.includes((tab ?? "") as (typeof REPORT_TABS)[number]);

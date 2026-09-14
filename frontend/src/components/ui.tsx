@@ -78,8 +78,28 @@ export function money(cents: number | null | undefined) {
  * A status filling its whole table cell, the way an operations board reads,
  * rather than a pill floating in whitespace.
  */
-export function StatusCell({ value }: { value: string }) {
+/**
+ * A status in a grid row.
+ *
+ * `tone` exists because a sales order carries TWO independent statuses —
+ * readiness and payment — and rendering both as equally-weighted filled cells
+ * made a row read as one compound state the user had to learn, rather than a
+ * state plus a qualifier. The filled cell is the primary axis; the secondary
+ * axis is the same palette set in type, so it still carries meaning by colour
+ * without competing for the eye.
+ */
+export function StatusCell({ value, tone = "primary" }: { value: string; tone?: "primary" | "secondary" }) {
   const hue = STATUS_HUES[value] ?? NEUTRAL;
+  if (tone === "secondary") {
+    return (
+      <span
+        className="status-cell status-cell--secondary"
+        style={{ color: `var(--mantine-color-${hue}-9)` }}
+      >
+        {formatStatus(value)}
+      </span>
+    );
+  }
   return (
     <span
       className="status-cell"

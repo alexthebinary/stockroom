@@ -170,6 +170,27 @@ h3,
   color: var(--rail-fg);
 }
 
+/* The books-do-not-tie-out badge. Amber on the dark rail rather than red: it
+   wants to be noticed on every screen without reading as a crash. */
+.rail-alarm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  margin-right: 8px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: #ffd9a8;
+  background: rgba(255, 170, 60, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 190, 110, 0.35);
+  transition: background 160ms var(--ease-out);
+}
+
+.rail-alarm:hover {
+  background: rgba(255, 170, 60, 0.3);
+  color: #fff0dc;
+}
+
 /*
  * The second row: the current section's pages, always visible while you are in
  * the section. It sits on the data surface rather than the rail, because it
@@ -304,6 +325,19 @@ h3,
   white-space: nowrap;
 }
 
+/* The secondary status axis: same palette, set in type rather than filled, so
+   a row reads as "state, qualified by" instead of two competing blocks.
+   Declared AFTER .status-cell — same specificity, so source order decides, and
+   placed before it this quietly lost the font-weight. */
+.status-cell--secondary {
+  background: none;
+  box-shadow: none;
+  margin: 0;
+  padding: 0;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
 /* ---- Motion ------------------------------------------------------------ */
 
 @media (prefers-reduced-motion: reduce) {
@@ -315,4 +349,82 @@ h3,
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+
+/* ---- Print ------------------------------------------------------------- */
+/*
+ * A report printed today comes out with the navigation across the top and the
+ * table clipped at the page edge. These are documents that leave the building —
+ * to a meeting, an auditor, an email — so the chrome comes off, the ink goes
+ * black, and tables get real rules instead of the faint screen ones.
+ */
+@media print {
+  .app-header,
+  .drawer,
+  .rail,
+  .subrail,
+  .rail-alarm,
+  .mantine-Pagination-root,
+  button,
+  .mantine-Burger-root {
+    display: none !important;
+  }
+
+  html,
+  body,
+  .app-main,
+  .mantine-AppShell-main {
+    background: #fff !important;
+    color: #000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Screen layout keeps wide tables inside a scrolling box, which on paper
+     clips them instead. On print they must be free to lay out full width. */
+  .mantine-ScrollArea-root,
+  .mantine-ScrollArea-viewport,
+  .mantine-Table-scrollContainer,
+  [data-scrollarea-viewport] {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    min-width: 0 !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto;
+  }
+
+  .data-grid thead th {
+    position: static !important;
+    background: #fff !important;
+    color: #000 !important;
+    border-bottom: 1pt solid #000 !important;
+  }
+
+  .data-grid tbody td {
+    border-bottom: 0.5pt solid #999 !important;
+    font-size: 10pt !important;
+  }
+
+  /* A row split across a page break is unreadable in a printed ledger. */
+  tr,
+  .mantine-Card-root {
+    page-break-inside: avoid;
+  }
+
+  thead { display: table-header-group; }
+
+  /* Filled status cells become solid blocks of ink on a mono printer. */
+  .status-cell {
+    background: none !important;
+    color: #000 !important;
+    font-weight: 700;
+  }
+
+  a { text-decoration: none; color: #000 !important; }
 }

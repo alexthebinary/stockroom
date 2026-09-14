@@ -197,7 +197,8 @@ export default function SalesOrders() {
                       {money(o.totalCents)}
                     </Table.Td>
                     <Table.Td p={0}>
-                      <StatusCell value={o.paymentStatus} />
+                      {/* Payment is the qualifier; readiness is the state. */}
+                      <StatusCell value={o.paymentStatus} tone="secondary" />
                     </Table.Td>
                     <Table.Td p={0}>
                       <StatusCell value={o.readinessStatus} />
