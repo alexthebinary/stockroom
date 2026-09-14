@@ -129,6 +129,9 @@ model InventoryMovement {
 ///   paymentStatus:   AWAITING_PAYMENT | INVOICED | PAID | VOIDED
 /// `channel` records where the order came from (DIRECT, SHOPIFY, ...).
 model SalesOrder {
+  /// Single currency today. Recorded per document anyway, so adding a second
+  /// one later is an addition rather than a rewrite of every money path.
+  currency        String   @default("USD")
   id              Int      @id @default(autoincrement())
   orderNumber     String   @unique
   customerId      Int?
@@ -154,6 +157,9 @@ model SalesOrder {
 
 /// status: PENDING | RESERVED | SHIPPED | CANCELED
 model SalesOrderLine {
+  /// How much of this line has actually left. Partial shipment and backorder
+  /// are ordinary; an order is not a single all-or-nothing event.
+  shippedQty      Int      @default(0)
   id             Int    @id @default(autoincrement())
   salesOrderId   Int
   productId      Int
@@ -173,6 +179,9 @@ model SalesOrderLine {
 /// DELIVERED, each step posting its own journal entry. `status` carries the
 /// furthest step reached; CANCELED ends it.
 model PurchaseOrder {
+  /// Single currency today. Recorded per document anyway, so adding a second
+  /// one later is an addition rather than a rewrite of every money path.
+  currency        String   @default("USD")
   id            Int      @id @default(autoincrement())
   poNumber      String   @unique
   vendorId      Int?
@@ -196,6 +205,9 @@ model PurchaseOrder {
 
 /// status: PENDING | ORDERED | RECEIVED | CANCELED
 model PurchaseOrderLine {
+  /// How much of this line has actually arrived. Suppliers under-ship; a system
+  /// that cannot record it makes staff lie to it.
+  receivedQty     Int      @default(0)
   id              Int    @id @default(autoincrement())
   purchaseOrderId Int
   productId       Int
@@ -320,6 +332,20 @@ model Employee {
 /// accountType: ASSET | LIABILITY | EQUITY | INCOME | EXPENSE
 /// Single-row ledger configuration. A key/value table rather than columns on a
 /// settings model, so a new control does not need a migration.
+/// One row per document type, holding the last number issued.
+///
+/// Numbers used to come from max(id), read and incremented inside the
+/// transaction with no lock. Under Postgres READ COMMITTED two concurrent
+/// creates read the same maximum and mint the same number; the unique index
+/// caught it, but the loser got "a record with that unique value already
+/// exists" for a request that was perfectly legitimate. SQLite serialises
+/// writers, so this could never reproduce in local development.
+model DocumentCounter {
+  kind      String   @id
+  lastValue Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
 model LedgerSetting {
   key       String   @id
   value     String
@@ -449,6 +475,9 @@ model LotConsumption {
 
 /// status: SAVED | POSTED | VOID
 model Invoice {
+  /// Single currency today. Recorded per document anyway, so adding a second
+  /// one later is an addition rather than a rewrite of every money path.
+  currency        String   @default("USD")
   id            Int      @id @default(autoincrement())
   invoiceNumber String   @unique
   salesOrderId  Int?
@@ -468,6 +497,9 @@ model Invoice {
 
 /// A vendor bill. status: SAVED | POSTED | VOID
 model Bill {
+  /// Single currency today. Recorded per document anyway, so adding a second
+  /// one later is an addition rather than a rewrite of every money path.
+  currency        String   @default("USD")
   id              Int      @id @default(autoincrement())
   billNumber      String   @unique
   purchaseOrderId Int?
@@ -488,6 +520,9 @@ model Bill {
 /// direction: RECEIPT (from a customer) | DISBURSEMENT (to a vendor)
 /// status: SAVED | POSTED | VOID
 model Payment {
+  /// Single currency today. Recorded per document anyway, so adding a second
+  /// one later is an addition rather than a rewrite of every money path.
+  currency        String   @default("USD")
   id            Int      @id @default(autoincrement())
   paymentNumber String   @unique
   direction     String

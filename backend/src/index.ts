@@ -18,6 +18,7 @@ import { warehousesRouter } from "./routes/warehouses";
 import { errorMiddleware } from "./http";
 import { basicAuthGate } from "./auth-gate";
 import { syncChartOfAccounts } from "./accounts";
+import { ensureDocumentCounters } from "./numbering";
 
 const app = express();
 
@@ -98,8 +99,12 @@ const host = process.env.HOST ?? "127.0.0.1";
 syncChartOfAccounts()
   .then((added) => {
     if (added.length) console.log(`Chart of accounts: added ${added.join(", ")}`);
+    return ensureDocumentCounters();
   })
-  .catch((err) => console.error("Chart of accounts sync failed:", err));
+  .then((seeded) => {
+    if (seeded?.length) console.log(`Document counters: seeded ${seeded.join(", ")}`);
+  })
+  .catch((err) => console.error("Startup reconciliation failed:", err));
 
 app.listen(port, host, () => {
   const gated = Boolean(process.env.BASIC_AUTH_USER && process.env.BASIC_AUTH_PASSWORD);

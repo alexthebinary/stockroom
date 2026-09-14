@@ -2,6 +2,7 @@ import { badRequest, conflict, notFound } from "./errors";
 import type { Tx } from "./inventory";
 import { JOURNAL_TEMPLATES, type TransactionType } from "./accounts";
 import { assertPeriodOpen } from "./period";
+import { nextJournalEntryNumber } from "./numbering";
 
 export type DraftLine = {
   accountCode: string;
@@ -12,12 +13,10 @@ export type DraftLine = {
   warehouseId?: number;
 };
 
-async function nextEntryNumber(tx: Tx) {
-  // From the highest id, not the count — deleting a SAVED entry must not
-  // reissue a number that already exists.
-  const top = await tx.journalEntry.findFirst({ orderBy: { id: "desc" }, select: { id: true } });
-  return `JE-${String((top?.id ?? 0) + 1).padStart(6, "0")}`;
-}
+// Allocated from the shared counter, for the reason numbering.ts explains: the
+// old max(id) read raced under Postgres and handed the loser a duplicate-record
+// error for a legitimate request.
+const nextEntryNumber = (tx: Tx) => nextJournalEntryNumber(tx);
 
 /**
  * Create a journal entry and, unless told otherwise, post it.
