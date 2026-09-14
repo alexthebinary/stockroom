@@ -114,10 +114,25 @@ declare global {
  * Attach the signed-in user when a valid token is present. Never rejects —
  * routes decide what they require, so a public route stays public.
  */
+export const SESSION_HEADER = "X-Stockroom-Session";
+
 export async function attachUser(req: Request, _res: Response, next: NextFunction) {
-  const header = req.header("Authorization") ?? "";
-  const [scheme, token] = header.split(" ");
-  if (scheme !== "Bearer" || !token) return next();
+  /**
+   * The session token has its OWN header, not Authorization.
+   *
+   * A hosted instance sits behind HTTP Basic, and `Authorization` holds exactly
+   * one credential — sending `Bearer <session>` REPLACES the Basic credential,
+   * so the request is rejected by the outer gate and never reaches this code.
+   * That broke the deployed app, not just a test: the browser satisfies Basic
+   * once and then fetch() overwrote it on every API call.
+   *
+   * Authorization: Bearer is still accepted as a fallback, for API clients on
+   * an instance with no Basic gate in front.
+   */
+  const auth = req.header("Authorization") ?? "";
+  const [scheme, bearer] = auth.split(" ");
+  const token = req.header(SESSION_HEADER)?.trim() || (scheme === "Bearer" ? bearer : "");
+  if (!token) return next();
   const claims = readToken(token);
   if (!claims) return next();
   const user = await prisma.user.findUnique({ where: { id: claims.sub } });

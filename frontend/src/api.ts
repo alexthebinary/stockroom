@@ -412,7 +412,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       "Content-Type": "application/json",
       // The signed token, not a claimed identity. The server reads the actor
       // from this; a header the client fills in is not an audit trail.
-      ...(authToken() ? { Authorization: `Bearer ${authToken()}` } : {}),
+      // NOT Authorization: a hosted instance sits behind HTTP Basic, and that
+      // header holds one credential — setting Bearer here replaced the Basic
+      // one and locked the app out of its own API.
+      ...(authToken() ? { "X-Stockroom-Session": authToken()! } : {}),
       // Honoured only for an administrator, and only to REDUCE capability. The
       // server checks both; this header grants nothing on its own.
       ...(actingRole() ? { "X-Act-As-Role": actingRole()! } : {}),
