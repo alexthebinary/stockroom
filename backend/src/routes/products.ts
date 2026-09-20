@@ -20,6 +20,15 @@ const productSchema = z.object({
   height: z.number().nonnegative().optional().nullable(),
   weight: z.number().nonnegative().optional().nullable(),
   isActive: z.boolean().optional(),
+  /**
+   * NONE or SERIAL. Missing here until 2026-09-20, which meant the field was
+   * READ in six places and writable in none: zod strips unknown keys silently,
+   * so a create carrying trackingMode:"SERIAL" was accepted and the value
+   * discarded. Every serial test set it directly through Prisma in its setup,
+   * so the whole suite passed while the feature was unreachable over HTTP.
+   * Found by a production test run, not by the tests.
+   */
+  trackingMode: z.enum(["NONE", "SERIAL"]).optional(),
 });
 
 /** Sums on-hand across warehouses so the list can show one stock number per SKU. */
