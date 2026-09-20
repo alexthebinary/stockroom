@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
+import { badRequest } from "../errors";
 import { actorOf, asyncHandler, optionalInt, pagination, parseBody } from "../http";
 import { requireStock } from "../auth";
 import { applyBalanceDelta, recordMovement } from "../inventory";
+import { consumeSerials, SERIAL_STATUS } from "../serials";
 import { consumeFifo, createLot } from "../costing";
 import { postSimple } from "../ledger";
 import { TRANSACTION_TYPE } from "../accounts";
@@ -21,6 +23,10 @@ const createSchema = z.object({
   /// Only meaningful on an INCREASE: what the stock being written on is worth.
   /// A DECREASE is always valued at the FIFO cost of the layers it consumes.
   unitCostCents: z.number().int().min(0).optional(),
+  /// Required on a DECREASE for a SERIAL-tracked product. "One of these is
+  /// broken" is not a record anyone can act on later, and for a warranty claim
+  /// against the vendor the serial IS the claim.
+  serialNumbers: z.array(z.string().trim().min(1)).optional(),
 });
 
 stockAdjustmentsRouter.get(
@@ -102,6 +108,29 @@ stockAdjustmentsRouter.post(
           sourceType: "STOCK_ADJUSTMENT",
           sourceId: adjustment.id,
         });
+      } else if (product.trackingMode === "SERIAL") {
+        // 🔴 A serialized write-off must say WHICH unit. consumeFifo would pick
+        // the oldest layer, scrap a correct quantity, and leave the records
+        // claiming a different physical unit was destroyed — invisible until a
+        // vendor warranty claim needs the serial.
+        const named = body.serialNumbers ?? [];
+        if (named.length !== body.quantity) {
+          throw badRequest(
+            `${product.sku} is serial-tracked — name the ${body.quantity} unit(s) being adjusted ` +
+              `(${named.length} given)`,
+            { action: "scan-serials", productId: body.productId, quantity: body.quantity }
+          );
+        }
+        const consumed = await consumeSerials(tx, {
+          productId: body.productId,
+          warehouseId: body.warehouseId,
+          serialNumbers: named,
+          sourceType: "STOCK_ADJUSTMENT",
+          sourceId: adjustment.id,
+          context: `Cannot adjust ${product.sku} at ${warehouse.code}`,
+          toStatus: SERIAL_STATUS.SCRAPPED,
+        });
+        totalCostCents = consumed.totalCostCents;
       } else {
         const consumed = await consumeFifo(tx, {
           productId: body.productId,

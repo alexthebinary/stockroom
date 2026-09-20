@@ -8,6 +8,7 @@ import { requireMoney, requireStock } from "../auth";
 import { companyDetails, renderInvoice } from "../pdf";
 import { CARRIERS, trackingUrl } from "../carriers";
 import { applyBalanceDelta, claimStatusTransition, recordMovement, reserveStock } from "../inventory";
+import { consumeSerials } from "../serials";
 import { attachConsumptionsToMovement, consumeFifo } from "../costing";
 import { postSimple, reverseDocumentEntry } from "../ledger";
 import { TRANSACTION_TYPE } from "../accounts";
@@ -339,6 +340,22 @@ salesOrdersRouter.post(
 const shipSchema = z.object({
   carrier: z.string().trim().min(1).max(40).optional(),
   trackingNumber: z.string().trim().min(1).max(60).optional(),
+  /**
+   * Which physical units are going out, per order line — required for any line
+   * whose product is SERIAL-tracked.
+   *
+   * It lives on ship rather than pack because ship is where stock is consumed,
+   * and the serial must be recorded in the same transaction that draws down its
+   * cost layer. A UI is free to collect them at pack time and replay them here.
+   */
+  serials: z
+    .array(
+      z.object({
+        lineId: z.number().int().positive(),
+        serialNumbers: z.array(z.string().trim().min(1)).min(1),
+      })
+    )
+    .optional(),
 });
 
 const trackingSchema = z.object({
@@ -538,14 +555,48 @@ salesOrdersRouter.post(
           { allowReserved: true }
         );
 
-        const consumed = await consumeFifo(tx, {
-          productId: line.productId,
-          warehouseId: line.warehouseId,
-          quantity: line.quantity,
-          sourceType: "SHIPMENT",
-          sourceId: shipment.id,
-          context: `Cannot cost ${line.product.sku} at ${line.warehouse.code}`,
-        });
+        // 🔴 SERIALIZED PRODUCTS TAKE A DIFFERENT PATH ON PURPOSE.
+        // consumeFifo is quantity-driven and oldest-layer-first. For a serialized
+        // product that would ship SOME unit, cost it correctly, and record the
+        // WRONG serial against the shipment — the customer holds serial X while
+        // our warranty lookup says Y. Silent until a claim. So a serialized line
+        // must name its units, and consumption resolves to exactly those layers.
+        const serialized = line.product.trackingMode === "SERIAL";
+        let consumed: { totalCostCents: number; consumptionIds: number[] };
+
+        if (serialized) {
+          const named = shipInput.serials?.find((s) => s.lineId === line.id);
+          if (!named) {
+            throw badRequest(
+              `${line.product.sku} is serial-tracked — name the ${line.quantity} unit(s) being shipped on this line`,
+              { action: "scan-serials", lineId: line.id, quantity: line.quantity }
+            );
+          }
+          if (named.serialNumbers.length !== line.quantity) {
+            throw badRequest(
+              `${line.product.sku}: ${named.serialNumbers.length} serial(s) named for a line of ${line.quantity}`,
+              { action: "scan-serials", lineId: line.id, quantity: line.quantity }
+            );
+          }
+          consumed = await consumeSerials(tx, {
+            productId: line.productId,
+            warehouseId: line.warehouseId,
+            serialNumbers: named.serialNumbers,
+            sourceType: "SHIPMENT",
+            sourceId: shipment.id,
+            context: `Cannot ship ${line.product.sku} from ${line.warehouse.code}`,
+            toStatus: "SOLD",
+          });
+        } else {
+          consumed = await consumeFifo(tx, {
+            productId: line.productId,
+            warehouseId: line.warehouseId,
+            quantity: line.quantity,
+            sourceType: "SHIPMENT",
+            sourceId: shipment.id,
+            context: `Cannot cost ${line.product.sku} at ${line.warehouse.code}`,
+          });
+        }
         cogsCents += consumed.totalCostCents;
 
         const movement = await recordMovement(tx, {

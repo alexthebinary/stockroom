@@ -5,6 +5,10 @@ export const MOVEMENT_TYPES = [
   "TRANSFER_IN",
   "SALE_SHIP",
   "PURCHASE_RECEIPT",
+  /// Parts pulled from our own stock onto a repair. A real stock decrease, but
+  /// it posts to Repair Parts Expense rather than COGS — no revenue is matched
+  /// against it, so folding it into COGS would understate gross margin.
+  "REPAIR_CONSUMPTION",
 ] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 

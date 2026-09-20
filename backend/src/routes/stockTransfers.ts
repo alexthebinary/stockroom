@@ -116,6 +116,22 @@ stockTransfersRouter.post(
         `Cannot move ${current.product.sku} out of ${current.fromWarehouse.code}`
       );
 
+      // 🔴 SERIALIZED STOCK CANNOT TRANSFER YET — deliberate, operator decision
+      // 2026-09-19. A transfer consumes the source layer and RECREATES it at the
+      // destination, which for a serialized unit severs the SerialUnit -> lot
+      // link that the whole design rests on. The two honest fixes (move the lot
+      // and add an IN_TRANSIT state, or re-point the serial and accept thinner
+      // per-unit history) are a real decision, and RMA/repair are the flows that
+      // actually move individual units. Refusing beats guessing: a wrong answer
+      // here is silent, and unpicking it later means rewriting history.
+      if (current.product.trackingMode === "SERIAL") {
+        throw badRequest(
+          `${current.product.sku} is serial-tracked and cannot be transferred between warehouses yet — ` +
+            `ship it or adjust it out instead`,
+          { action: "serial-transfer-unsupported", productId: current.productId }
+        );
+      }
+
       // Consume the source layers now. The cost travels with the goods and is
       // recreated at the destination on completion, so FIFO order survives the
       // move instead of being averaged away.

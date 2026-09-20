@@ -26,6 +26,7 @@ import Ledger from "./pages/Ledger";
 import Login from "./pages/Login";
 import ProductDetail from "./pages/ProductDetail";
 import Products from "./pages/Products";
+import Receive from "./pages/Receive";
 import PurchaseOrderDetail from "./pages/PurchaseOrderDetail";
 import PurchaseOrders from "./pages/PurchaseOrders";
 import Reports from "./pages/Reports";
@@ -78,6 +79,7 @@ const SECTIONS: Section[] = [
     icon: IconStack2,
     to: "/inventory",
     items: [
+      { to: "/receive", label: "Receive" },
       { to: "/inventory", label: "Stock on hand" },
       { to: "/products", label: "Products" },
       { to: "/warehouses", label: "Warehouses" },
@@ -361,6 +363,7 @@ export default function App() {
           </Box>
         )}
         <Routes>
+          <Route path="/receive" element={<Receive />} />
           <Route path="/" element={<Dashboard />} />
           <Route path="/products" element={<Products />} />
           <Route path="/products/:id" element={<ProductDetail />} />

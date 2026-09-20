@@ -19,6 +19,13 @@ export const ACCOUNT = {
   INVENTORY_GAIN: "4900",
   COGS: "5000",
   INVENTORY_SHRINKAGE: "5100",
+  /// Parts consumed repairing a unit. NOT Cost of Goods Sold: repair parts are
+  /// not matched to sales revenue, so folding them into 5000 would understate
+  /// gross margin on every period that contains a repair.
+  REPAIR_PARTS: "5300",
+  /// Cost of a unit given away to honour a warranty. Again not COGS — there is
+  /// no revenue on the other side of it.
+  WARRANTY_EXPENSE: "5400",
   ROUNDING_VARIANCE: "5200",
 } as const;
 
@@ -39,6 +46,8 @@ export const CHART_OF_ACCOUNTS = [
   { code: ACCOUNT.INVENTORY_GAIN, name: "Inventory Gain", accountType: "INCOME", normalSide: "CREDIT" },
   { code: ACCOUNT.COGS, name: "Cost of Goods Sold", accountType: "EXPENSE", normalSide: "DEBIT" },
   { code: ACCOUNT.INVENTORY_SHRINKAGE, name: "Inventory Shrinkage", accountType: "EXPENSE", normalSide: "DEBIT" },
+  { code: ACCOUNT.REPAIR_PARTS, name: "Repair Parts Expense", accountType: "EXPENSE", normalSide: "DEBIT" },
+  { code: ACCOUNT.WARRANTY_EXPENSE, name: "Warranty Expense", accountType: "EXPENSE", normalSide: "DEBIT" },
   // Reported inside cost of sales rather than as an operating expense: it
   // originates in the purchase cost of goods, so it belongs in gross margin.
   // An operating-expense line would imply a cost of running the business.
@@ -56,6 +65,8 @@ export const TRANSACTION_TYPE = {
   OPENING_BALANCE: "OPENING_BALANCE",
   INVENTORY_TRANSFER: "INVENTORY_TRANSFER",
   INVENTORY_TRANSFER_IN: "INVENTORY_TRANSFER_IN",
+  REPAIR_PARTS_CONSUMPTION: "REPAIR_PARTS_CONSUMPTION",
+  WARRANTY_REPLACEMENT: "WARRANTY_REPLACEMENT",
   ADJUSTMENT_INCREASE: "ADJUSTMENT_INCREASE",
   ADJUSTMENT_DECREASE: "ADJUSTMENT_DECREASE",
 } as const;
@@ -83,6 +94,18 @@ export const JOURNAL_TEMPLATES: {
     description: "Receive payment from a customer",
     debitAccountCode: ACCOUNT.BANK,
     creditAccountCode: ACCOUNT.ACCOUNTS_RECEIVABLE,
+  },
+  {
+    transactionType: TRANSACTION_TYPE.REPAIR_PARTS_CONSUMPTION,
+    description: "Consume parts from stock on a repair",
+    debitAccountCode: ACCOUNT.REPAIR_PARTS,
+    creditAccountCode: ACCOUNT.INVENTORY,
+  },
+  {
+    transactionType: TRANSACTION_TYPE.WARRANTY_REPLACEMENT,
+    description: "Give a replacement unit under warranty",
+    debitAccountCode: ACCOUNT.WARRANTY_EXPENSE,
+    creditAccountCode: ACCOUNT.INVENTORY,
   },
   {
     transactionType: TRANSACTION_TYPE.SALES_SHIPMENT_COGS,

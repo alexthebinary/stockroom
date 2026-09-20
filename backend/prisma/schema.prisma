@@ -35,10 +35,23 @@ model Product {
   height Float?
   weight Float?
 
+  /// NONE or SERIAL. Deliberately NOT a `LOT` mode: `InventoryLot` already exists
+  /// for EVERY product as the FIFO cost layer, so a tracking mode named LOT would
+  /// read as "this product uses InventoryLot" when all modes do. A batch/expiry
+  /// mode is a real third thing — add it when something names the requirement.
+  ///
+  /// SERIAL changes how stock is RECEIVED, not how it is valued: a serialized
+  /// product gets one cost layer PER UNIT (`originalQty: 1`) with a SerialUnit
+  /// pointing at it, so "active serials == on-hand qty" is true by construction
+  /// rather than by a reconciliation job comparing two counters.
+  trackingMode String @default("NONE")
+
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  serialUnits        SerialUnit[]
+  vendorAliases      VendorProductAlias[]
   productCategory    ProductCategory?    @relation(fields: [categoryId], references: [id])
   lots               InventoryLot[]
   balances           InventoryBalance[]
@@ -50,6 +63,8 @@ model Product {
 
   @@index([name])
   stockCountLines StockCountLine[]
+  repairPartLines RepairPartLine[]
+  shopifyLink ShopifyLink?
 }
 
 model Warehouse {
@@ -75,6 +90,9 @@ model Warehouse {
   shipments          Shipment[]
   goodsReceipts      GoodsReceipt[]
   stockCounts     StockCount[]
+  serialUnits SerialUnit[]
+  repairPartLines RepairPartLine[]
+  shopifyLocation ShopifyLocation?
 }
 
 /// Current stock for a [product, warehouse] pair.
@@ -337,6 +355,7 @@ model Customer {
   salesOrders SalesOrder[]
   invoices    Invoice[]
   payments    Payment[]
+  repairOrders RepairOrder[]
 }
 
 model Vendor {
@@ -351,6 +370,7 @@ model Vendor {
   purchaseOrders PurchaseOrder[]
   bills          Bill[]
   payments       Payment[]
+  productAliases VendorProductAlias[]
 }
 
 /// "Employees (Managers)" in the scope — Sales reports filter by this.
@@ -506,6 +526,8 @@ model InventoryLot {
   product      Product          @relation(fields: [productId], references: [id])
   warehouse    Warehouse        @relation(fields: [warehouseId], references: [id])
   consumptions LotConsumption[]
+  /// At most one serial per layer — a serialized layer holds exactly one unit.
+  serialUnit   SerialUnit?
 
   @@index([productId, warehouseId, receivedAt])
 }
@@ -645,3 +667,228 @@ model GoodsReceipt {
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
   warehouse     Warehouse?    @relation(fields: [warehouseId], references: [id])
 }
+
+/// One physical unit, tracked by its serial number.
+///
+/// WHY THIS IS NOT A SECOND SOURCE OF TRUTH. A serial does not carry its own
+/// quantity or its own on-hand flag. It points at ONE `InventoryLot` whose
+/// `remainingQty` is 0 or 1, and that lot participates in the ordinary FIFO
+/// machinery unchanged. So `InventoryBalance.onHandQty` is still
+/// `sum(remainingQty)` across layers, and "in-stock serial count == on-hand
+/// quantity" holds BY CONSTRUCTION. The alternative — a serial table with its
+/// own status plus a join to movements — duplicates on-hand transitively and
+/// needs every future code path to remember to write the join row.
+///
+/// `lotId` is nullable ON PURPOSE: a unit under repair for a customer is NOT
+/// owned stock and must not sit in a cost layer. See `status`.
+model SerialUnit {
+  id           Int      @id @default(autoincrement())
+  productId    Int
+  /// As scanned. Unitree prints this on the carton AND on the chassis; the
+  /// chassis marking is the durable one because boxes get thrown away and the
+  /// unit comes back for RMA years later.
+  serialNumber String
+  /// Scanned off the carton at receiving, when it differs from the hardware
+  /// serial. A mismatch is a finding to surface, never something to silently
+  /// reconcile.
+  boxSerial    String?
+  /// Set when a lot exists: owned, valued stock. NULL while the unit is in
+  /// custody for repair — a customer's broken printer on our shelf is not our
+  /// asset, and booking it as inventory would debit Inventory for something we
+  /// do not own.
+  lotId        Int?     @unique
+  /// IN_STOCK | SOLD | RECEIVED_FOR_REPAIR | IN_REPAIR | RETURNED_TO_CUSTOMER
+  /// | REPLACED | SENT_TO_VENDOR | SCRAPPED
+  status       String   @default("IN_STOCK")
+  /// Where the unit physically is. For custody states this is a location, not a
+  /// stock balance.
+  warehouseId  Int?
+  /// Warranty is DERIVED from this plus the policy's duration — never stored as
+  /// a computed boolean or a fixed end date, for the same reason `availableQty`
+  /// is always derived and `amountPaidCents` is recomputed: a stored answer
+  /// drifts the moment terms change or time simply passes.
+  warrantyStartAt DateTime?
+  notes        String?
+
+  /// HOW this serial got here. Everything auto-commits; provenance is what makes
+  /// that safe to review later rather than something to gate on up front.
+  /// BARCODE | OCR | OCR_CORROBORATED | MANUAL | IMPORTED
+  serialSource  String  @default("MANUAL")
+  /// OCR confidence as reported by the reader, 0-1. Null for non-OCR sources.
+  ocrConfidence Float?
+  /// Object key for the label photo. Kept because when a serial is disputed
+  /// years later the picture settles it, and storage is cheap next to a lost
+  /// warranty claim.
+  labelImageKey String?
+  /// Committed, but worth a human eye. NOT a block — the unit is already in
+  /// stock and usable. A sweep clears these; nothing waits on it.
+  needsReview   Boolean @default(false)
+  reviewReason  String?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  corrections SerialCorrection[]
+  product   Product       @relation(fields: [productId], references: [id])
+  lot       InventoryLot? @relation(fields: [lotId], references: [id])
+  warehouse Warehouse?    @relation(fields: [warehouseId], references: [id])
+
+  /// Serial numbers are only guaranteed unique WITHIN a manufacturer's range,
+  /// so the key is (product, serial). `serialNumber` is indexed on its own
+  /// because RMA intake scans a serial with no product context — that lookup
+  /// may legitimately return more than one row, and the UI must say so rather
+  /// than pick one.
+  @@unique([productId, serialNumber])
+  @@index([serialNumber])
+  @@index([status, warehouseId])
+  repairOrders RepairOrder[]
+}
+
+/// Warranty duration by brand or product. Terms only — NOT an adjudication
+/// engine. Whether a specific claim is covered is a human judgement recorded on
+/// the repair, not a rule this system evaluates.
+model WarrantyPolicy {
+  id             Int      @id @default(autoincrement())
+  /// Matches `Product.brand` when productId is null; a product-specific policy
+  /// wins over a brand one.
+  brand          String?
+  productId      Int?
+  durationMonths Int
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  @@unique([brand, productId])
+}
+
+/// What a vendor calls a product, mapped to what we call it.
+///
+/// WHY: BambuLab and XAG put SKUs on their purchase orders, so a receipt matches
+/// a PO line directly. Unitree ships product NAMES and serials with no SKU, so
+/// the only way to resolve a Unitree receipt to a product is by name. Once a
+/// human maps a name here it is deterministic forever; assisted matching is only
+/// for a name never seen before, and it proposes — it never creates.
+model VendorProductAlias {
+  id                Int      @id @default(autoincrement())
+  vendorId          Int
+  vendorProductName String
+  productId         Int
+  /// Who confirmed the mapping. A proposed match is not a mapping until a human
+  /// accepts it.
+  confirmedBy       String?
+  createdAt         DateTime @default(now())
+
+  vendor  Vendor  @relation(fields: [vendorId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([vendorId, vendorProductName])
+}
+
+/// A unit taken in for service or repair.
+///
+/// 🔴 INTAKE IS NOT AN INVENTORY EVENT. A customer's unit on our bench is not
+/// our asset — the `SerialUnit` it points at carries `lotId: null` for exactly
+/// that reason. No balance moves and no journal entry is written when a repair
+/// opens. Only two things here touch the ledger: parts consumed from our own
+/// stock (Dr Repair Parts Expense) and a replacement unit given away
+/// (Dr Warranty Expense). Both credit Inventory, neither touches COGS, because
+/// there is no revenue matched against them.
+model RepairOrder {
+  id            Int      @id @default(autoincrement())
+  repairNumber  String   @unique
+  serialUnitId  Int
+  customerId    Int?
+  /// OPEN | IN_PROGRESS | AWAITING_PARTS | COMPLETED | RETURNED | REPLACED | SCRAPPED
+  status        String   @default("OPEN")
+  /// Whether the customer is charged. Derived warranty state INFORMS this, it
+  /// does not decide it — coverage is a human judgement recorded here, not a
+  /// rule the system evaluates.
+  billable      Boolean  @default(true)
+  /// Why it was judged in or out of warranty, in the words of whoever judged it.
+  coverageNote  String?
+  faultReported String?
+  workDone      String?
+  openedAt      DateTime @default(now())
+  closedAt      DateTime?
+  actor         String
+
+  serialUnit SerialUnit        @relation(fields: [serialUnitId], references: [id])
+  customer   Customer?         @relation(fields: [customerId], references: [id])
+  parts      RepairPartLine[]
+
+  @@index([status])
+}
+
+/// A part pulled from our own stock for a repair. Consuming it is an ordinary
+/// inventory movement through the existing pipeline — applyBalanceDelta,
+/// consumeFifo or consumeSerials, recordMovement, postSimple — it just posts to
+/// Repair Parts Expense rather than COGS.
+model RepairPartLine {
+  id            Int      @id @default(autoincrement())
+  repairOrderId Int
+  productId     Int
+  warehouseId   Int
+  quantity      Int
+  /// FIFO cost of the layers actually consumed, filled in at consumption time.
+  totalCostCents Int     @default(0)
+  /// Named units, when the part is itself serial-tracked.
+  serialNumbers String?
+  createdAt     DateTime @default(now())
+
+  repairOrder RepairOrder @relation(fields: [repairOrderId], references: [id])
+  product     Product     @relation(fields: [productId], references: [id])
+  warehouse   Warehouse   @relation(fields: [warehouseId], references: [id])
+
+  @@index([repairOrderId])
+}
+
+/// Every change to a serial number, kept forever.
+///
+/// Auto-committed OCR is only safe because it is REVERSIBLE: the unit's identity
+/// is its cost layer, not the string, so fixing a misread is an update rather
+/// than a lost unit. This table is what makes the fix auditable — without it a
+/// corrected serial is indistinguishable from one that was always right, and a
+/// warranty dispute has nothing to look at.
+model SerialCorrection {
+  id           Int      @id @default(autoincrement())
+  serialUnitId Int
+  fromSerial   String
+  toSerial     String
+  reason       String?
+  actor        String
+  createdAt    DateTime @default(now())
+
+  serialUnit SerialUnit @relation(fields: [serialUnitId], references: [id])
+
+  @@index([serialUnitId])
+}
+
+/// Maps one of our products to its Shopify variant.
+///
+/// ProductVariant and InventoryItem are 1:1 in Shopify, so the inventory item
+/// id is what quantity pushes actually address. Stored rather than looked up
+/// each time because a push runs per product per warehouse and the mapping
+/// almost never changes.
+model ShopifyLink {
+  id              Int      @id @default(autoincrement())
+  productId       Int      @unique
+  variantId       String
+  inventoryItemId String
+  /// What we last told Shopify. This is the `compareQuantity` for the next
+  /// push, which is how compare-and-set detects that someone sold in between.
+  lastPushedQty   Int?
+  lastPushedAt    DateTime?
+  createdAt       DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+}
+
+/// Maps one of our warehouses to a Shopify location.
+model ShopifyLocation {
+  id          Int    @id @default(autoincrement())
+  warehouseId Int    @unique
+  locationId  String
+  createdAt   DateTime @default(now())
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+}
+
