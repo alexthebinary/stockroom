@@ -1,6 +1,6 @@
 # Stockroom — handoff
 
-**As of 2026-09-21.** Live at https://stockroom-axlo.onrender.com, `master` deployed
+**As of 2026-09-21 (second pass).** Live at https://stockroom-axlo.onrender.com, `master` deployed
 and verified in a browser. Local dev may still be running on 4000/5173.
 
 > Durable narrative lives in the vault (`logs/2026-09-19-stockroom-serials-receiving-shopify.md`,
@@ -15,9 +15,18 @@ and verified in a browser. Local dev may still be running on 4000/5173.
 | Production app login | `admin@stockroom.local` / `sP_7oe_bp1uJohd-ig_dAV0i` |
 | Local app login | `admin@user.com` / password printed in the startup log |
 
-🔴 **The login form prefills `demo@user.com` / `password` and prints it as a hint.
-That account exists in NEITHER database.** It is misinformation baked into the UI and it
-already cost a day — it was quoted into a design brief as current. Worth deleting.
+~~🔴 The login form prefills `demo@user.com` / `password` and prints it as a hint.~~
+**FIXED 2026-09-21** (`dab6523`). The fields start empty, there is no hint, and the
+submit button is disabled until both are filled. A "waking the server" line now shows
+while a request is in flight, because the free instance sleeps after 15 minutes and a
+bare spinner reads as a hang. Before it was removed the bad hint had cost a day and
+blocked two reviewers in a single session.
+
+**Production data was reseeded 2026-09-21** to the Unitree / XAG / Bambu Lab catalogue
+(`5c2bd63`). The previous contents — original apparel seed plus test artefacts from two
+sessions — are in `.backups/stockroom-prod-pgdump-*.sql`, a full 38-table `pg_dump`, and
+in `.backups/stockroom-prod-api-*.json`. `.backups/` is gitignored: it holds password
+hashes. The admin login survived; `reset()` keeps `User`.
 
 Production credentials live in Render env vars (`ADMIN_EMAIL`, `ADMIN_PASSWORD`,
 `AUTH_SECRET`), so they survive deploys. Locally `AUTH_SECRET` is unset, so **restarting
@@ -29,7 +38,7 @@ the API logs you out** — expected, not a bug.
 cd ~/Desktop/Projects/inventory-demo
 (cd backend && DATABASE_URL="file:$PWD/prisma/dev.db" npx prisma migrate deploy)  # if behind
 npm run dev            # api :4000, web :5173
-cd backend && npx vitest run     # 76 tests, 13 suites
+cd backend && npx vitest run     # 105 tests, 16 suites
 cd frontend && npm run build     # the only real typecheck
 ```
 
@@ -47,6 +56,16 @@ curl -X POST -H "Authorization: Bearer $(cat ~/.config/render/api-key)" \
 
 Postgres takes the schema via `db push` (`backend/docker-entrypoint.sh:15`), **not** the
 SQLite migration history — the two cannot share migrations.
+
+⚠️ **Render Postgres refuses ALL external connections** — `ipAllowList` is empty, and
+that blocks `psql`, `pg_dump` and Render's own MCP query tool alike (they fail as
+`SSL/TLS required` / `SSL connection closed`, which reads like a TLS bug and is not).
+To reach it, PATCH the allowlist with your public IP, do the work, then PATCH it back to
+`[]` and prove it with a refused connection. The service's SSH is not enabled
+(`Permission denied (publickey)`), so there is no inside route.
+
+⚠️ **Auto-deploy is still not wired** despite `autoDeploy: yes` on the service. Every
+deploy in the history reads `"trigger":"api"`. Pushing does nothing; trigger it.
 
 ## 🔴 Hard date
 
