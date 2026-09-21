@@ -8,64 +8,78 @@ const prisma = new PrismaClient();
 const usd = (dollars: number) => Math.round(dollars * 100);
 
 const WAREHOUSES = [
-  { code: "MAIN", name: "Main Warehouse", address: "120 Dockside Ave, Newark, NJ", notes: "Primary fulfilment site" },
-  { code: "SEC", name: "Secondary Warehouse", address: "8 Canal Street, Chicago, IL", notes: "Overflow and slow movers" },
-  { code: "WEST", name: "West Coast Hub", address: "441 Harbor Blvd, Long Beach, CA", notes: "Serves the western states" },
+  { code: "MAIN", name: "Newark Robotics Depot", address: "120 Dockside Ave, Newark, NJ", notes: "Primary fulfilment and outbound" },
+  { code: "SEC", name: "Chicago Service Center", address: "8 Canal Street, Chicago, IL", notes: "RMA, repairs and slow movers" },
+  { code: "WEST", name: "Long Beach Import Hub", address: "441 Harbor Blvd, Long Beach, CA", notes: "Receives container freight from Shenzhen" },
 ];
 
 /** Parent -> subcategories, matching the scope's two-level tree. */
 const CATEGORY_TREE: Record<string, string[]> = {
-  Apparel: ["T-Shirts", "Outerwear"],
-  Accessories: ["Headwear", "Bags"],
-  Homeware: ["Drinkware"],
-  Electronics: ["Cables", "Power", "Hubs"],
+  Robotics: ["Quadrupeds", "Humanoids"],
+  Aerial: ["Agricultural Drones", "Batteries"],
+  Additive: ["3D Printers", "Filament"],
+  Parts: ["Manipulators", "Spares"],
 };
 
 /** [sku, name, subcategory, brand, costUSD, priceUSD, weight, l, w, h, barcode?] */
 const PRODUCTS: [string, string, string, string, number, number, number, number, number, number, string?][] = [
-  ["APP-TEE-BLK-M", "Heavyweight Tee — Black, M", "T-Shirts", "Northline", 6.5, 24, 0.22, 30, 24, 3],
-  ["APP-TEE-WHT-L", "Heavyweight Tee — White, L", "T-Shirts", "Northline", 6.5, 24, 0.24, 30, 24, 3],
-  ["APP-HOOD-NVY-L", "Fleece Hoodie — Navy, L", "Outerwear", "Northline", 18, 58, 0.68, 36, 28, 6],
-  ["ACC-CAP-001", "Six-Panel Cap — Olive", "Headwear", "Northline", 4.25, 19, 0.11, 22, 20, 12],
-  ["ACC-BAG-TOTE", "Canvas Tote Bag — 16oz", "Bags", "Harbourgoods", 5.1, 22, 0.35, 40, 36, 2],
-  ["HOM-MUG-350", "Enamel Mug — 350ml", "Drinkware", "Harbourgoods", 3.8, 16, 0.31, 12, 9, 9],
-  ["HOM-BTL-750", "Insulated Bottle — 750ml", "Drinkware", "Harbourgoods", 9.4, 34, 0.42, 28, 8, 8],
-  ["ELE-CBL-USBC-2M", "USB-C Braided Cable — 2m", "Cables", "Voltwork", 2.15, 12, 0.09, 12, 10, 3],
-  ["ELE-PWR-10K", "Power Bank — 10,000mAh", "Power", "Voltwork", 11.5, 39, 0.23, 15, 8, 3],
-  ["ELE-HUB-4PT", "4-Port USB-C Hub", "Hubs", "Voltwork", 8.9, 32, 0.14, 14, 9, 3, "5060123456789"],
+  ["UT-GO2-AIR", "Unitree Go2 AIR quadruped", "Quadrupeds", "Unitree", 1250, 1999, 15, 70, 31, 40],
+  ["UT-GO2-PRO", "Unitree Go2 PRO quadruped", "Quadrupeds", "Unitree", 1950, 2800, 15.5, 70, 31, 40],
+  ["UT-G1-EDU", "Unitree G1 EDU humanoid (23 DoF)", "Humanoids", "Unitree", 16000, 21500, 35, 69, 45, 128],
+  ["UT-DEX3-PAIR", "Unitree Dex3-1 dexterous hand (pair)", "Manipulators", "Unitree", 2400, 3400, 1.2, 28, 16, 12],
+  ["BL-X1C-AMS", "Bambu Lab X1-Carbon + AMS combo", "3D Printers", "Bambu Lab", 1150, 1599, 20.4, 49, 49, 52],
+  ["BL-PLA-1KG", "Bambu Lab PLA Basic filament — 1kg", "Filament", "Bambu Lab", 14, 24, 1.25, 20, 20, 7],
+  ["BL-A1-MINI", "Bambu Lab A1 mini", "3D Printers", "Bambu Lab", 210, 299, 5.5, 35, 35, 38],
+  ["XAG-P100-PROP", "XAG P100 Pro propeller set", "Spares", "XAG", 48, 95, 0.9, 62, 18, 6],
+  ["XAG-B13960", "XAG B13960S smart flight battery", "Batteries", "XAG", 1400, 1950, 12.8, 42, 26, 18],
+  ["XAG-P100-PRO", "XAG P100 Pro agricultural drone", "Agricultural Drones", "XAG", 9800, 13500, 52, 130, 120, 65, "6970003561004"],
 ];
 
 /** Opening stock: [sku, warehouseCode, qty, unitCostUSD, reorderPoint] */
 const OPENING: [string, string, number, number, number][] = [
-  ["APP-TEE-BLK-M", "MAIN", 240, 6.2, 50],
-  ["APP-TEE-BLK-M", "SEC", 60, 6.5, 20],
-  ["APP-TEE-WHT-L", "MAIN", 185, 6.4, 50],
-  ["APP-TEE-WHT-L", "WEST", 40, 6.6, 20],
-  ["APP-HOOD-NVY-L", "MAIN", 74, 17.5, 25],
-  ["APP-HOOD-NVY-L", "SEC", 8, 18.2, 15],
-  ["ACC-CAP-001", "MAIN", 130, 4.1, 30],
-  ["ACC-BAG-TOTE", "MAIN", 6, 5.0, 25],
-  ["ACC-BAG-TOTE", "WEST", 95, 5.2, 20],
-  ["HOM-MUG-350", "MAIN", 310, 3.65, 60],
-  ["HOM-MUG-350", "SEC", 120, 3.8, 30],
-  ["HOM-BTL-750", "WEST", 52, 9.2, 20],
-  ["ELE-CBL-USBC-2M", "MAIN", 480, 2.05, 100],
-  ["ELE-PWR-10K", "MAIN", 9, 11.2, 40],
-  ["ELE-PWR-10K", "WEST", 22, 11.4, 15],
-  ["ELE-HUB-4PT", "MAIN", 64, 8.7, 25],
-  ["ELE-HUB-4PT", "SEC", 3, 9.1, 10],
+  ["UT-GO2-AIR", "MAIN", 24, 1235, 8],
+  ["UT-GO2-AIR", "SEC", 6, 1260, 4],
+  ["UT-GO2-PRO", "MAIN", 18, 1930, 6],
+  ["UT-GO2-PRO", "WEST", 5, 1965, 3],
+  ["UT-G1-EDU", "MAIN", 7, 15800, 3],
+  ["UT-G1-EDU", "SEC", 1, 16200, 2],
+  ["UT-DEX3-PAIR", "MAIN", 13, 2380, 4],
+  ["BL-X1C-AMS", "MAIN", 2, 1140, 10],
+  ["BL-X1C-AMS", "WEST", 34, 1155, 8],
+  ["BL-PLA-1KG", "MAIN", 310, 13.6, 60],
+  ["BL-PLA-1KG", "SEC", 120, 14.2, 30],
+  ["BL-A1-MINI", "WEST", 26, 206, 10],
+  ["XAG-P100-PROP", "MAIN", 180, 46.5, 40],
+  ["XAG-B13960", "MAIN", 4, 1385, 16],
+  ["XAG-B13960", "WEST", 11, 1410, 6],
+  ["XAG-P100-PRO", "MAIN", 6, 9700, 3],
+  ["XAG-P100-PRO", "SEC", 1, 9850, 2],
 ];
 
 const CUSTOMERS = [
-  { name: "Bridge Street Outfitters", email: "buying@bridgestreet.example", phone: "+1 212 555 0134" },
-  { name: "Harborline Retail", email: "orders@harborline.example", phone: "+1 312 555 0188" },
-  { name: "Cascade General Store", email: "hello@cascadegs.example" },
+  {
+    name: "Cascadia Robotics Lab",
+    email: "research@cascadiarobotics.example",
+    phone: "+1 206 555 0142",
+    address: "1400 NW Market St, Suite 300\nSeattle, WA 98107",
+  },
+  {
+    name: "Prairie AgWorks",
+    email: "dispatch@prairieagworks.example",
+    phone: "+1 316 555 0178",
+    address: "22 County Road 9\nHutchinson, KS 67501",
+  },
+  {
+    name: "Foundry Makerspace",
+    email: "shop@foundrymakerspace.example",
+    address: "515 S Flower St, Unit B\nLos Angeles, CA 90071",
+  },
 ];
 
 const VENDORS = [
-  { name: "Cotton Mills Ltd", email: "sales@cottonmills.example" },
-  { name: "Voltwork Manufacturing", email: "accounts@voltwork.example" },
-  { name: "Harbourgoods Supply", email: "trade@harbourgoods.example" },
+  { name: "Unitree Robotics", email: "sales@unitree.example" },
+  { name: "XAG Co., Ltd", email: "accounts@xag.example" },
+  { name: "Bambu Lab", email: "trade@bambulab.example" },
 ];
 
 const EMPLOYEES = [
@@ -251,21 +265,21 @@ async function main() {
   });
 
   // --- A sales order sitting unpacked and uninvoiced ------------------------
-  const teeId = products.get("APP-TEE-BLK-M")!;
-  const capId = products.get("ACC-CAP-001")!;
+  const go2AirId = products.get("UT-GO2-AIR")!;
+  const dex3Id = products.get("UT-DEX3-PAIR")!;
   const main = warehouses.get("MAIN")!;
   const west = warehouses.get("WEST")!;
 
   const draftLines = [
-    { productId: teeId, warehouseId: main, quantity: 24, unitPriceCents: usd(24) },
-    { productId: capId, warehouseId: main, quantity: 12, unitPriceCents: usd(19) },
+    { productId: go2AirId, warehouseId: main, quantity: 3, unitPriceCents: usd(1999) },
+    { productId: dex3Id, warehouseId: main, quantity: 2, unitPriceCents: usd(3400) },
   ];
   const draftSubtotal = draftLines.reduce((s, l) => s + l.unitPriceCents * l.quantity, 0);
   await prisma.salesOrder.create({
     data: {
       orderNumber: "SO-001001",
-      customerId: customers.get("Bridge Street Outfitters")!,
-      customerName: "Bridge Street Outfitters",
+      customerId: customers.get("Cascadia Robotics Lab")!,
+      customerName: "Cascadia Robotics Lab",
       employeeId: employees.get("Dana Reyes")!,
       readinessStatus: "NOT_PACKED",
       paymentStatus: "AWAITING_PAYMENT",
@@ -282,11 +296,11 @@ async function main() {
   });
 
   // --- A packed, invoiced and paid order, ready to ship --------------------
-  const mugId = products.get("HOM-MUG-350")!;
-  const cblId = products.get("ELE-CBL-USBC-2M")!;
+  const propId = products.get("XAG-P100-PROP")!;
+  const batteryId = products.get("XAG-B13960")!;
   const packedLines = [
-    { productId: mugId, warehouseId: main, quantity: 40, unitPriceCents: usd(16) },
-    { productId: cblId, warehouseId: main, quantity: 60, unitPriceCents: usd(12) },
+    { productId: propId, warehouseId: main, quantity: 24, unitPriceCents: usd(95) },
+    { productId: batteryId, warehouseId: main, quantity: 2, unitPriceCents: usd(1950) },
   ];
   const packedSubtotal = packedLines.reduce((s, l) => s + l.unitPriceCents * l.quantity, 0);
   const packedTax = Math.round(packedSubtotal * 0.08);
@@ -295,8 +309,8 @@ async function main() {
   const packed = await prisma.salesOrder.create({
     data: {
       orderNumber: "SO-001002",
-      customerId: customers.get("Harborline Retail")!,
-      customerName: "Harborline Retail",
+      customerId: customers.get("Prairie AgWorks")!,
+      customerName: "Prairie AgWorks",
       employeeId: employees.get("Sam Okafor")!,
       readinessStatus: "PACKED",
       paymentStatus: "PAID",
@@ -397,14 +411,14 @@ async function main() {
   });
 
   // --- A saved PO (incoming stock) and a posted one awaiting delivery ------
-  const hoodId = products.get("APP-HOOD-NVY-L")!;
-  const savedLines = [{ productId: hoodId, warehouseId: main, quantity: 150, unitCostCents: usd(17.8) }];
+  const g1Id = products.get("UT-G1-EDU")!;
+  const savedLines = [{ productId: g1Id, warehouseId: main, quantity: 4, unitCostCents: usd(15800) }];
   const savedSubtotal = savedLines.reduce((s, l) => s + l.unitCostCents * l.quantity, 0);
   const savedPo = await prisma.purchaseOrder.create({
     data: {
       poNumber: "PO-002001",
-      vendorId: vendors.get("Cotton Mills Ltd")!,
-      supplierName: "Cotton Mills Ltd",
+      vendorId: vendors.get("Unitree Robotics")!,
+      supplierName: "Unitree Robotics",
       employeeId: employees.get("Dana Reyes")!,
       status: "SAVED",
       subtotalCents: savedSubtotal,
@@ -426,18 +440,18 @@ async function main() {
     });
   }
 
-  const pwrId = products.get("ELE-PWR-10K")!;
-  const hubId = products.get("ELE-HUB-4PT")!;
+  const restockBatteryId = products.get("XAG-B13960")!;
+  const p100Id = products.get("XAG-P100-PRO")!;
   const postedLines = [
-    { productId: pwrId, warehouseId: main, quantity: 200, unitCostCents: usd(11.35) },
-    { productId: hubId, warehouseId: west, quantity: 80, unitCostCents: usd(8.75) },
+    { productId: restockBatteryId, warehouseId: main, quantity: 24, unitCostCents: usd(1380) },
+    { productId: p100Id, warehouseId: west, quantity: 6, unitCostCents: usd(9650) },
   ];
   const postedSubtotal = postedLines.reduce((s, l) => s + l.unitCostCents * l.quantity, 0);
   const postedPo = await prisma.purchaseOrder.create({
     data: {
       poNumber: "PO-002002",
-      vendorId: vendors.get("Voltwork Manufacturing")!,
-      supplierName: "Voltwork Manufacturing",
+      vendorId: vendors.get("XAG Co., Ltd")!,
+      supplierName: "XAG Co., Ltd",
       employeeId: employees.get("Sam Okafor")!,
       status: "POSTED",
       subtotalCents: postedSubtotal,
@@ -499,12 +513,12 @@ async function main() {
   // --- A transfer waiting to be started ------------------------------------
   await prisma.stockTransfer.create({
     data: {
-      productId: products.get("ACC-BAG-TOTE")!,
+      productId: products.get("BL-X1C-AMS")!,
       fromWarehouseId: west,
       toWarehouseId: main,
-      quantity: 30,
+      quantity: 12,
       status: "DRAFT",
-      notes: "Rebalance totes toward Main",
+      notes: "Newark is down to 2 X1-Carbons; Long Beach took the last container",
     },
   });
 
