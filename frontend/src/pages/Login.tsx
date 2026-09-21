@@ -3,11 +3,20 @@ import { useState } from "react";
 import { useAuth } from "../auth";
 import { errorMessage } from "../components/ui";
 
-/** Hard-coded demo login. No reset, no session, no token. */
+/**
+ * Sign-in.
+ *
+ * The fields start EMPTY and there is no credential hint. Both used to be
+ * prefilled with `demo@user.com` / `password`, an account that exists in
+ * neither the local nor the production database — so the first thing anyone
+ * did in this product was submit a credential that fails. It was quoted into
+ * a design brief as current and cost a day, then blocked two separate
+ * reviewers in one session. A hint that is wrong is worse than no hint.
+ */
 export default function Login() {
   const { login } = useAuth();
-  const [email, setEmail] = useState("demo@user.com");
-  const [password, setPassword] = useState("password");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -35,28 +44,40 @@ export default function Login() {
             <Stack gap={2}>
               <Title order={3}>Stockroom</Title>
               <Text size="sm" c="dimmed">
-                Inventory demo — sign in with the demo account.
+                Sign in to continue.
               </Text>
             </Stack>
             {error && <Alert color="red">{error}</Alert>}
             <TextInput
               label="Email"
+              type="email"
               value={email}
               onChange={(e) => setEmail(e.currentTarget.value)}
               autoComplete="username"
+              required
+              autoFocus
             />
             <PasswordInput
               label="Password"
               value={password}
               onChange={(e) => setPassword(e.currentTarget.value)}
               autoComplete="current-password"
+              required
             />
-            <Button type="submit" loading={busy} fullWidth>
+            <Button type="submit" loading={busy} fullWidth disabled={!email || !password}>
               Sign in
             </Button>
-            <Text size="xs" c="dimmed" ta="center">
-              demo@user.com / password
-            </Text>
+            {/*
+              A free instance sleeps after 15 minutes and takes ~30s to wake,
+              and the spinner alone reads as a hang on the first sign-in of the
+              day. Saying so costs nothing and stops people re-submitting.
+            */}
+            {busy && (
+              <Text size="xs" c="dimmed" ta="center">
+                Waking the server — the first sign-in of the day can take up to
+                30 seconds.
+              </Text>
+            )}
           </Stack>
         </form>
       </Card>

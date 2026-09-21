@@ -467,7 +467,31 @@ function authToken(): string | null {
   }
 }
 
+/**
+ * Fired when the server rejects a token we actually sent.
+ *
+ * A dead token used to leave the app rendering its whole shell with every
+ * panel showing "Could not load data — Sign in to use Stockroom", because the
+ * user object in localStorage outlived the token beside it. The sign-in form
+ * was unreachable without clearing site data by hand. Tokens expire, the API
+ * restarts with no AUTH_SECRET locally, and an account can be deactivated —
+ * all three land here.
+ */
+export const SESSION_EXPIRED_EVENT = "stockroom:session-expired";
+
+function abandonSession() {
+  try {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(DEMO_USER_KEY);
+    localStorage.removeItem(ACTING_ROLE_KEY);
+  } catch {
+    /* private browsing: nothing was stored, nothing to clear */
+  }
+  window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const sentToken = authToken();
   const res = await fetch(`/api${path}`, {
     ...init,
     headers: {
@@ -489,6 +513,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const body = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
+    // Only when we PRESENTED a token. A 401 from /auth/login is a wrong
+    // password, not an expired session, and clearing state there would wipe a
+    // perfectly good session because someone fat-fingered a retry.
+    if (res.status === 401 && sentToken) abandonSession();
     throw new ApiError(res.status, body?.error ?? res.statusText, body?.details);
   }
   return body as T;

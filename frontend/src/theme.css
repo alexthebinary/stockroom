@@ -29,7 +29,15 @@
   --accent-soft: rgba(42, 95, 212, 0.1);
 
   /* Mantine's default dimmed is gray-6 (#868e96) at 3.32:1 on white — below
-     the 4.5:1 body-text floor. gray-7 measures 8.18:1. */
+     the 4.5:1 body-text floor. gray-7 measures 8.18:1.
+
+     ⚠️ This override lived on a plain `:root` (specificity 0,1,0) and NEVER
+     APPLIED: Mantine declares the same variable under
+     `:root[data-mantine-color-scheme='light']` (0,2,0), which wins regardless
+     of import order. The token read #868e96 at runtime and 19 elements sat at
+     3.1–3.3:1 while this comment claimed they were fixed. Matching the
+     attribute selector is what makes it take effect — verify with
+     getComputedStyle, not by reading this file. */
   --mantine-color-dimmed: var(--mantine-color-gray-7);
 
   /* Depth is offset plus blur. A flat halo is decoration, not elevation. */
@@ -496,6 +504,11 @@ h3,
   }
 
   a { text-decoration: none; color: #000 !important; }
+}
+
+/* Same token, at the specificity Mantine uses, so it actually wins. */
+:root[data-mantine-color-scheme="light"] {
+  --mantine-color-dimmed: var(--mantine-color-gray-7);
 }
 
 /* ---- Receive dock ------------------------------------------------------- */

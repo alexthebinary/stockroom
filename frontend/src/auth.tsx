@@ -1,5 +1,19 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { api, ACTING_ROLE_KEY, AUTH_TOKEN_KEY, DEMO_USER_KEY } from "./api";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  api,
+  ACTING_ROLE_KEY,
+  AUTH_TOKEN_KEY,
+  DEMO_USER_KEY,
+  SESSION_EXPIRED_EVENT,
+} from "./api";
 
 export type Capabilities = { stock: boolean; money: boolean; users: boolean };
 export type DemoUser = {
@@ -52,6 +66,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(AUTH_TOKEN_KEY, res.token);
     localStorage.setItem(DEMO_USER_KEY, JSON.stringify(res.user));
     setUser(res.user);
+  }, []);
+
+  // The API layer clears storage the moment a token is rejected; this is what
+  // turns that into a render, so the sign-in form actually appears instead of
+  // a shell full of failed panels.
+  useEffect(() => {
+    const onExpired = () => setUser(null);
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, []);
 
   const logout = useCallback(() => {

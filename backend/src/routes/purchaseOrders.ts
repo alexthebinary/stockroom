@@ -39,6 +39,22 @@ const createSchema = z.object({
     .min(1, "A purchase order needs at least one line"),
 });
 
+const payBillSchema = z.object({
+  /// Omitted means "settle what is left", which is what every caller meant
+  /// before this field existed.
+  amountCents: z.number().int().optional(),
+  method: z.string().optional(),
+});
+
+/** Money actually paid against a bill: live payments only, always summed fresh. */
+async function paidAgainstBill(tx: { payment: { findMany: Function } }, billId: number) {
+  const payments = await tx.payment.findMany({
+    where: { billId, status: { not: "VOID" } },
+    select: { amountCents: true },
+  });
+  return payments.reduce((sum: number, p: { amountCents: number }) => sum + p.amountCents, 0);
+}
+
 const include = {
   lines: { include: { product: true, warehouse: true } },
   vendor: true,
@@ -234,7 +250,8 @@ purchaseOrdersRouter.post(
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
-    const method = String(req.body?.method ?? "BANK");
+    const body = parseBody(payBillSchema, req.body ?? {});
+    const method = body.method ?? "BANK";
 
     const result = await prisma.$transaction(async (tx) => {
       const current = await tx.purchaseOrder.findUnique({ where: { id }, include });
@@ -246,23 +263,38 @@ purchaseOrdersRouter.post(
       }
       const bill = current.bills.find((b) => b.status === "POSTED");
       if (!bill) throw badRequest("No posted bill found for this purchase order");
-      const alreadyPaid = await tx.payment.count({
-        where: { billId: bill.id, status: "POSTED" },
-      });
-      if (alreadyPaid > 0) throw conflict("This bill has already been paid");
+      // Counting payments was the old gate, and it closed the bill after the
+      // first one — so a deposit plus a balance, which is how capital equipment
+      // is actually bought, could not be recorded. Sum the money instead.
+      const alreadyPaidCents = await paidAgainstBill(tx, bill.id);
+      const outstandingCents = bill.totalCents - alreadyPaidCents;
+      if (outstandingCents <= 0) throw conflict("This bill has already been paid in full");
 
-      const claimed = await tx.purchaseOrder.updateMany({
-        where: { id, status: current.status },
-        // A delivered order stays delivered; only a posted one advances to PAID.
-        data: { status: current.status === "POSTED" ? "PAID" : "DELIVERED" },
-      });
-      if (claimed.count === 0) throw conflict("This purchase order was already changed");
+      const amountCents = body.amountCents ?? outstandingCents;
+      if (amountCents <= 0) throw badRequest("A payment has to be for a positive amount");
+      if (amountCents > outstandingCents) {
+        // Overpaying a vendor creates a debit balance with them, which is a
+        // real event with its own accounting — not something to fake here.
+        throw badRequest(
+          `That is more than is owed: ${outstandingCents} remains on ${bill.billNumber}`
+        );
+      }
+
+      const settles = amountCents === outstandingCents;
+      if (settles) {
+        const claimed = await tx.purchaseOrder.updateMany({
+          where: { id, status: current.status },
+          // A delivered order stays delivered; only a posted one advances to PAID.
+          data: { status: current.status === "POSTED" ? "PAID" : "DELIVERED" },
+        });
+        if (claimed.count === 0) throw conflict("This purchase order was already changed");
+      }
 
       const payment = await tx.payment.create({
         data: {
           paymentNumber: await nextPaymentNumber(tx),
           direction: "DISBURSEMENT",
-          amountCents: bill.totalCents,
+          amountCents,
           method,
           status: "POSTED",
           billId: bill.id,
@@ -272,14 +304,21 @@ purchaseOrdersRouter.post(
 
       const entry = await postSimple(tx, {
         transactionType: TRANSACTION_TYPE.PURCHASE_PAYMENT,
-        amountCents: bill.totalCents,
-        memo: `Payment ${payment.paymentNumber} against ${bill.billNumber}`,
+        amountCents,
+        memo: settles
+          ? `Payment ${payment.paymentNumber} against ${bill.billNumber}`
+          : `Part payment ${payment.paymentNumber} against ${bill.billNumber} (${amountCents} of ${bill.totalCents})`,
         referenceType: "PAYMENT",
         referenceId: payment.id,
         actor,
       });
 
-      return { payment, entry, order: await tx.purchaseOrder.findUniqueOrThrow({ where: { id }, include }) };
+      return {
+        payment,
+        entry,
+        outstandingCents: outstandingCents - amountCents,
+        order: await tx.purchaseOrder.findUniqueOrThrow({ where: { id }, include }),
+      };
     });
 
     res.status(201).json(result);
