@@ -20,6 +20,13 @@ import { PageHeader, QueryState } from "../components/ui";
  * action sits at the bottom of the screen where a thumb reaches.
  */
 
+/** Accept a bare array or a paginated `{data: [...]}` envelope. */
+function rows(payload: any): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
 type ScanResult = {
   outcome: "received" | "retry" | "escalate";
   serial: string | null;
@@ -39,14 +46,24 @@ export default function Receive() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [status, setStatus] = useState<{ tone: "ok" | "warn" | "retry"; text: string } | null>(null);
 
+  /**
+   * ⚠️ SHAPES DIFFER BETWEEN ENDPOINTS, and assuming one crashed this page.
+   * `/warehouses` is PAGINATED and answers `{data: [...], total}`; my own
+   * `/receiving/expected` answers a bare array. Written against the assumed
+   * array shape, this page threw "(warehouses.data ?? []).map is not a
+   * function" and rendered NOTHING after login — and it shipped, because the
+   * endpoints were tested with curl and the page was never opened in a browser.
+   * `rows()` accepts either, so a future endpoint gaining pagination cannot
+   * silently blank the screen again.
+   */
   const warehouses = useQuery({
     queryKey: ["warehouses"],
-    queryFn: () => api.get<any[]>("/warehouses"),
+    queryFn: () => api.get<any>("/warehouses"),
   });
 
   const expected = useQuery({
     queryKey: ["receiving-expected", warehouseId],
-    queryFn: () => api.get<any[]>(`/receiving/expected?warehouseId=${warehouseId}`),
+    queryFn: () => api.get<any>(`/receiving/expected?warehouseId=${warehouseId}`),
     enabled: Boolean(warehouseId),
     refetchInterval: 30_000,
   });
@@ -82,7 +99,7 @@ export default function Receive() {
     },
   });
 
-  const orders = expected.data ?? [];
+  const orders = rows(expected.data);
 
   return (
     <Stack gap="md" pb={96}>
@@ -94,7 +111,7 @@ export default function Receive() {
         placeholder="Pick where you are"
         value={warehouseId}
         onChange={setWarehouseId}
-        data={(warehouses.data ?? []).map((w: any) => ({ value: String(w.id), label: `${w.code} — ${w.name}` }))}
+        data={rows(warehouses.data).map((w: any) => ({ value: String(w.id), label: `${w.code} — ${w.name}` }))}
         styles={{ input: { height: 56, fontSize: 18 } }}
       />
 
