@@ -41,6 +41,7 @@ const MOVEMENT_EFFECTS: [string, string, string][] = [
   ["TRANSFER_IN", "Goods arrive at the destination", "destination on hand ↑, layers rebuilt at original cost and age"],
   ["ADJUSTMENT_IN", "Stock written on", "on hand ↑, a layer is created at the cost given"],
   ["ADJUSTMENT_OUT", "Stock written off", "on hand ↓, layers consumed at their real cost"],
+  ["REPAIR_CONSUMPTION", "Parts pulled for a repair", "on hand ↓, layers consumed, posted to Repair Parts Expense — never COGS"],
 ];
 
 function Section({
@@ -247,8 +248,8 @@ export default function About() {
         <TransferFlow />
         <Text size="xs" c="dimmed" mt="sm">
           Note what is <em>not</em> a movement: reserving stock and booking incoming stock change
-          availability but move no goods, so they write no audit row and post nothing. The six
-          movement types below are the complete set.
+          availability but move no goods, so they write no audit row and post nothing. The
+          {" "}{MOVEMENT_EFFECTS.length} movement types below are the complete set.
         </Text>
       </Section>
 

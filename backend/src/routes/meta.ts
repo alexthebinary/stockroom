@@ -74,6 +74,14 @@ metaRouter.get(
       adjustments,
       salesOrderLines,
       purchaseOrderLines,
+      serialUnits,
+      serialCorrections,
+      warrantyPolicies,
+      repairOrders,
+      repairPartLines,
+      shopifyLinks,
+      shopifyLocations,
+      vendorAliases,
     ] = await Promise.all([
       prisma.product.count(),
       prisma.productCategory.count(),
@@ -100,6 +108,14 @@ metaRouter.get(
       prisma.stockAdjustment.count(),
       prisma.salesOrderLine.count(),
       prisma.purchaseOrderLine.count(),
+      prisma.serialUnit.count(),
+      prisma.serialCorrection.count(),
+      prisma.warrantyPolicy.count(),
+      prisma.repairOrder.count(),
+      prisma.repairPartLine.count(),
+      prisma.shopifyLink.count(),
+      prisma.shopifyLocation.count(),
+      prisma.vendorProductAlias.count(),
     ]);
 
     res.json({
@@ -198,6 +214,35 @@ metaRouter.get(
           entities: [
             { name: "StockTransfer", rows: transfers, note: "Cost and FIFO age travel with the goods" },
             { name: "StockAdjustment", rows: adjustments, note: "Mandatory reason; valued at FIFO cost on a decrease" },
+          ],
+        },
+        {
+          name: "Serialised stock",
+          blurb:
+            "Individual units tracked by serial number, for warranty and RMA. A serialised product gets ONE cost layer per unit with a SerialUnit pointing at it, so \"in-stock serials equals on-hand quantity\" holds by construction rather than by a reconciliation job. Products opt in with trackingMode = SERIAL; everything else is unchanged.",
+          entities: [
+            { name: "SerialUnit", rows: serialUnits, note: "One physical unit. lotId null means it is in our custody but NOT our asset" },
+            { name: "SerialCorrection", rows: serialCorrections, note: "Every relabel, kept forever — a fixed serial must not look like one that was always right" },
+            { name: "VendorProductAlias", rows: vendorAliases, note: "What a vendor calls a product. Unitree ships names and serials with no SKU" },
+          ],
+        },
+        {
+          name: "Service and repair",
+          blurb:
+            "A customer's unit on our bench is not our asset, so taking it in moves no stock and posts nothing. Only two things here reach the ledger: parts consumed from our own stock, and a replacement unit given away. Neither posts to COGS, because no revenue is matched against them.",
+          entities: [
+            { name: "RepairOrder", rows: repairOrders, note: "Custody and workflow only; no ledger effect on intake" },
+            { name: "RepairPartLine", rows: repairPartLines, note: "Parts pulled from stock — posts Dr Repair Parts Expense, never COGS" },
+            { name: "WarrantyPolicy", rows: warrantyPolicies, note: "Duration by brand or product. Coverage is DERIVED at query time, never stored" },
+          ],
+        },
+        {
+          name: "Sales channels",
+          blurb:
+            "Stockroom owns quantity. Orders arrive inbound as real sales orders through the ordinary costing path; quantities only ever go OUT. An inbound quantity write would create stock with no cost layer behind it.",
+          entities: [
+            { name: "ShopifyLink", rows: shopifyLinks, note: "Product to variant. Holds the last pushed quantity, which is the compare-and-set guard" },
+            { name: "ShopifyLocation", rows: shopifyLocations, note: "Warehouse to Shopify location" },
           ],
         },
       ],
