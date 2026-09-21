@@ -19,3 +19,7 @@ backend/prisma/postgres/schema.prisma
 
 # Playwright artifacts
 .playwright-mcp/
+
+# Database dumps taken before a destructive operation. Real customer data and
+# password hashes; never committed.
+.backups/

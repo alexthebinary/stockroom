@@ -1,5 +1,5 @@
 import { hashPassword } from "../src/auth";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { CHART_OF_ACCOUNTS, JOURNAL_TEMPLATES } from "../src/accounts";
 
 const prisma = new PrismaClient();
@@ -87,33 +87,55 @@ const EMPLOYEES = [
   { name: "Sam Okafor", email: "sam@stockroom.example", role: "MANAGER" },
 ];
 
+/**
+ * Empty every table the seed owns, whatever they are.
+ *
+ * This was a hand-written list in dependency order and it ROTTED: the eight
+ * models added on 2026-09-19 (SerialUnit, RepairOrder, WarrantyPolicy,
+ * VendorProductAlias, SerialCorrection, RepairPartLine, ShopifyLink,
+ * ShopifyLocation) were never added to it, so `npm run reset` died on
+ * `SerialUnit_productId_fkey` against any database holding serialised stock.
+ * It failed loudly, but only for whoever had serials — which is why it sat
+ * broken.
+ *
+ * So the order is no longer maintained by hand. Every model in the schema is
+ * deleted, retrying until a full pass clears nothing new: a foreign key that
+ * blocks a table this round is gone by the next, and adding a model to
+ * schema.prisma now needs no change here at all.
+ */
+const RESET_KEEP = new Set(["User"]); // sign-ins survive a reseed
+
 async function reset() {
-  // Children before parents.
-  await prisma.lotConsumption.deleteMany();
-  await prisma.inventoryLot.deleteMany();
-  await prisma.journalLine.deleteMany();
-  await prisma.journalEntry.deleteMany();
-  await prisma.journalTemplate.deleteMany();
-  await prisma.account.deleteMany();
-  await prisma.payment.deleteMany();
-  await prisma.invoice.deleteMany();
-  await prisma.bill.deleteMany();
-  await prisma.shipment.deleteMany();
-  await prisma.goodsReceipt.deleteMany();
-  await prisma.inventoryMovement.deleteMany();
-  await prisma.salesOrderLine.deleteMany();
-  await prisma.salesOrder.deleteMany();
-  await prisma.purchaseOrderLine.deleteMany();
-  await prisma.purchaseOrder.deleteMany();
-  await prisma.stockAdjustment.deleteMany();
-  await prisma.stockTransfer.deleteMany();
-  await prisma.inventoryBalance.deleteMany();
-  await prisma.product.deleteMany();
-  await prisma.productCategory.deleteMany();
-  await prisma.warehouse.deleteMany();
-  await prisma.customer.deleteMany();
-  await prisma.vendor.deleteMany();
-  await prisma.employee.deleteMany();
+  const models = Prisma.dmmf.datamodel.models
+    .map((m) => m.name)
+    .filter((name) => !RESET_KEEP.has(name));
+
+  let remaining = [...models];
+  while (remaining.length) {
+    const blocked: string[] = [];
+    let clearedSomething = false;
+
+    for (const name of remaining) {
+      const delegate = (prisma as never as Record<string, { deleteMany: () => Promise<unknown> }>)[
+        name.charAt(0).toLowerCase() + name.slice(1)
+      ];
+      try {
+        await delegate.deleteMany();
+        clearedSomething = true;
+      } catch {
+        // Almost certainly a foreign key still pointing here. Try again once
+        // the tables referencing it have gone.
+        blocked.push(name);
+      }
+    }
+
+    if (!clearedSomething) {
+      throw new Error(
+        `reset() cannot clear: ${blocked.join(", ")} — a cycle, or a relation it has no permission to delete`
+      );
+    }
+    remaining = blocked;
+  }
 }
 
 async function main() {
