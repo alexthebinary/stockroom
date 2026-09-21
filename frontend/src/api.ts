@@ -306,9 +306,71 @@ export type SalesOrder = {
   customer?: Party | null;
   employee?: Party | null;
   invoices?: { id: number; invoiceNumber: string; totalCents: number; status: string }[];
-  shipments?: { id: number; shipmentNumber: string; cogsCents: number; status: string }[];
+  shipments?: ShipmentOnOrder[];
   totalQuantity?: number;
   lineCount?: number;
+};
+
+/**
+ * A shipment as it appears on its own order.
+ *
+ * `trackingUrl` is derived server-side from carrier + number, so it is null
+ * until both exist — not undefined. The UI branches on null.
+ */
+export type ShipmentOnOrder = {
+  id: number;
+  shipmentNumber: string;
+  cogsCents: number;
+  status: string;
+  shippedAt: string;
+  carrier: string | null;
+  trackingNumber: string | null;
+  /** Asserted by a person. Stockroom cannot observe a delivery. */
+  deliveredAt: string | null;
+  trackingUrl: string | null;
+  warehouseId: number | null;
+};
+
+/** A row of the cross-order invoice list. */
+export type InvoiceRow = {
+  id: number;
+  invoiceNumber: string;
+  issueDate: string;
+  currency: string;
+  status: string;
+  subtotalCents: number;
+  taxCents: number;
+  shippingCents: number;
+  totalCents: number;
+  /** Both computed per request — a reversed payment must change them at once. */
+  amountPaidCents: number;
+  outstandingCents: number;
+  customerId: number;
+  customer?: Party | null;
+  salesOrderId: number | null;
+  salesOrder?: { id: number; orderNumber: string; readinessStatus: string } | null;
+};
+
+/** A row of the cross-order delivery list. */
+export type DeliveryRow = {
+  id: number;
+  shipmentNumber: string;
+  shippedAt: string;
+  status: string;
+  cogsCents: number;
+  carrier: string | null;
+  trackingNumber: string | null;
+  deliveredAt: string | null;
+  trackingUrl: string | null;
+  warehouseId: number | null;
+  warehouse?: { id: number; name: string; code: string } | null;
+  salesOrderId: number;
+  salesOrder?: {
+    id: number;
+    orderNumber: string;
+    customerName: string;
+    paymentStatus: string;
+  } | null;
 };
 
 export type PurchaseOrder = {

@@ -8,6 +8,7 @@ import {
   IconReceipt,
   IconStack2,
   IconTruckDelivery,
+  IconTruckLoading,
   IconSettings,
 } from "@tabler/icons-react";
 import { useEffect } from "react";
@@ -15,13 +16,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Tooltip } from "@mantine/core";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { api, type TrialBalance } from "./api";
-import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
 import About from "./pages/About";
 import Adjustments from "./pages/Adjustments";
 import Catalogs from "./pages/Catalogs";
 import Dashboard from "./pages/Dashboard";
+import Deliveries from "./pages/Deliveries";
 import Inventory from "./pages/Inventory";
+import Invoices from "./pages/Invoices";
 import Ledger from "./pages/Ledger";
 import Login from "./pages/Login";
 import ProductDetail from "./pages/ProductDetail";
@@ -57,11 +60,16 @@ type Section = {
 const SECTIONS: Section[] = [
   { label: "Home", icon: IconLayoutDashboard, to: "/" },
   {
+    // Invoices and Deliveries are cross-order views of documents that already
+    // existed only INSIDE an order. "Which invoices are unpaid" and "what is in
+    // transit" were answerable one order at a time and are now answerable.
     label: "Sales",
     icon: IconReceipt,
     to: "/sales-orders",
     items: [
       { to: "/sales-orders", label: "Orders" },
+      { to: "/invoices", label: "Invoices" },
+      { to: "/deliveries", label: "Deliveries" },
       { to: "/catalogs/customers", label: "Customers" },
     ],
   },
@@ -138,7 +146,7 @@ function SectionButton({ section, active }: { section: Section; active: boolean 
   const Icon = section.icon;
   return (
     <UnstyledButton
-      component={NavLink}
+      component={Link}
       to={section.to}
       className="rail-link"
       data-active={active || undefined}
@@ -195,24 +203,46 @@ function LedgerHealth() {
  * Reports, Settings and the master-data pages are desk work — nobody does them
  * one-handed on a warehouse floor — so they do not earn a permanent slot.
  */
-const PHONE_SECTIONS = ["Home", "Sales", "Purchases", "Inventory"];
+const PHONE_SECTIONS = ["Home", "Receive", "Sales", "Inventory"];
 
-function BottomBar({ current }: { current?: Section }) {
+/**
+ * Receive is a page inside Inventory, not a section. It gets a phone slot
+ * anyway because it is the highest-frequency action in the product and it was
+ * four interactions from the front door, reachable only by swiping a sub-rail
+ * that gave no sign it scrolled.
+ *
+ * Purchases yields the slot rather than Home: writing a purchase order is desk
+ * work that precedes the van, and the person holding a phone on the dock is
+ * receiving against one, not writing it.
+ */
+const PHONE_EXTRA: Section[] = [{ label: "Receive", icon: IconTruckLoading, to: "/receive" }];
+
+function BottomBar({ current, pathname }: { current?: Section; pathname: string }) {
+  const onReceive = pathname === "/receive" || pathname.startsWith("/receive/");
+  const items = [...SECTIONS, ...PHONE_EXTRA]
+    .filter((s) => PHONE_SECTIONS.includes(s.label))
+    .sort((a, b) => PHONE_SECTIONS.indexOf(a.label) - PHONE_SECTIONS.indexOf(b.label));
+
   return (
     <Box component="nav" className="bottom-bar" hiddenFrom="sm" aria-label="Main sections">
-      {SECTIONS.filter((s) => PHONE_SECTIONS.includes(s.label)).map((s) => (
-        <UnstyledButton
-          key={s.label}
-          component={NavLink}
-          to={s.to}
-          className="bottom-link"
-          data-active={s === current || undefined}
-          aria-current={s === current ? "page" : undefined}
-        >
-          <s.icon size={19} stroke={1.7} />
-          <span>{s.label}</span>
-        </UnstyledButton>
-      ))}
+      {items.map((s) => {
+        // Receive lives inside Inventory, so on /receive both would match and
+        // two tabs would light at once. The more specific one wins.
+        const active = s.label === "Receive" ? onReceive : !onReceive && s === current;
+        return (
+          <UnstyledButton
+            key={s.label}
+            component={Link}
+            to={s.to}
+            className="bottom-link"
+            data-active={active || undefined}
+            aria-current={active ? "page" : undefined}
+          >
+            <s.icon size={19} stroke={1.7} />
+            <span>{s.label}</span>
+          </UnstyledButton>
+        );
+      })}
     </Box>
   );
 }
@@ -223,6 +253,12 @@ export default function App() {
   const location = useLocation();
   const section = sectionFor(location.pathname);
   const subItems = section?.items;
+  // Mantine collapses the navbar with a transform alone, so it stays focusable
+  // and in the accessibility tree — on desktop, where it can never be opened,
+  // Tab walked 7 to 13 invisible links before reaching the page. `inert` is a
+  // real attribute that React 18's DOM typings predate, and Mantine spreads
+  // unknown props straight onto the element, so it is applied through a spread.
+  const drawerInert = (opened ? {} : { inert: "" }) as Record<string, unknown>;
 
   // A route change from inside the drawer must close it, or the next page
   // renders underneath an open overlay.
@@ -296,7 +332,7 @@ export default function App() {
 
         {subItems && (
           <Box component="nav" className="subrail" h={SUB_H} aria-label={`${section!.label} pages`}>
-            <ScrollArea type="never" h="100%">
+            <ScrollArea type="auto" h="100%" scrollbarSize={4}>
               <Group h={SUB_H} px="md" gap={2} wrap="nowrap">
                 {subItems.map((item) => (
                   <UnstyledButton
@@ -304,7 +340,6 @@ export default function App() {
                     component={NavLink}
                     to={item.to}
                     className="subrail-link"
-                    end
                   >
                     {item.label}
                   </UnstyledButton>
@@ -315,7 +350,7 @@ export default function App() {
         )}
       </AppShell.Header>
 
-      <AppShell.Navbar p="sm" className="drawer">
+      <AppShell.Navbar p="sm" className="drawer" {...drawerInert}>
         <ScrollArea>
           <Stack gap={2}>
             {SECTIONS.map((s) => (
@@ -337,7 +372,6 @@ export default function App() {
                       component={NavLink}
                       to={item.to}
                       className="drawer-link"
-                      end
                     >
                       {item.label}
                     </UnstyledButton>
@@ -372,6 +406,8 @@ export default function App() {
           <Route path="/inventory" element={<Inventory />} />
           <Route path="/sales-orders" element={<SalesOrders />} />
           <Route path="/sales-orders/:id" element={<SalesOrderDetail />} />
+          <Route path="/invoices" element={<Invoices />} />
+          <Route path="/deliveries" element={<Deliveries />} />
           <Route path="/purchase-orders" element={<PurchaseOrders />} />
           <Route path="/purchase-orders/:id" element={<PurchaseOrderDetail />} />
           <Route path="/transfers" element={<Transfers />} />
@@ -387,7 +423,7 @@ export default function App() {
         </Routes>
       </AppShell.Main>
 
-      <BottomBar current={section} />
+      <BottomBar current={section} pathname={location.pathname} />
     </AppShell>
   );
 }

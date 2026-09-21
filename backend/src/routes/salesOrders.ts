@@ -5,7 +5,7 @@ import { contains } from "../search";
 import { badRequest, conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, pagination, parseBody } from "../http";
 import { requireMoney, requireStock } from "../auth";
-import { companyDetails, renderInvoice } from "../pdf";
+import { companyDetails, renderAddressLabel, renderInvoice, renderPackingSlip } from "../pdf";
 import { CARRIERS, trackingUrl } from "../carriers";
 import { applyBalanceDelta, claimStatusTransition, recordMovement, reserveStock } from "../inventory";
 import { consumeSerials } from "../serials";
@@ -42,6 +42,29 @@ const createSchema = z.object({
     .min(1, "A sales order needs at least one line"),
 });
 
+const paySchema = z.object({
+  /// Omitted means "settle what is left", which is what every caller meant
+  /// before this field existed.
+  amountCents: z.number().int().optional(),
+  method: z.string().optional(),
+});
+
+const reversePaymentSchema = z.object({
+  reason: z.string().trim().min(1, "A reason is required — this reverses money already recorded"),
+  /// Which instalment. Omitted reverses the most recent live one, which is the
+  /// only thing that existed when an order could hold exactly one payment.
+  paymentId: z.number().int().positive().optional(),
+});
+
+/** Money actually received against an invoice: live payments only, always summed fresh. */
+async function paidAgainstInvoice(tx: { payment: { findMany: Function } }, invoiceId: number) {
+  const payments = await tx.payment.findMany({
+    where: { invoiceId, status: { not: "VOID" } },
+    select: { amountCents: true },
+  });
+  return payments.reduce((sum: number, p: { amountCents: number }) => sum + p.amountCents, 0);
+}
+
 const include = {
   lines: { include: { product: true, warehouse: true } },
   customer: true,
@@ -75,7 +98,7 @@ salesOrdersRouter.get(
 
     res.json({
       data: rows.map((o) => ({
-        ...o,
+        ...withTrackingUrls(o),
         totalQuantity: o.lines.reduce((s, l) => s + l.quantity, 0),
         lineCount: o.lines.length,
       })),
@@ -98,13 +121,169 @@ salesOrdersRouter.get(
   asyncHandler(async (_req, res) => res.json({ carriers: CARRIERS }))
 );
 
+/**
+ * A tracking link is derived, not stored, so it has to be attached on the way
+ * out of every read. POST /tracking already did this for its own response and
+ * the reads did not, which meant the link appeared when you saved a number and
+ * vanished when you reloaded the page.
+ */
+function withTrackingUrls<T extends { shipments?: { carrier: string | null; trackingNumber: string | null }[] }>(
+  order: T
+) {
+  if (!order.shipments) return order;
+  return {
+    ...order,
+    shipments: order.shipments.map((s) => ({
+      ...s,
+      trackingUrl: trackingUrl(s.carrier, s.trackingNumber),
+    })),
+  };
+}
+
+/**
+ * Invoices across every order.
+ *
+ * Declared BEFORE "/:id" — Express matches in declaration order and would
+ * otherwise read "invoices" as an order id.
+ *
+ * This exists because "which invoices are unpaid" was previously answerable
+ * only by opening sales orders one at a time. `outstanding` is computed here
+ * rather than stored: a payment can be reversed, so a cached balance is a
+ * second source of truth that goes stale silently.
+ */
+salesOrdersRouter.get(
+  "/invoices",
+  asyncHandler(async (req, res) => {
+    const { page, pageSize, skip, take } = pagination(req.query as Record<string, unknown>);
+    const status = String(req.query.status ?? "").trim();
+    const search = String(req.query.search ?? "").trim();
+    const settlement = String(req.query.settlement ?? "").trim();
+
+    const where = {
+      ...(status ? { status } : {}),
+      ...(search
+        ? {
+            OR: [
+              { invoiceNumber: contains(search) },
+              { customer: { name: contains(search) } },
+              { salesOrder: { orderNumber: contains(search) } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, rows] = await Promise.all([
+      prisma.invoice.count({ where }),
+      prisma.invoice.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { issueDate: "desc" },
+        include: {
+          customer: true,
+          salesOrder: { select: { id: true, orderNumber: true, readinessStatus: true } },
+          payments: { where: { status: { not: "VOID" } } },
+        },
+      }),
+    ]);
+
+    const mapped = rows.map(({ payments, ...invoice }) => {
+      const amountPaidCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
+      return {
+        ...invoice,
+        amountPaidCents,
+        outstandingCents: Math.max(invoice.totalCents - amountPaidCents, 0),
+      };
+    });
+
+    // Settlement is derived, so it cannot be a database filter without denormalising
+    // it. Paging happens first and this narrows the page, which is honest for a
+    // filter chip and wrong for a total — so the total is recomputed, not reused.
+    const filtered =
+      settlement === "PAID"
+        ? mapped.filter((i) => i.status !== "VOID" && i.outstandingCents === 0)
+        : settlement === "UNPAID"
+          ? mapped.filter((i) => i.status !== "VOID" && i.outstandingCents > 0)
+          : mapped;
+
+    res.json({
+      data: filtered,
+      page,
+      pageSize,
+      total: settlement ? filtered.length : total,
+      totalPages: Math.max(1, Math.ceil((settlement ? filtered.length : total) / pageSize)),
+      partialFilter: Boolean(settlement),
+    });
+  })
+);
+
+/**
+ * Deliveries across every order.
+ *
+ * `delivered` is a three-way filter and not a boolean, because "in transit"
+ * here means "nobody has told us it arrived" — Stockroom cannot observe a
+ * delivery and must not imply that it can.
+ */
+salesOrdersRouter.get(
+  "/shipments",
+  asyncHandler(async (req, res) => {
+    const { page, pageSize, skip, take } = pagination(req.query as Record<string, unknown>);
+    const delivered = String(req.query.delivered ?? "").trim();
+    const carrier = String(req.query.carrier ?? "").trim();
+    const search = String(req.query.search ?? "").trim();
+
+    const where = {
+      ...(delivered === "YES" ? { deliveredAt: { not: null } } : {}),
+      ...(delivered === "NO" ? { deliveredAt: null } : {}),
+      ...(carrier ? { carrier } : {}),
+      ...(search
+        ? {
+            OR: [
+              { shipmentNumber: contains(search) },
+              { trackingNumber: contains(search) },
+              { salesOrder: { orderNumber: contains(search) } },
+              { salesOrder: { customerName: contains(search) } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, rows] = await Promise.all([
+      prisma.shipment.count({ where }),
+      prisma.shipment.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { shippedAt: "desc" },
+        include: {
+          warehouse: { select: { id: true, name: true, code: true } },
+          salesOrder: {
+            select: { id: true, orderNumber: true, customerName: true, paymentStatus: true },
+          },
+        },
+      }),
+    ]);
+
+    res.json({
+      data: rows.map((s) => ({ ...s, trackingUrl: trackingUrl(s.carrier, s.trackingNumber) })),
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    });
+  })
+);
+
 salesOrdersRouter.get(
   "/:id",
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const order = await prisma.salesOrder.findUnique({ where: { id }, include });
     if (!order) throw notFound("Sales order not found");
-    res.json({ ...order, totalQuantity: order.lines.reduce((s, l) => s + l.quantity, 0) });
+    res.json({
+      ...withTrackingUrls(order),
+      totalQuantity: order.lines.reduce((s, l) => s + l.quantity, 0),
+    });
   })
 );
 
@@ -287,7 +466,8 @@ salesOrdersRouter.post(
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
-    const method = String(req.body?.method ?? "BANK");
+    const body = parseBody(paySchema, req.body ?? {});
+    const method = body.method ?? "BANK";
 
     const result = await prisma.$transaction(async (tx) => {
       const current = await tx.salesOrder.findUnique({ where: { id }, include });
@@ -303,17 +483,38 @@ salesOrdersRouter.post(
       const invoice = current.invoices.find((i) => i.status === "POSTED");
       if (!invoice) throw badRequest("No posted invoice found for this order");
 
-      const claimed = await tx.salesOrder.updateMany({
-        where: { id, paymentStatus: "INVOICED" },
-        data: { paymentStatus: "PAID" },
-      });
-      if (claimed.count === 0) throw conflict("This order was already paid");
+      // Recomputed inside the transaction rather than read from the order:
+      // instalments land one at a time and a stale balance is how an invoice
+      // quietly ends up overpaid.
+      const alreadyPaidCents = await paidAgainstInvoice(tx, invoice.id);
+      const outstandingCents = invoice.totalCents - alreadyPaidCents;
+      if (outstandingCents <= 0) throw conflict("This invoice is already settled in full");
+
+      const amountCents = body.amountCents ?? outstandingCents;
+      if (amountCents <= 0) throw badRequest("A payment has to be for a positive amount");
+      if (amountCents > outstandingCents) {
+        // Taking more than is owed is a credit balance, which is a real
+        // business event with its own accounting — not something to fake by
+        // letting this number go negative.
+        throw badRequest(
+          `That is more than is owed: ${outstandingCents} remains on ${invoice.invoiceNumber}`
+        );
+      }
+
+      const settles = amountCents === outstandingCents;
+      if (settles) {
+        const claimed = await tx.salesOrder.updateMany({
+          where: { id, paymentStatus: "INVOICED" },
+          data: { paymentStatus: "PAID" },
+        });
+        if (claimed.count === 0) throw conflict("This order was already paid");
+      }
 
       const payment = await tx.payment.create({
         data: {
           paymentNumber: await nextPaymentNumber(tx),
           direction: "RECEIPT",
-          amountCents: invoice.totalCents,
+          amountCents,
           method,
           status: "POSTED",
           invoiceId: invoice.id,
@@ -323,14 +524,21 @@ salesOrdersRouter.post(
 
       const entry = await postSimple(tx, {
         transactionType: TRANSACTION_TYPE.SALES_PAYMENT,
-        amountCents: invoice.totalCents,
-        memo: `Payment ${payment.paymentNumber} against ${invoice.invoiceNumber}`,
+        amountCents,
+        memo: settles
+          ? `Payment ${payment.paymentNumber} against ${invoice.invoiceNumber}`
+          : `Part payment ${payment.paymentNumber} against ${invoice.invoiceNumber} (${amountCents} of ${invoice.totalCents})`,
         referenceType: "PAYMENT",
         referenceId: payment.id,
         actor,
       });
 
-      return { payment, entry, order: await tx.salesOrder.findUniqueOrThrow({ where: { id }, include }) };
+      return {
+        payment,
+        entry,
+        outstandingCents: outstandingCents - amountCents,
+        order: await tx.salesOrder.findUniqueOrThrow({ where: { id }, include }),
+      };
     });
 
     res.status(201).json(result);
@@ -431,6 +639,50 @@ salesOrdersRouter.get(
 );
 
 /**
+ * The shipment documents.
+ *
+ * Both are rendered from the same record and the same query, so a slip and the
+ * label that goes on the same carton can never disagree about what is in it.
+ *
+ * NOT carrier postage. Stockroom buys nothing, validates no address and shops
+ * no rate (see carriers.ts) — the label identifies a parcel on a shelf and on a
+ * van, and a carrier's own scannable label goes on beside it.
+ */
+const shipmentForDocument = (shipmentId: number) =>
+  prisma.shipment.findUnique({
+    where: { id: shipmentId },
+    include: {
+      warehouse: true,
+      salesOrder: {
+        include: {
+          customer: true,
+          lines: { include: { product: true, warehouse: true } },
+        },
+      },
+    },
+  });
+
+salesOrdersRouter.get(
+  "/shipments/:shipmentId/packing-slip.pdf",
+  asyncHandler(async (req, res) => {
+    const shipmentId = intParam(req.params.shipmentId, "shipmentId");
+    const shipment = await shipmentForDocument(shipmentId);
+    if (!shipment) throw notFound("Shipment not found");
+    renderPackingSlip(res, shipment, companyDetails());
+  })
+);
+
+salesOrdersRouter.get(
+  "/shipments/:shipmentId/label.pdf",
+  asyncHandler(async (req, res) => {
+    const shipmentId = intParam(req.params.shipmentId, "shipmentId");
+    const shipment = await shipmentForDocument(shipmentId);
+    if (!shipment) throw notFound("Shipment not found");
+    renderAddressLabel(res, shipment, companyDetails());
+  })
+);
+
+/**
  * REVERSE A PAYMENT — an error correction, not a refund.
  *
  * These are two different business events and collapsing them into one verb is
@@ -449,28 +701,46 @@ salesOrdersRouter.post(
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
-    const reason = String(req.body?.reason ?? "").trim();
-    if (!reason) throw badRequest("A reason is required — this reverses money already recorded");
+    const body = parseBody(reversePaymentSchema, req.body ?? {});
+    const reason = body.reason;
 
     const result = await prisma.$transaction(async (tx) => {
       const current = await tx.salesOrder.findUnique({ where: { id }, include });
       if (!current) throw notFound("Sales order not found");
-      if (current.paymentStatus !== "PAID") {
-        throw conflict(`Only a paid order has a payment to reverse (this one is ${current.paymentStatus})`);
+      // Deliberately NOT gated on PAID. Once an invoice can be part paid, a
+      // mis-keyed deposit sits on an order that never reached PAID, and the old
+      // guard made exactly that mistake impossible to undo.
+      if (current.paymentStatus !== "PAID" && current.paymentStatus !== "INVOICED") {
+        throw conflict(`This order has no payment to reverse (it is ${current.paymentStatus})`);
       }
 
       const invoiceIds = current.invoices.map((i) => i.id);
-      const payment = await tx.payment.findFirst({
-        where: { invoiceId: { in: invoiceIds }, status: { not: "VOID" } },
-        orderBy: { id: "desc" },
-      });
-      if (!payment) throw conflict("There is no live payment on this order to reverse");
+      const payment = body.paymentId
+        ? await tx.payment.findFirst({
+            where: { id: body.paymentId, invoiceId: { in: invoiceIds }, status: { not: "VOID" } },
+          })
+        : await tx.payment.findFirst({
+            where: { invoiceId: { in: invoiceIds }, status: { not: "VOID" } },
+            orderBy: { id: "desc" },
+          });
+      if (!payment) {
+        throw conflict(
+          body.paymentId
+            ? `Payment ${body.paymentId} is not a live payment on this order`
+            : "There is no live payment on this order to reverse"
+        );
+      }
 
-      const claimed = await tx.salesOrder.updateMany({
-        where: { id, paymentStatus: "PAID" },
-        data: { paymentStatus: "INVOICED" },
-      });
-      if (claimed.count === 0) throw conflict("This order was already changed");
+      // Reversing any instalment means the invoice is no longer settled, so a
+      // PAID order becomes payable again. A part-paid order is already INVOICED
+      // and stays there.
+      if (current.paymentStatus === "PAID") {
+        const claimed = await tx.salesOrder.updateMany({
+          where: { id, paymentStatus: "PAID" },
+          data: { paymentStatus: "INVOICED" },
+        });
+        if (claimed.count === 0) throw conflict("This order was already changed");
+      }
 
       // Void the payment BEFORE reversing its entry: unpostEntry now refuses an
       // entry whose document still reads posted, and reverseDocumentEntry runs

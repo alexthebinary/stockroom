@@ -497,3 +497,60 @@ h3,
 
   a { text-decoration: none; color: #000 !important; }
 }
+
+/* ---- Receive dock ------------------------------------------------------- */
+
+/*
+ * The primary action of camera receiving is fixed to the bottom of the screen
+ * because that is where a thumb reaches. So is .bottom-bar, at z-index 200 and
+ * later in the DOM — so it painted over the button, and .has-bottom-bar could
+ * not help because padding moves flow content, not a fixed box.
+ *
+ * The dock outranks the bar and sits on top of it. Both stay reachable.
+ */
+.receive-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 201;
+  padding: 12px;
+  background: var(--mantine-color-body);
+  border-top: 1px solid var(--mantine-color-default-border);
+}
+
+/* Clear the dock alone; the nav bar is not shown at this width. */
+.receive-page {
+  padding-bottom: 96px;
+}
+
+@media (max-width: 47.99em) {
+  .receive-dock {
+    bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Dock (80px) stacked on the bar (52px), plus the notch. */
+  .receive-page {
+    padding-bottom: calc(148px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* ---- Sub-rail overflow -------------------------------------------------- */
+
+/*
+ * Inventory's six items measure ~565px against a 390px phone, so three of them
+ * scrolled off with no scrollbar and no other sign they existed. The mask makes
+ * the cut edge visible; ScrollArea type="auto" restores the scrollbar itself.
+ */
+.subrail {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+
+@media (min-width: 62em) {
+  /* Nothing overflows at desktop width, and a faded final item reads as a bug. */
+  .subrail {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}

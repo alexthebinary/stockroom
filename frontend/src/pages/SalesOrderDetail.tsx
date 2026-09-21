@@ -1,7 +1,23 @@
-import { Anchor, Card, Divider, Grid, Group, SimpleGrid, Table, Text, Title } from "@mantine/core";
+import {
+  Anchor,
+  Autocomplete,
+  Badge,
+  Button,
+  Card,
+  Divider,
+  Grid,
+  Group,
+  SimpleGrid,
+  Switch,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { api, type SalesOrder } from "../api";
+import { useState } from "react";
+import { api, type SalesOrder, type ShipmentOnOrder } from "../api";
 import { GatedButton } from "../components/GatedButton";
 import {
   PageHeader,
@@ -16,6 +32,142 @@ import {
 } from "../components/ui";
 
 type Verb = "pack" | "invoice" | "pay" | "ship" | "cancel" | "void-invoice";
+
+/**
+ * Carrier, tracking number and delivery for one shipment.
+ *
+ * Separate from /ship on purpose, and the backend enforces the same split: the
+ * number usually arrives after the van has gone, and recording it must never
+ * touch stock or the ledger. The goods left when they left.
+ *
+ * Delivery is a checkbox rather than a date picker because it is an assertion
+ * someone makes, not an observation Stockroom can perform — and an assertion
+ * can be retracted, so unticking it clears the date.
+ */
+function ShipmentTracking({
+  shipment,
+  orderId,
+}: {
+  shipment: ShipmentOnOrder;
+  orderId: number;
+}) {
+  const queryClient = useQueryClient();
+  const [carrier, setCarrier] = useState(shipment.carrier ?? "");
+  const [trackingNumber, setTrackingNumber] = useState(shipment.trackingNumber ?? "");
+
+  const carriers = useQuery({
+    queryKey: ["shipping-carriers"],
+    queryFn: () => api.get<{ carriers: string[] }>("/sales-orders/shipping-carriers"),
+    staleTime: Infinity,
+  });
+
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api.post<ShipmentOnOrder>(`/sales-orders/shipments/${shipment.id}/tracking`, body),
+    onSuccess: (_res, body) => {
+      toastOk(
+        "delivered" in body
+          ? body.delivered
+            ? "Marked delivered"
+            : "Delivery mark removed"
+          : "Tracking saved"
+      );
+      // Nothing here moves stock or money, so only the order and the delivery
+      // list need refreshing — not the blanket invalidation the verbs use.
+      queryClient.invalidateQueries({ queryKey: ["sales-order", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["deliveries"] });
+    },
+    onError: toastErr,
+  });
+
+  const dirty =
+    carrier.trim() !== (shipment.carrier ?? "") ||
+    trackingNumber.trim() !== (shipment.trackingNumber ?? "");
+
+  return (
+    <Card withBorder radius="md" p="md">
+      <Group justify="space-between" align="flex-start" mb="sm" wrap="wrap">
+        <div>
+          <Text fw={600}>{shipment.shipmentNumber}</Text>
+          <Text size="xs" c="dimmed">
+            Shipped {formatDate(shipment.shippedAt)}
+          </Text>
+        </div>
+        <Group gap="xs">
+          {shipment.deliveredAt ? (
+            <Badge variant="light" color="teal">
+              Delivered {formatDate(shipment.deliveredAt)}
+            </Badge>
+          ) : (
+            <Badge variant="light" color="blue">
+              In transit
+            </Badge>
+          )}
+          <Anchor
+            href={`/api/sales-orders/shipments/${shipment.id}/packing-slip.pdf`}
+            target="_blank"
+            rel="noopener"
+            size="xs"
+            fw={500}
+          >
+            Packing slip
+          </Anchor>
+          <Anchor
+            href={`/api/sales-orders/shipments/${shipment.id}/label.pdf`}
+            target="_blank"
+            rel="noopener"
+            size="xs"
+            fw={500}
+          >
+            Label
+          </Anchor>
+        </Group>
+      </Group>
+
+      <Group align="flex-end" gap="sm" wrap="wrap">
+        <Autocomplete
+          label="Carrier"
+          placeholder="UPS, FedEx, or type your own"
+          data={carriers.data?.carriers ?? []}
+          value={carrier}
+          onChange={setCarrier}
+          w={200}
+        />
+        <TextInput
+          label="Tracking number"
+          placeholder="The number the customer quotes"
+          value={trackingNumber}
+          onChange={(event) => setTrackingNumber(event.currentTarget.value)}
+          w={260}
+        />
+        <Button
+          variant="light"
+          disabled={!dirty}
+          loading={save.isPending && !("delivered" in (save.variables ?? {}))}
+          onClick={() =>
+            save.mutate({ carrier: carrier.trim(), trackingNumber: trackingNumber.trim() })
+          }
+        >
+          Save tracking
+        </Button>
+        {shipment.trackingUrl && (
+          <Anchor href={shipment.trackingUrl} target="_blank" rel="noreferrer" size="sm" pb={8}>
+            Track with {shipment.carrier}
+          </Anchor>
+        )}
+      </Group>
+
+      <Divider my="sm" />
+
+      <Switch
+        checked={Boolean(shipment.deliveredAt)}
+        onChange={(event) => save.mutate({ delivered: event.currentTarget.checked })}
+        label="Customer has confirmed delivery"
+        description="Stockroom cannot see a delivery. Ticking this records that somebody told us."
+      />
+    </Card>
+  );
+}
 
 export default function SalesOrderDetail() {
   const { id } = useParams();
@@ -257,7 +409,17 @@ export default function SalesOrderDetail() {
                               </Text>
                             </Table.Td>
                             <Table.Td ta="right">{money(sh.cogsCents)}</Table.Td>
-                                      <Table.Td w={110} />
+                            <Table.Td ta="right" w={110}>
+                              <Anchor
+                                href={`/api/sales-orders/shipments/${sh.id}/packing-slip.pdf`}
+                                target="_blank"
+                                rel="noopener"
+                                size="xs"
+                                fw={500}
+                              >
+                                Packing slip
+                              </Anchor>
+                            </Table.Td>
                           </Table.Tr>
                         ))}
                       </Table.Tbody>
@@ -283,6 +445,23 @@ export default function SalesOrderDetail() {
                 </Card>
               </Grid.Col>
             </Grid>
+
+            {(data.shipments?.length ?? 0) > 0 && (
+              <>
+                <Title order={4} mt="xl" mb="sm">
+                  Delivery
+                </Title>
+                <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
+                  {data.shipments?.map((shipment) => (
+                    <ShipmentTracking
+                      key={shipment.id}
+                      shipment={shipment}
+                      orderId={orderId}
+                    />
+                  ))}
+                </SimpleGrid>
+              </>
+            )}
           </>
         )}
       </QueryState>

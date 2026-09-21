@@ -102,7 +102,7 @@ export default function Receive() {
   const orders = rows(expected.data);
 
   return (
-    <Stack gap="md" pb={96}>
+    <Stack gap="md" className="receive-page">
       <PageHeader title="Receive" subtitle="Scan each box. It books itself." />
 
       <Select
@@ -187,13 +187,13 @@ export default function Receive() {
         </Box>
       )}
 
-      {/* Thumb-reachable, always visible. */}
-      <Box
-        style={{
-          position: "fixed", left: 0, right: 0, bottom: 0, padding: 12,
-          background: "var(--mantine-color-body)", borderTop: "1px solid var(--mantine-color-default-border)",
-        }}
-      >
+      {/*
+        Thumb-reachable, always visible — and ABOVE the phone nav bar, which is
+        also fixed to bottom: 0 at a higher stacking order. Positioning was
+        inline and the offset has to change at the nav breakpoint, so the rule
+        lives in theme.css as .receive-dock.
+      */}
+      <Box className="receive-dock">
         <Button
           fullWidth size="xl" h={56}
           leftSection={scan.isPending ? <Loader size={20} color="white" /> : <IconCamera size={24} />}
