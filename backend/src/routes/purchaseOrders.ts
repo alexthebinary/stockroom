@@ -7,6 +7,7 @@ import { actorOf, asyncHandler, intParam, pagination, parseBody } from "../http"
 import { requireMoney, requireStock } from "../auth";
 import { applyBalanceDelta, recordMovement } from "../inventory";
 import { createLot } from "../costing";
+import { companyDetails, renderGoodsReceipt } from "../pdf";
 import { createEntry, postSimple, reverseDocumentEntry, type DraftLine } from "../ledger";
 import { ACCOUNT } from "../accounts";
 import { TRANSACTION_TYPE } from "../accounts";
@@ -93,6 +94,163 @@ purchaseOrdersRouter.get(
       total,
       totalPages: Math.max(1, Math.ceil(total / pageSize)),
     });
+  })
+);
+
+/**
+ * Bills across every purchase order — the inbound mirror of
+ * GET /sales-orders/invoices.
+ *
+ * Declared BEFORE "/:id", or Express reads "bills" as an order id.
+ *
+ * `outstanding` is computed per request from live payments rather than stored:
+ * a payment can be reversed, and a cached balance is a second source of truth
+ * that goes stale silently.
+ */
+purchaseOrdersRouter.get(
+  "/bills",
+  asyncHandler(async (req, res) => {
+    const { page, pageSize, skip, take } = pagination(req.query as Record<string, unknown>);
+    const status = String(req.query.status ?? "").trim();
+    const search = String(req.query.search ?? "").trim();
+    const settlement = String(req.query.settlement ?? "").trim();
+
+    const where = {
+      ...(status ? { status } : {}),
+      ...(search
+        ? {
+            OR: [
+              { billNumber: contains(search) },
+              { vendor: { name: contains(search) } },
+              { purchaseOrder: { poNumber: contains(search) } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, rows] = await Promise.all([
+      prisma.bill.count({ where }),
+      prisma.bill.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { issueDate: "desc" },
+        include: {
+          vendor: true,
+          purchaseOrder: { select: { id: true, poNumber: true, status: true } },
+          payments: { where: { status: { not: "VOID" } } },
+        },
+      }),
+    ]);
+
+    const mapped = rows.map(({ payments, ...bill }) => {
+      const amountPaidCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
+      return {
+        ...bill,
+        amountPaidCents,
+        outstandingCents: Math.max(bill.totalCents - amountPaidCents, 0),
+      };
+    });
+
+    // Settlement is derived, so it cannot be a database filter without
+    // denormalising it. Paging happens first and this narrows the page, which
+    // is honest for a filter chip and wrong for a total — so the total is
+    // recomputed, and the response says the filter was partial.
+    const filtered =
+      settlement === "PAID"
+        ? mapped.filter((b) => b.status !== "VOID" && b.outstandingCents === 0)
+        : settlement === "UNPAID"
+          ? mapped.filter((b) => b.status !== "VOID" && b.outstandingCents > 0)
+          : mapped;
+
+    res.json({
+      data: filtered,
+      page,
+      pageSize,
+      total: settlement ? filtered.length : total,
+      totalPages: Math.max(1, Math.ceil((settlement ? filtered.length : total) / pageSize)),
+      partialFilter: Boolean(settlement),
+    });
+  })
+);
+
+/**
+ * Goods receipts across every purchase order — the inbound mirror of
+ * GET /sales-orders/shipments. Posting one is what creates the FIFO cost
+ * layers, so `totalCostCents` here is landed cost, not order value.
+ */
+purchaseOrdersRouter.get(
+  "/goods-receipts",
+  asyncHandler(async (req, res) => {
+    const { page, pageSize, skip, take } = pagination(req.query as Record<string, unknown>);
+    const warehouseId = Number(req.query.warehouseId) || undefined;
+    const search = String(req.query.search ?? "").trim();
+
+    const where = {
+      ...(warehouseId ? { warehouseId } : {}),
+      ...(search
+        ? {
+            OR: [
+              { grnNumber: contains(search) },
+              { purchaseOrder: { poNumber: contains(search) } },
+              { purchaseOrder: { supplierName: contains(search) } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, rows] = await Promise.all([
+      prisma.goodsReceipt.count({ where }),
+      prisma.goodsReceipt.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { receivedAt: "desc" },
+        include: {
+          warehouse: { select: { id: true, name: true, code: true } },
+          purchaseOrder: {
+            select: { id: true, poNumber: true, supplierName: true, status: true },
+          },
+        },
+      }),
+    ]);
+
+    res.json({
+      data: rows,
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    });
+  })
+);
+
+/**
+ * A goods receipt note as a PDF — what gets signed on the dock and filed
+ * against the vendor's delivery note.
+ *
+ * Carries landed cost, unlike the outbound packing slip which deliberately
+ * carries none: this document faces inward, and the person checking it in is
+ * the person who needs to know what it cost.
+ */
+purchaseOrdersRouter.get(
+  "/goods-receipts/:grnId/note.pdf",
+  asyncHandler(async (req, res) => {
+    const grnId = intParam(req.params.grnId, "grnId");
+    const grn = await prisma.goodsReceipt.findUnique({
+      where: { id: grnId },
+      include: {
+        warehouse: true,
+        purchaseOrder: {
+          include: {
+            vendor: true,
+            lines: { include: { product: true, warehouse: true } },
+          },
+        },
+      },
+    });
+    if (!grn) throw notFound("Goods receipt not found");
+    renderGoodsReceipt(res, grn, companyDetails());
   })
 );
 

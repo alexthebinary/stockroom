@@ -331,6 +331,39 @@ export type ShipmentOnOrder = {
   warehouseId: number | null;
 };
 
+/** A row of the cross-order bill list. The inbound mirror of InvoiceRow. */
+export type BillRow = {
+  id: number;
+  billNumber: string;
+  issueDate: string;
+  currency: string;
+  status: string;
+  subtotalCents: number;
+  taxCents: number;
+  shippingCents: number;
+  totalCents: number;
+  amountPaidCents: number;
+  outstandingCents: number;
+  vendorId: number;
+  vendor?: Party | null;
+  purchaseOrderId: number | null;
+  purchaseOrder?: { id: number; poNumber: string; status: string } | null;
+};
+
+/** A row of the cross-order goods receipt list. */
+export type GoodsReceiptRow = {
+  id: number;
+  grnNumber: string;
+  receivedAt: string;
+  status: string;
+  /** Landed cost — what the FIFO layers were created at, not order value. */
+  totalCostCents: number;
+  warehouseId: number | null;
+  warehouse?: { id: number; name: string; code: string } | null;
+  purchaseOrderId: number;
+  purchaseOrder?: { id: number; poNumber: string; supplierName: string; status: string } | null;
+};
+
 /** A row of the cross-order invoice list. */
 export type InvoiceRow = {
   id: number;

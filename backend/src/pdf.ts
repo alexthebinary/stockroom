@@ -551,3 +551,157 @@ export function renderAddressLabel(
 
   doc.end();
 }
+
+export type GoodsReceiptForPdf = {
+  grnNumber: string;
+  receivedAt: Date | string;
+  status: string;
+  totalCostCents: number;
+  warehouse?: { name: string; code: string; address?: string | null } | null;
+  purchaseOrder: {
+    poNumber: string;
+    supplierName: string;
+    vendor?: { name: string; email?: string | null; phone?: string | null } | null;
+    notes?: string | null;
+    lines: {
+      quantity: number;
+      unitCostCents: number;
+      product: { sku: string; name: string };
+      warehouse?: { name: string; code: string } | null;
+    }[];
+  };
+};
+
+/**
+ * The goods receipt note — signed on the dock, filed against the vendor's own
+ * delivery note.
+ *
+ * Carries landed cost, unlike the outbound packing slip which deliberately
+ * carries none. This document faces inward: the person checking a pallet in is
+ * the person who needs to know what it cost, and posting this receipt is what
+ * created the FIFO layers those numbers came from.
+ */
+export function renderGoodsReceipt(
+  res: Response,
+  grn: GoodsReceiptForPdf,
+  company: CompanyDetails
+) {
+  const doc = new PDFDocument({ ...PAGE, info: { Title: `Goods receipt ${grn.grnNumber}` } });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="${grn.grnNumber}.pdf"`);
+  doc.pipe(res);
+
+  const left = PAGE.margin;
+  const right = doc.page.width - PAGE.margin;
+  const width = right - left;
+
+  // ---- header --------------------------------------------------------------
+  doc.font("Helvetica-Bold").fontSize(16).fillColor(INK).text(company.name, left, PAGE.margin);
+  doc.font("Helvetica").fontSize(9).fillColor(MUTED)
+     .text(company.address, left, doc.y + 2, { width: width * 0.5 });
+
+  doc.font("Helvetica-Bold").fontSize(20).fillColor(ACCENT)
+     .text("GOODS RECEIPT", left, PAGE.margin, { width, align: "right" });
+  doc.font("Helvetica").fontSize(10).fillColor(MUTED)
+     .text(grn.grnNumber, left, doc.y + 2, { width, align: "right" });
+
+  let y = Math.max(doc.y, PAGE.margin + 64) + 18;
+
+  // ---- received from / details --------------------------------------------
+  const supplier = grn.purchaseOrder.vendor?.name ?? grn.purchaseOrder.supplierName;
+  doc.font("Helvetica-Bold").fontSize(8).fillColor(MUTED).text("RECEIVED FROM", left, y);
+  doc.font("Helvetica").fontSize(11).fillColor(INK).text(supplier, left, y + 13, { width: width * 0.5 });
+  const contact = [grn.purchaseOrder.vendor?.email, grn.purchaseOrder.vendor?.phone]
+    .filter(Boolean).join("  ·  ");
+  if (contact) {
+    doc.fontSize(9).fillColor(MUTED).text(contact, left, doc.y + 2, { width: width * 0.5 });
+  }
+
+  const details: [string, string][] = [
+    ["Order", grn.purchaseOrder.poNumber],
+    ["Received", day(grn.receivedAt)],
+    ...(grn.warehouse
+      ? ([["Into", `${grn.warehouse.name} (${grn.warehouse.code})`]] as [string, string][])
+      : ([["Into", "Multiple warehouses"]] as [string, string][])),
+  ];
+  let detailY = y;
+  for (const [label, value] of details) {
+    doc.font("Helvetica").fontSize(8).fillColor(MUTED)
+       .text(label, left + width * 0.6, detailY, { width: width * 0.15 });
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(INK)
+       .text(value, left + width * 0.75, detailY, { width: width * 0.25, align: "right" });
+    detailY += 14;
+  }
+
+  y = Math.max(doc.y, detailY) + 20;
+
+  // ---- lines ---------------------------------------------------------------
+  const cols = { sku: left, name: left + 105, into: right - 200, qty: right - 118, cost: right - 62 };
+  doc.font("Helvetica-Bold").fontSize(8).fillColor(MUTED)
+     .text("SKU", cols.sku, y)
+     .text("ITEM", cols.name, y)
+     .text("INTO", cols.into, y, { width: 78 })
+     .text("QTY", cols.qty, y, { width: 48, align: "right" })
+     .text("COST", cols.cost, y, { width: 62, align: "right" });
+  y += 13;
+  doc.moveTo(left, y).lineTo(right, y).lineWidth(1).strokeColor(RULE).stroke();
+  y += 9;
+
+  const lines = grn.purchaseOrder.lines;
+  if (!lines.length) {
+    doc.font("Helvetica-Oblique").fontSize(9).fillColor(MUTED)
+       .text("This receipt has no lines.", cols.sku, y);
+    y += 16;
+  }
+  for (const line of lines) {
+    if (y > doc.page.height - PAGE.margin - 90) {
+      doc.addPage();
+      y = PAGE.margin;
+    }
+    doc.font("Helvetica").fontSize(9).fillColor(INK)
+       .text(line.product.sku, cols.sku, y, { width: 100 })
+       .text(line.product.name, cols.name, y, { width: cols.into - cols.name - 10 })
+       .text(line.warehouse?.code ?? "—", cols.into, y, { width: 78 })
+       .font("Helvetica-Bold")
+       .text(String(line.quantity), cols.qty, y, { width: 48, align: "right" })
+       .font("Helvetica")
+       .text(money(line.unitCostCents * line.quantity), cols.cost, y, { width: 62, align: "right" });
+    y = doc.y + 7;
+  }
+
+  // ---- totals and sign-off -------------------------------------------------
+  y += 8;
+  doc.moveTo(left, y).lineTo(right, y).lineWidth(1).strokeColor(RULE).stroke();
+  y += 14;
+
+  const totalUnits = lines.reduce((s, l) => s + l.quantity, 0);
+  doc.font("Helvetica-Bold").fontSize(10).fillColor(INK)
+     .text(`${totalUnits} unit${totalUnits === 1 ? "" : "s"} received`, left, y);
+
+  doc.font("Helvetica").fontSize(9).fillColor(MUTED)
+     .text("Landed cost", cols.qty - 40, y, { width: 100, align: "right" });
+  doc.font("Helvetica-Bold").fontSize(11).fillColor(INK)
+     .text(money(grn.totalCostCents), cols.cost, y - 1, { width: 62, align: "right" });
+
+  doc.font("Helvetica").fontSize(8).fillColor(MUTED)
+     .text("This is the cost the FIFO layers were created at.", left, y + 16, { width: width * 0.55 });
+
+  // Two signatures, because a receipt nobody signed is an assertion, not a record.
+  const sigY = y + 54;
+  for (const [i, label] of ["Checked in by", "Driver / vendor"].entries()) {
+    const x = left + i * (width / 2);
+    doc.moveTo(x, sigY + 24).lineTo(x + width / 2 - 24, sigY + 24)
+       .lineWidth(1).strokeColor(RULE).stroke();
+    doc.font("Helvetica").fontSize(8).fillColor(MUTED).text(label, x, sigY + 28);
+  }
+
+  // ---- barcode -------------------------------------------------------------
+  const barcodeY = doc.page.height - PAGE.margin - 58;
+  drawBarcode(doc, grn.grnNumber, left, barcodeY, 180, 34);
+  doc.font("Courier").fontSize(9).fillColor(INK)
+     .text(grn.grnNumber, left, barcodeY + 38, { width: 180, align: "center" });
+  doc.font("Helvetica").fontSize(8).fillColor(MUTED)
+     .text(company.footer, left + width * 0.45, barcodeY + 20, { width: width * 0.55, align: "right" });
+
+  doc.end();
+}

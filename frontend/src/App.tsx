@@ -20,6 +20,7 @@ import { Link, NavLink, Navigate, Route, Routes, useLocation } from "react-route
 import { useAuth } from "./auth";
 import About from "./pages/About";
 import Adjustments from "./pages/Adjustments";
+import Bills from "./pages/Bills";
 import Catalogs from "./pages/Catalogs";
 import Dashboard from "./pages/Dashboard";
 import Deliveries from "./pages/Deliveries";
@@ -29,6 +30,7 @@ import Ledger from "./pages/Ledger";
 import Login from "./pages/Login";
 import ProductDetail from "./pages/ProductDetail";
 import Products from "./pages/Products";
+import Receipts from "./pages/Receipts";
 import Receive from "./pages/Receive";
 import PurchaseOrderDetail from "./pages/PurchaseOrderDetail";
 import PurchaseOrders from "./pages/PurchaseOrders";
@@ -74,11 +76,15 @@ const SECTIONS: Section[] = [
     ],
   },
   {
+    // Mirrors Sales: the documents an order produces are reachable across all
+    // orders, not only from inside the one that made them.
     label: "Purchases",
     icon: IconTruckDelivery,
     to: "/purchase-orders",
     items: [
       { to: "/purchase-orders", label: "Orders" },
+      { to: "/bills", label: "Bills" },
+      { to: "/receipts", label: "Receipts" },
       { to: "/catalogs/vendors", label: "Vendors" },
     ],
   },
@@ -410,6 +416,8 @@ export default function App() {
           <Route path="/deliveries" element={<Deliveries />} />
           <Route path="/purchase-orders" element={<PurchaseOrders />} />
           <Route path="/purchase-orders/:id" element={<PurchaseOrderDetail />} />
+          <Route path="/bills" element={<Bills />} />
+          <Route path="/receipts" element={<Receipts />} />
           <Route path="/transfers" element={<Transfers />} />
           <Route path="/adjustments" element={<Adjustments />} />
           <Route path="/ledger" element={<Ledger />} />
