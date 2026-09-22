@@ -1,7 +1,54 @@
 import { Box, Menu, Text, Tooltip, UnstyledButton } from "@mantine/core";
-import { IconAlertTriangle, IconCircleCheck, IconPackage } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCircleCheck, IconPackage, IconUser } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+
+/**
+ * Whether this device actually hovers.
+ *
+ * Sliding between menu titles is a pointer affordance. On a touch screen the
+ * first tap both opens a menu AND fires mouseenter, so hover-follow turns one
+ * tap into an open-then-immediately-reopen and feels broken. Width cannot tell
+ * you this — a 1024px iPad hovers no better than a phone.
+ */
+function useHasHover() {
+  const [hasHover, setHasHover] = useState(
+    () => typeof matchMedia === "function" && matchMedia("(hover: hover)").matches
+  );
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return;
+    const mq = matchMedia("(hover: hover)");
+    const onChange = () => setHasHover(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return hasHover;
+}
+
+/**
+ * Whether this device is driven by a finger.
+ *
+ * Exported because AppShell needs the same answer: it computes the page's top
+ * padding from the header height it is GIVEN in JS, not from a CSS variable,
+ * so sizing the bar in CSS alone left the first 20px of every page underneath
+ * it on touch. One source of truth, read by both.
+ */
+export const MENUBAR_H_FINE = 28;
+export const MENUBAR_H_COARSE = 48;
+
+export function useCoarsePointer() {
+  const [coarse, setCoarse] = useState(
+    () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches
+  );
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return;
+    const mq = matchMedia("(pointer: coarse)");
+    const onChange = () => setCoarse(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return coarse;
+}
 
 export type MenuSection = {
   label: string;
@@ -48,6 +95,8 @@ export function MenuBar({
   // is open, and does nothing on hover when none is.
   const [open, setOpen] = useState<string | null>(null);
   const navigate = useNavigate();
+  const hasHover = useHasHover();
+  const followPointer = (label: string) => (hasHover && open ? () => setOpen(label) : undefined);
 
 
   return (
@@ -65,7 +114,7 @@ export function MenuBar({
           <UnstyledButton
             className="menubar-item menubar-wordmark"
             data-open={open === "__app" || undefined}
-            onMouseEnter={() => open && setOpen("__app")}
+            onMouseEnter={followPointer("__app")}
             aria-haspopup="menu"
           >
             Stockroom
@@ -98,15 +147,23 @@ export function MenuBar({
       </Menu>
 
       {/* Where macOS shows the frontmost app: here, where you actually are. */}
+      {/* The slot macOS gives the frontmost app. It outranks the wordmark
+          when space is short: where you ARE beats what the app is called. */}
       {activePage && (
         <Text span className="menubar-title" aria-current="page">
           {activePage}
         </Text>
       )}
 
-      {/* Rendered in SECTIONS order. Splitting them by whether they have a
-          dropdown reordered the bar and pushed Home to the end. */}
-      {sections.map((section) =>
+      {/*
+        The sections scroll rather than clip. At 768px the bar needed 884px of
+        a 758px strip and the clock and account were simply off-screen — and
+        the status cluster is the part that must never move, so the sections
+        are what gives. Rendered in SECTIONS order; splitting them by whether
+        they have a dropdown once reordered the bar and pushed Home to the end.
+      */}
+      <div className="menubar-sections">
+        {sections.map((section) =>
         !section.items?.length ? (
           // A dropdown holding one item is a worse button, so single-page
           // sections stay plain commands.
@@ -134,9 +191,9 @@ export function MenuBar({
                 className="menubar-item"
                 data-open={open === section.label || undefined}
                 data-active={section === activeSection || undefined}
-                // Slide between titles with the pointer, but only once a menu
-                // is already down — otherwise crossing the bar opens things.
-                onMouseEnter={() => open && setOpen(section.label)}
+                // Slide between titles, but only once a menu is down and only
+                // where a pointer exists.
+                onMouseEnter={followPointer(section.label)}
                 aria-haspopup="menu"
               >
                 {section.label}
@@ -149,9 +206,10 @@ export function MenuBar({
                 </Menu.Item>
               ))}
             </Menu.Dropdown>
-          </Menu>
-        )
-      )}
+            </Menu>
+          )
+        )}
+      </div>
 
       <span style={{ flex: "1 1 auto" }} />
 
@@ -161,8 +219,10 @@ export function MenuBar({
           <UnstyledButton
             className="menubar-item menubar-status-item"
             onClick={() => setOpen("__app")}
+            aria-label={`Signed in as ${user.email}`}
           >
-            {user.email.split("@")[0]}
+            <IconUser size={13} stroke={2} />
+            <span className="menubar-account-label">{user.email.split("@")[0]}</span>
           </UnstyledButton>
         </Tooltip>
         <Clock />

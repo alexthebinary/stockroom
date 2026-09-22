@@ -568,27 +568,68 @@ h3,
   }
 }
 
-/* ---- macOS-style menu bar (desktop only) -------------------------------- */
+/* ---- Menu bar ----------------------------------------------------------- */
 
 /*
- * Apple HIG menu bar, adapted from PuruVJ/macos-web: a ~28px translucent
- * strip, app name bold and first, status items right-aligned.
+ * Apple HIG menu bar, adapted from PuruVJ/macos-web.
  *
- * Light glass rather than the dark rail, because a macOS bar sits ON the
- * desktop rather than above it. Text is gray-9 on a 72%-white scrim, which
- * measures well past the 4.5:1 floor even where the page behind it is dark.
+ * Sized on TWO INDEPENDENT AXES, because conflating them is what breaks
+ * tablets:
+ *
+ *   - POINTER decides how big things are. A 1024px iPad hovers no better
+ *     than a phone, and 24px targets are a pointer size. `pointer: coarse`
+ *     takes everything to 44px.
+ *   - WIDTH decides what is shown. At 768px the bar wanted 884px of a 758px
+ *     strip and the clock and account were off-screen entirely, so the least
+ *     load-bearing items drop out right-to-left as room runs out.
+ *
+ * The section strip scrolls rather than clips, so no combination of font
+ * size, label length and width can ever push the status cluster off-screen
+ * again.
  */
+:root {
+  --menubar-item-h: 24px;
+  --menubar-font: 12.5px;
+  --menubar-gap: 1px;
+  --menubar-pad: 8px;
+  --menubar-dropdown-item-h: 28px;
+  --menubar-dropdown-font: 13px;
+}
+
+/* Touch, at any width: Apple's 44pt minimum. The bar's own height comes from
+   MENUBAR_H_COARSE in MenuBar.tsx, which is 48 — 44 plus 2px either side. */
+@media (pointer: coarse) {
+  :root {
+    --menubar-item-h: 44px;
+    --menubar-font: 14px;
+    --menubar-gap: 2px;
+    --menubar-pad: 10px;
+    --menubar-dropdown-item-h: 44px;
+    --menubar-dropdown-font: 15px;
+  }
+}
+
+/*
+ * AppShell reserves the header's height for the page below it, and that
+ * number was hardcoded to 28 — so on a touch device, where the bar grows to
+ * 48, the first 20px of every page sat underneath it. Drive the reservation
+ * from the same token as the bar and the two can never disagree.
+ */
+
 .menubar {
   position: relative;
   z-index: 300;
   display: flex;
   align-items: center;
-  gap: 1px;
-  height: 28px;
-  padding: 0 8px;
+  gap: var(--menubar-gap);
+  /* Fills the header rather than restating its height. AppShell sizes the
+     header in JS (it reserves the page's top padding from that number), so a
+     second height here is a number that can silently disagree with it. */
+  height: 100%;
+  padding: 0 var(--menubar-pad);
   background: rgba(255, 255, 255, 0.72);
   box-shadow: inset 0 -1px 0 var(--hairline);
-  font-size: 12.5px;
+  font-size: var(--menubar-font);
   color: var(--mantine-color-gray-9);
 }
 
@@ -602,16 +643,40 @@ h3,
   -webkit-backdrop-filter: saturate(180%) blur(20px);
 }
 
-.menubar-item {
+/*
+ * The part that gives when space runs out. `min-width: 0` is what actually
+ * lets a flex child shrink below its content — without it the strip refuses
+ * to narrow and pushes the status cluster off the screen instead.
+ */
+.menubar-sections {
   display: flex;
   align-items: center;
+  gap: var(--menubar-gap);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  /* Fade the cut edge so it is visible that more exists to the right. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+}
+
+.menubar-sections::-webkit-scrollbar {
+  display: none;
+}
+
+.menubar-item {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
   gap: 5px;
-  /* 24px, not the 20 the visual suggests: WCAG 2.5.8 wants 24x24 and the bar
-     is only 28 tall, so the hit area takes all of it bar a 2px margin. */
-  height: 24px;
-  padding: 0 8px;
+  height: var(--menubar-item-h);
+  /* 24px minimum on a pointer (WCAG 2.5.8), 44 on touch (Apple HIG). */
+  min-width: var(--menubar-item-h);
+  padding: 0 var(--menubar-pad);
   border-radius: 5px;
-  font-size: 12.5px;
+  font-size: var(--menubar-font);
   font-weight: 450;
   color: var(--mantine-color-gray-9);
   white-space: nowrap;
@@ -624,7 +689,7 @@ h3,
 }
 
 /* The section you are inside, marked without stealing the bold used by the
-   app name — two bold things in a 28px strip is no hierarchy at all. */
+   page title — two bold things in one strip is no hierarchy at all. */
 .menubar-item[data-active] {
   color: var(--accent);
   font-weight: 600;
@@ -637,8 +702,9 @@ h3,
 
 /* Where macOS names the frontmost app. Here: the page you are on. */
 .menubar-title {
+  flex: 0 0 auto;
   padding: 0 10px 0 2px;
-  font-size: 12.5px;
+  font-size: var(--menubar-font);
   font-weight: 650;
   color: var(--mantine-color-gray-9);
   white-space: nowrap;
@@ -646,8 +712,9 @@ h3,
 
 .menubar-status {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 2px;
+  gap: var(--menubar-gap);
 }
 
 .menubar-status-item {
@@ -659,17 +726,40 @@ h3,
   font-weight: 600;
 }
 
-.menubar-status-label {
-  font-size: 12px;
-}
-
 .menubar-clock {
+  flex: 0 0 auto;
   padding: 0 4px 0 8px;
-  font-size: 12.5px;
+  font-size: var(--menubar-font);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   white-space: pre;
   color: var(--mantine-color-gray-9);
+}
+
+/* ---- What drops out, and in what order ---------------------------------- */
+
+/*
+ * Right-to-left by how load-bearing each item is. The clock is decoration
+ * next to a nav control, so it goes first; the wordmark goes before the page
+ * title, because where you ARE beats what the app is called.
+ */
+@media (max-width: 1199px) {
+  .menubar-clock {
+    display: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  .menubar-wordmark {
+    display: none;
+  }
+}
+
+@media (max-width: 899px) {
+  .menubar-account-label,
+  .menubar-status-label {
+    display: none;
+  }
 }
 
 /* ---- Menu bar dropdowns ------------------------------------------------- */
@@ -685,9 +775,12 @@ h3,
 }
 
 .menubar-dropdown .mantine-Menu-item {
-  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  min-height: var(--menubar-dropdown-item-h);
+  padding: 4px 10px;
   border-radius: 5px;
-  font-size: 13px;
+  font-size: var(--menubar-dropdown-font);
   font-weight: 400;
   color: var(--mantine-color-gray-9);
 }
@@ -699,19 +792,31 @@ h3,
 }
 
 .menubar-dropdown .mantine-Menu-label {
-  padding: 4px 8px;
+  padding: 4px 10px;
   font-size: 11px;
   color: var(--mantine-color-gray-7);
 }
 
-/* A translucent bar over a translucent sheet turns to mud in dark mode, and
-   this app has no dark theme yet — so pin the light treatment explicitly
-   rather than inheriting a scheme that does not exist. */
+/* A touch dropdown needs room for a thumb, and a phone-width popover should
+   not be a 15rem column floating in a 360px screen. */
+@media (pointer: coarse) {
+  .menubar-dropdown {
+    min-width: 17rem;
+  }
+}
+
+/* A translucent bar over a translucent sheet turns to mud when the user has
+   asked for contrast, so drop the glass rather than the legibility. */
 @media (prefers-contrast: more) {
   .menubar,
   .menubar-dropdown {
     background: #fff !important;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+  }
+
+  .menubar-sections {
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 }

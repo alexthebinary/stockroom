@@ -18,7 +18,12 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 import { api, type TrialBalance } from "./api";
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
-import { MenuBar } from "./components/MenuBar";
+import {
+  MENUBAR_H_COARSE,
+  MENUBAR_H_FINE,
+  MenuBar,
+  useCoarsePointer,
+} from "./components/MenuBar";
 import About from "./pages/About";
 import Adjustments from "./pages/Adjustments";
 import Bills from "./pages/Bills";
@@ -147,7 +152,6 @@ function sectionFor(pathname: string): Section | undefined {
 }
 
 const RAIL_H = 52;
-const MENUBAR_H = 28;
 const SUB_H = 44;
 
 /**
@@ -246,6 +250,10 @@ export default function App() {
   // unknown props straight onto the element, so it is applied through a spread.
   const drawerInert = (opened ? {} : { inert: "" }) as Record<string, unknown>;
   const ledger = useLedgerHealth();
+  // The bar is 28px under a pointer and 48px under a finger, and AppShell
+  // reserves the page's top padding from this number — so it has to be the
+  // real one, not a constant.
+  const menubarHeight = useCoarsePointer() ? MENUBAR_H_COARSE : MENUBAR_H_FINE;
 
   /**
    * The name of where you are, for the slot macOS gives the frontmost app.
@@ -268,7 +276,7 @@ export default function App() {
       header={{
         // 28px of chrome on a desktop full of dense tables; the phone keeps
         // the rail it can actually tap.
-        height: { base: subItems ? RAIL_H + SUB_H : RAIL_H, sm: MENUBAR_H },
+        height: { base: subItems ? RAIL_H + SUB_H : RAIL_H, sm: menubarHeight },
       }}
       navbar={{ width: 260, breakpoint: "sm", collapsed: { mobile: !opened, desktop: true } }}
       padding="lg"
