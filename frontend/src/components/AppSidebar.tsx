@@ -7,13 +7,17 @@ import {
   Text,
   Tooltip,
   UnstyledButton,
+  useMantineColorScheme,
 } from "@mantine/core";
 import {
   IconAlertTriangle,
   IconChevronLeft,
   IconCircleCheck,
+  IconDeviceDesktop,
+  IconMoon,
   IconPackage,
   IconSearch,
+  IconSun,
 } from "@tabler/icons-react";
 import { Link, useLocation } from "react-router-dom";
 import type { Attention } from "../api";
@@ -74,6 +78,7 @@ export function AppSidebar({
   onActAs: (role: string | null) => void;
 }) {
   const location = useLocation();
+  const { colorScheme, setColorScheme } = useMantineColorScheme();
 
   const isActive = (to: string) =>
     to === "/" ? location.pathname === "/" : location.pathname === to || location.pathname.startsWith(`${to}/`);
@@ -256,6 +261,27 @@ export function AppSidebar({
                 ))}
               </>
             )}
+            <Menu.Divider />
+            <Menu.Label>Appearance</Menu.Label>
+            {(
+              [
+                ["auto", "System", IconDeviceDesktop],
+                ["light", "Light", IconSun],
+                ["dark", "Dark", IconMoon],
+              ] as const
+            ).map(([value, label, Icon]) => (
+              <Menu.Item
+                key={value}
+                leftSection={<Icon size={15} stroke={1.6} />}
+                onClick={() => setColorScheme(value)}
+                // `colorScheme` is the CHOICE ("auto"), not the resolved
+                // scheme — which is what the tick should follow, or picking
+                // System on a dark machine would tick Dark.
+                rightSection={colorScheme === value ? "✓" : undefined}
+              >
+                {label}
+              </Menu.Item>
+            ))}
             <Menu.Divider />
             <Menu.Item onClick={onSignOut}>Sign out</Menu.Item>
           </Menu.Dropdown>

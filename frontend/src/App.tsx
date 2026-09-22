@@ -11,7 +11,7 @@ import {
   IconTruckLoading,
   IconSettings,
 } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Tooltip } from "@mantine/core";
 import { IconAlertTriangle } from "@tabler/icons-react";
@@ -215,14 +215,25 @@ const PHONE_SECTIONS = ["Home", "Receive", "Sales", "Inventory"];
  */
 const PHONE_EXTRA: Section[] = [{ label: "Receive", icon: IconTruckLoading, to: "/receive" }];
 
-function BottomBar({ current, pathname }: { current?: Section; pathname: string }) {
+function BottomBar({ current, pathname, hidden }: { current?: Section; pathname: string; hidden: boolean }) {
   const onReceive = pathname === "/receive" || pathname.startsWith("/receive/");
   const items = [...SECTIONS, ...PHONE_EXTRA]
     .filter((s) => PHONE_SECTIONS.includes(s.label))
     .sort((a, b) => PHONE_SECTIONS.indexOf(a.label) - PHONE_SECTIONS.indexOf(b.label));
 
   return (
-    <Box component="nav" className="bottom-bar" hiddenFrom="sm" aria-label="Main sections">
+    <Box
+      component="nav"
+      className="bottom-bar"
+      hiddenFrom="sm"
+      // The drawer is z-index 101 and this bar is 200, so the bar paints OVER
+      // an open drawer. Nothing is under it at today's link count, but that is
+      // a fact about the list length, not a layering that holds. A tab bar on
+      // top of the menu that replaces it is wrong either way.
+      data-drawer-open={hidden || undefined}
+      aria-hidden={hidden || undefined}
+      aria-label="Main sections"
+    >
       {items.map((s) => {
         // Receive lives inside Inventory, so on /receive both would match and
         // two tabs would light at once. The more specific one wins.
@@ -267,8 +278,13 @@ export default function App() {
   // Resolve on the first render, not in an effect — the default defers to an
   // effect and returns undefined once, which would leave the closed drawer
   // focusable for a frame.
+  // 47.99375em, not 47.99em: that is the exact value Mantine's `sm` breakpoint
+  // collapses the navbar at. A 0.16px disagreement is still a disagreement —
+  // at that width Mantine treats the viewport as mobile and hides the navbar
+  // while this query says desktop, so the hidden drawer keeps its links in the
+  // tab order.
   const isDrawerWidth =
-    useMediaQuery("(max-width: 47.99em)", false, { getInitialValueInEffect: false }) ?? false;
+    useMediaQuery("(max-width: 47.99375em)", false, { getInitialValueInEffect: false }) ?? false;
   const drawerInert = (isDrawerWidth && !opened ? { inert: "" } : {}) as Record<string, unknown>;
   const ledger = useLedgerHealth();
   // The bar is 28px under a pointer and 48px under a finger, and AppShell
@@ -300,6 +316,13 @@ export default function App() {
   // A route change from inside the drawer must close it, or the next page
   // renders underneath an open overlay.
   useEffect(close, [location.pathname, close]);
+
+  // ...but tapping the route you are ALREADY on changes no pathname, so the
+  // effect above never fires and the drawer just sits there looking broken.
+  // Close on any link tap inside it and let the effect handle the rest.
+  const closeOnLinkTap = (e: ReactMouseEvent<HTMLElement>) => {
+    if ((e.target as HTMLElement).closest("a")) close();
+  };
 
   if (!user) return <Login />;
 
@@ -374,7 +397,7 @@ export default function App() {
         )}
       </AppShell.Header>
 
-      <AppShell.Navbar className="drawer" {...drawerInert}>
+      <AppShell.Navbar className="drawer" onClick={closeOnLinkTap} {...drawerInert}>
         {/* Desktop: the real navigation. */}
         <Box visibleFrom="sm" h="100%">
           <AppSidebar
@@ -468,7 +491,7 @@ export default function App() {
         </Routes>
       </AppShell.Main>
 
-      <BottomBar current={section} pathname={location.pathname} />
+      <BottomBar current={section} pathname={location.pathname} hidden={opened} />
 
       <CommandPalette
         opened={searchOpen}

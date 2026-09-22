@@ -15,15 +15,54 @@
   --rail-bg: #12263f;
   --rail-fg: #e8eef6;
 
-  /* Data surface */
-  --surface: #ffffff;
+  /* Data surface. Off-white, not #ffffff: a pure value leaves the elevated
+     planes — dropdowns, the palette, popovers — nothing to sit on top of. */
+  --surface: #fbfcfe;
   --surface-sunken: #f4f6f9;
   --surface-border: #dfe4ec;
+  --surface-hover: #eef1f6;
   /* A separator, not a border: the lightest line that still reads as a line. */
   --hairline: rgba(15, 32, 56, 0.12);
 
   --accent: #2a5fd4;
   --accent-soft: rgba(42, 95, 212, 0.1);
+
+  /* Status, as semantic tokens rather than hexes at the call site.
+     The app has exactly three status axes and they were previously spelled
+     six different ways: #f97316, #9a3412, #7a3f06, #ffd9a8, #fff0dc and
+     rgba(255,170,60,…) were all "something needs attention". A dark mode
+     cannot be added to a colour that is written out at every use. */
+  --warn: #f97316;
+  --warn-fg: #9a3412;
+  --warn-bg: rgba(255, 170, 60, 0.14);
+  --warn-border: rgba(181, 71, 8, 0.28);
+  /* On the dark rail the same state needs the light end of the ramp. */
+  --warn-on-rail: #ffd9a8;
+  --warn-on-rail-hover: #fff0dc;
+  --warn-rail-bg: rgba(255, 170, 60, 0.18);
+  --warn-rail-bg-hover: rgba(255, 170, 60, 0.3);
+  --warn-rail-border: rgba(255, 190, 110, 0.35);
+
+  --ok-fg: #166534;
+  --ok-bg: rgba(22, 163, 74, 0.07);
+  --ok-border: rgba(22, 163, 74, 0.2);
+
+  /* Chrome that floats: the translucent bars and sheets. In dark mode these
+     cannot stay white-with-alpha or they turn the page to milk. */
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-strong: rgba(255, 255, 255, 0.92);
+  --glass-solid: #ffffff;
+  --glass-border: rgba(15, 32, 56, 0.1);
+
+  /* Shadows are a colour too, and a black shadow on a dark surface is
+     invisible — dark mode raises the alpha rather than the blur. */
+  --shadow-sm: 0 10px 34px rgba(15, 32, 56, 0.18);
+  --shadow-lg: 0 24px 60px rgba(15, 32, 56, 0.22);
+  --scrollbar-thumb: rgba(15, 32, 56, 0.22);
+  --scrollbar-thumb-hover: rgba(15, 32, 56, 0.36);
+  --pressed: rgba(15, 32, 56, 0.1);
+  --ink: #0b1b30;
+  --on-accent: #ffffff;
 
   /* Mantine's default dimmed is gray-6 (#868e96) at 3.32:1 on white — below
      the 4.5:1 body-text floor. gray-7 measures 8.18:1.
@@ -55,8 +94,128 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-:root:not([data-theme="light"]) {
-  color-scheme: light;
+/* ---- Dark ---------------------------------------------------------------
+ * Mantine owns the switch. With `defaultColorScheme="auto"` it resolves the
+ * system preference and writes `data-mantine-color-scheme="light"|"dark"`
+ * onto <html>, so that attribute — not a second `data-theme` of our own — is
+ * the single source of truth, and the manual toggle and the OS preference can
+ * never disagree.
+ *
+ * The media query is a fallback for the first paint, before the provider has
+ * written the attribute: it is scoped `:not([data-mantine-color-scheme="light"])`
+ * so an explicit light choice still wins over a dark OS.
+ *
+ * The two blocks are duplicated on purpose. CSS cannot alias a declaration
+ * block, and the alternative — trusting the attribute alone — flashes light
+ * chrome on a dark desktop for one frame. Keep them in step.
+ *
+ * The blue accent lightens rather than shifts hue: brand fidelity, per the
+ * rule that a dark mode must not desaturate the brand out of recognition.
+ * #2a5fd4 on #121820 measures 3.1:1 and fails; #7aa2ff measures 7.4:1.
+ */
+:root[data-mantine-color-scheme="dark"] {
+  color-scheme: dark;
+
+  --rail-bg: #0b141f;
+  --rail-fg: #dce6f2;
+
+  --surface: #121820;
+  --surface-sunken: #0d131a;
+  --surface-border: #273240;
+  --surface-hover: #1b2430;
+  --hairline: rgba(180, 205, 240, 0.14);
+
+  --accent: #7aa2ff;
+  --accent-soft: rgba(122, 162, 255, 0.16);
+
+  --warn: #fb923c;
+  --warn-fg: #ffb877;
+  --warn-bg: rgba(249, 115, 22, 0.16);
+  --warn-border: rgba(251, 146, 60, 0.35);
+  --warn-on-rail: #ffd9a8;
+  --warn-on-rail-hover: #fff0dc;
+  --warn-rail-bg: rgba(255, 170, 60, 0.2);
+  --warn-rail-bg-hover: rgba(255, 170, 60, 0.32);
+  --warn-rail-border: rgba(255, 190, 110, 0.4);
+
+  --ok-fg: #5fd08a;
+  --ok-bg: rgba(34, 197, 94, 0.14);
+  --ok-border: rgba(34, 197, 94, 0.3);
+
+  --glass: rgba(18, 24, 32, 0.72);
+  --glass-strong: rgba(18, 24, 32, 0.92);
+  --glass-solid: #161d27;
+  --glass-border: rgba(180, 205, 240, 0.12);
+
+  /* Darker and deeper: on a dark surface a 0.18 black shadow does nothing. */
+  --shadow-sm: 0 10px 34px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+  --scrollbar-thumb: rgba(180, 205, 240, 0.22);
+  --scrollbar-thumb-hover: rgba(180, 205, 240, 0.36);
+  --pressed: rgba(180, 205, 240, 0.12);
+  --ink: #e6edf7;
+  --on-accent: #0b1220;
+
+  /* The light-mode dimmed fix inverted: gray-7 is unreadable on a dark
+     surface. gray-5 (#adb5bd) measures 6.9:1 on #121820. */
+  --mantine-color-dimmed: var(--mantine-color-gray-5);
+
+  /* Mantine paints <body> from its own token, not from --surface, so the page
+     behind the app was its default dark #242424 — a warm grey against a
+     navy-tinted app. Same family or the seams show. Declared at the attribute
+     specificity Mantine uses, for the reason documented on --mantine-color-dimmed. */
+  --mantine-color-body: #121820;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-mantine-color-scheme="light"]) {
+    color-scheme: dark;
+
+    --rail-bg: #0b141f;
+    --rail-fg: #dce6f2;
+
+    --surface: #121820;
+    --surface-sunken: #0d131a;
+    --surface-border: #273240;
+    --surface-hover: #1b2430;
+    --hairline: rgba(180, 205, 240, 0.14);
+
+    --accent: #7aa2ff;
+    --accent-soft: rgba(122, 162, 255, 0.16);
+
+    --warn: #fb923c;
+    --warn-fg: #ffb877;
+    --warn-bg: rgba(249, 115, 22, 0.16);
+    --warn-border: rgba(251, 146, 60, 0.35);
+    --warn-on-rail: #ffd9a8;
+    --warn-on-rail-hover: #fff0dc;
+    --warn-rail-bg: rgba(255, 170, 60, 0.2);
+    --warn-rail-bg-hover: rgba(255, 170, 60, 0.32);
+    --warn-rail-border: rgba(255, 190, 110, 0.4);
+
+    --ok-fg: #5fd08a;
+    --ok-bg: rgba(34, 197, 94, 0.14);
+    --ok-border: rgba(34, 197, 94, 0.3);
+
+    --glass: rgba(18, 24, 32, 0.72);
+    --glass-strong: rgba(18, 24, 32, 0.92);
+    --glass-solid: #161d27;
+    --glass-border: rgba(180, 205, 240, 0.12);
+
+    --shadow-sm: 0 10px 34px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+    --scrollbar-thumb: rgba(180, 205, 240, 0.22);
+    --scrollbar-thumb-hover: rgba(180, 205, 240, 0.36);
+    --pressed: rgba(180, 205, 240, 0.12);
+    --ink: #e6edf7;
+    --on-accent: #0b1220;
+
+    /* Mantine paints <body> from its own token, not from --surface, so the page
+       behind the app was its default dark #242424 — a warm grey against a
+       navy-tinted app. Same family or the seams show. Declared at the attribute
+       specificity Mantine uses, for the reason documented on --mantine-color-dimmed. */
+    --mantine-color-body: #121820;
+  }
 }
 
 /* ---- Browser surfaces -------------------------------------------------- */
@@ -65,7 +224,7 @@
 
 ::selection {
   background: var(--accent-soft);
-  color: #0b1b30;
+  color: var(--ink);
 }
 
 :focus-visible {
@@ -81,7 +240,7 @@
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(15, 32, 56, 0.22) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -90,14 +249,14 @@
 }
 
 *::-webkit-scrollbar-thumb {
-  background: rgba(15, 32, 56, 0.22);
+  background: var(--scrollbar-thumb);
   border: 3px solid transparent;
   border-radius: 8px;
   background-clip: content-box;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(15, 32, 56, 0.36);
+  background: var(--scrollbar-thumb-hover);
   background-clip: content-box;
 }
 
@@ -153,15 +312,15 @@ h3,
   margin-right: 8px;
   padding: 5px 10px;
   border-radius: 999px;
-  color: #ffd9a8;
-  background: rgba(255, 170, 60, 0.18);
-  box-shadow: inset 0 0 0 1px rgba(255, 190, 110, 0.35);
+  color: var(--warn-on-rail);
+  background: var(--warn-rail-bg);
+  box-shadow: inset 0 0 0 1px var(--warn-rail-border);
   transition: background 160ms var(--ease-out);
 }
 
 .rail-alarm:hover {
-  background: rgba(255, 170, 60, 0.3);
-  color: #fff0dc;
+  background: var(--warn-rail-bg-hover);
+  color: var(--warn-on-rail-hover);
 }
 
 /*
@@ -170,7 +329,7 @@ h3,
  * belongs to the page you are reading, not to the chrome above it.
  */
 .subrail {
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--glass-strong);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   box-shadow: inset 0 -1px 0 var(--hairline);
@@ -191,7 +350,7 @@ h3,
 }
 
 .subrail-link:hover {
-  color: #0b1b30;
+  color: var(--ink);
 }
 
 /* The one authored moment: the indicator grows from the centre of the item you
@@ -233,9 +392,9 @@ h3,
   margin-bottom: 16px;
   padding: 10px 14px;
   border-radius: 8px;
-  background: rgba(255, 170, 60, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(181, 71, 8, 0.28);
-  color: #7a3f06;
+  background: var(--warn-bg);
+  box-shadow: inset 0 0 0 1px var(--warn-border);
+  color: var(--warn-fg);
 }
 
 .acting-stop {
@@ -258,11 +417,20 @@ h3,
   bottom: 0;
   z-index: 200;
   display: flex;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--glass-strong);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   box-shadow: inset 0 1px 0 var(--hairline);
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* While the drawer is open the drawer IS the navigation; a tab bar painted on
+   top of it is both redundant and a tap target over the thing it duplicates. */
+.bottom-bar[data-drawer-open] {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(100%);
+  transition: opacity 120ms var(--ease-out), transform 160ms var(--ease-out);
 }
 
 .bottom-link {
@@ -310,7 +478,7 @@ h3,
 .drawer-link[data-section] {
   padding-left: 12px;
   font-weight: 560;
-  color: #0b1b30;
+  color: var(--ink);
 }
 
 .drawer-link:hover {
@@ -473,6 +641,7 @@ h3,
 /* Same token, at the specificity Mantine uses, so it actually wins. */
 :root[data-mantine-color-scheme="light"] {
   --mantine-color-dimmed: var(--mantine-color-gray-7);
+  --mantine-color-body: var(--surface);
 }
 
 /* ---- Receive dock ------------------------------------------------------- */
@@ -586,7 +755,7 @@ h3,
      second height here is a number that can silently disagree with it. */
   height: 100%;
   padding: 0 var(--menubar-pad);
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--glass);
   box-shadow: inset 0 -1px 0 var(--hairline);
   font-size: var(--menubar-font);
   color: var(--mantine-color-gray-9);
@@ -651,7 +820,7 @@ h3,
 
 .menubar-item:hover,
 .menubar-item[data-open] {
-  background: rgba(15, 32, 56, 0.1);
+  background: var(--pressed);
 }
 
 /* The section you are inside, marked without stealing the bold used by the
@@ -698,7 +867,7 @@ h3,
 }
 
 .menubar-status-item[data-alarm] {
-  color: #9a3412;
+  color: var(--warn-fg);
   font-weight: 600;
 }
 
@@ -743,11 +912,11 @@ h3,
 .menubar-dropdown {
   min-width: 15rem;
   padding: 5px;
-  background: rgba(255, 255, 255, 0.78) !important;
+  background: var(--glass) !important;
   backdrop-filter: saturate(180%) blur(25px);
   -webkit-backdrop-filter: saturate(180%) blur(25px);
-  border: 1px solid rgba(15, 32, 56, 0.1) !important;
-  box-shadow: 0 10px 34px rgba(15, 32, 56, 0.18);
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--shadow-sm);
 }
 
 .menubar-dropdown .mantine-Menu-item {
@@ -764,7 +933,7 @@ h3,
 .menubar-dropdown .mantine-Menu-item:hover,
 .menubar-dropdown .mantine-Menu-item[data-hovered] {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .menubar-dropdown .mantine-Menu-label {
@@ -786,7 +955,7 @@ h3,
 @media (prefers-contrast: more) {
   .menubar,
   .menubar-dropdown {
-    background: #fff !important;
+    background: var(--glass-solid) !important;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
@@ -880,7 +1049,7 @@ h3,
 }
 
 .sidebar-search:hover {
-  background: #eef1f6;
+  background: var(--surface-hover);
 }
 
 .sidebar-search-label {
@@ -988,7 +1157,7 @@ h3,
 /* Amber, not red: the books being wrong is worth noticing on every screen
    without reading as a crash. */
 .sidebar-status[data-alarm] {
-  color: #9a3412;
+  color: var(--warn-fg);
   font-weight: 600;
 }
 
@@ -1015,7 +1184,7 @@ h3,
   height: 24px;
   border-radius: 6px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 12px;
   font-weight: 600;
 }
@@ -1078,7 +1247,7 @@ h3,
 }
 
 .sidebar-icon[data-pending="urgent"]::after {
-  background: #f97316;
+  background: var(--warn);
 }
 
 /* ---- Command palette ---------------------------------------------------- */
@@ -1089,7 +1258,7 @@ h3,
  */
 .palette {
   overflow: hidden;
-  box-shadow: 0 24px 60px rgba(15, 32, 56, 0.22);
+  box-shadow: var(--shadow-lg);
 }
 
 .palette-input input {
@@ -1227,7 +1396,7 @@ h3,
 /* A quiet left edge rather than a filled row: a list where every line shouts
    is a list that reads as noise. */
 .attention-row[data-severity="urgent"] {
-  box-shadow: inset 3px 0 0 #f97316, inset 0 -1px 0 var(--hairline);
+  box-shadow: inset 3px 0 0 var(--warn), inset 0 -1px 0 var(--hairline);
 }
 
 .attention-row-body {
@@ -1250,9 +1419,9 @@ h3,
 }
 
 .attention-clear {
-  color: #166534;
-  background: rgba(22, 163, 74, 0.07);
-  box-shadow: inset 0 0 0 1px rgba(22, 163, 74, 0.2);
+  color: var(--ok-fg);
+  background: var(--ok-bg);
+  box-shadow: inset 0 0 0 1px var(--ok-border);
 }
 
 .dash-section {

@@ -21,7 +21,11 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <MantineProvider
-      defaultColorScheme="light"
+      // "auto" follows the OS until someone chooses. Mantine resolves it and
+      // writes data-mantine-color-scheme onto <html>, which is what theme.css
+      // keys its dark tokens off — one source of truth, so the toggle and the
+      // system preference cannot disagree.
+      defaultColorScheme="auto"
       theme={{
         primaryColor: "indigo",
         // indigo-6 gives white-on-primary 4.32:1, just under the 4.5:1 needed.
