@@ -679,6 +679,7 @@ h3,
 /* Same token, at the specificity Mantine uses, so it actually wins. */
 :root[data-mantine-color-scheme="light"] {
   --mantine-color-dimmed: var(--mantine-color-gray-7);
+
   --mantine-color-body: var(--surface);
 }
 
@@ -1478,6 +1479,30 @@ h3,
 
 .attention-action[data-variant="light"] {
   color: var(--accent-strong);
+}
+
+/* Mantine's LIGHT VARIANT, globally.
+   Mantine computes --button-color / --badge-color in JS and writes it INLINE
+   from the theme (shade 6), so no CSS custom-property override can reach it —
+   remapping --mantine-color-*-light-color is dead code, which is exactly what
+   I tried first. Overriding `color` here does reach it.
+
+   On its own 10% tint, shade 6 measured: indigo 4.05:1, orange 2.53:1. Both
+   under AA. Darkening the SAME hue keeps the semantic colour; 65% was chosen
+   by measuring, not taste — orange is the binding case and lands at 5.27:1
+   (72% hits 4.50 exactly, which is no margin). Indigo lands at 7.41:1.
+
+   Light mode only. In dark the light variant is already a pale shade on a
+   dark tint, which is the right way round and passes. */
+:root[data-mantine-color-scheme="light"] .mantine-Button-root[data-variant="light"] {
+  /* NOT currentColor — inside the `color` property that resolves to the
+     INHERITED value, not this element's own, so it would darken the wrong
+     colour entirely. */
+  color: color-mix(in srgb, var(--button-color) 65%, #000);
+}
+
+:root[data-mantine-color-scheme="light"] .mantine-Badge-root[data-variant="light"] {
+  color: color-mix(in srgb, var(--badge-color) 65%, #000);
 }
 
 .attention-clear {
