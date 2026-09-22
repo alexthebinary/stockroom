@@ -2,6 +2,10 @@ node_modules/
 dist/
 *.log
 
+# Incremental-build cache. It changes on every build, so tracking it puts
+# noise in every diff and conflicts in every merge.
+*.tsbuildinfo
+
 # Local database — never committed. The hosted instance uses Postgres.
 backend/prisma/dev.db
 backend/prisma/dev.db-journal

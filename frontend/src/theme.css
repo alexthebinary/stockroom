@@ -13,10 +13,7 @@
 :root {
   /* Command rail — the dark chrome across the top. */
   --rail-bg: #12263f;
-  --rail-bg-hover: rgba(255, 255, 255, 0.09);
   --rail-fg: #e8eef6;
-  --rail-fg-dim: #a7b8cd;
-  --rail-accent: #4c8ff5;
 
   /* Data surface */
   --surface: #ffffff;
@@ -37,11 +34,13 @@
      of import order. The token read #868e96 at runtime and 19 elements sat at
      3.1–3.3:1 while this comment claimed they were fixed. Matching the
      attribute selector is what makes it take effect — verify with
-     getComputedStyle, not by reading this file. */
+     getComputedStyle, not by reading this file.
+
+     ⚠️ Nothing in src/ reads this, so a dead-token sweep will flag it. It is
+     NOT dead: @mantine/core/styles.css reads it 11 times. Deleting it silently
+     puts those 19 elements back to 3.32:1. */
   --mantine-color-dimmed: var(--mantine-color-gray-7);
 
-  /* Depth is offset plus blur. A flat halo is decoration, not elevation. */
-  --shadow-raised: 0 1px 2px rgba(15, 32, 56, 0.06), 0 4px 12px rgba(15, 32, 56, 0.07);
 
   /* Exponential ease-out: fast departure, long settle. */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -76,8 +75,7 @@
 }
 
 /* The rail is dark; its focus ring has to be too, or it vanishes. */
-.rail :focus-visible,
-.rail-account:focus-visible {
+.rail :focus-visible {
   outline-color: #9dc2ff;
 }
 
@@ -143,39 +141,6 @@ h3,
 
 .wordmark {
   letter-spacing: -0.015em;
-}
-
-/* Section buttons in the dark rail. */
-.rail-link {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 11px;
-  border-radius: 7px;
-  color: var(--rail-fg-dim);
-  transition: background 160ms var(--ease-out), color 160ms var(--ease-out);
-}
-
-.rail-link:hover {
-  background: var(--rail-bg-hover);
-  color: var(--rail-fg);
-}
-
-.rail-link[data-active] {
-  background: var(--rail-bg-hover);
-  color: var(--rail-fg);
-}
-
-.rail-account {
-  color: var(--rail-fg-dim);
-  padding: 6px 9px;
-  border-radius: 7px;
-  transition: background 160ms var(--ease-out), color 160ms var(--ease-out);
-}
-
-.rail-account:hover {
-  background: var(--rail-bg-hover);
-  color: var(--rail-fg);
 }
 
 /* The books-do-not-tie-out badge. Amber on the dark rail rather than red: it
@@ -426,7 +391,6 @@ h3,
     scroll-behavior: auto !important;
   }
 }
-
 
 /* ---- Print ------------------------------------------------------------- */
 /*
