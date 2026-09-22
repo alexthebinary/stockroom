@@ -11,7 +11,7 @@ import { prisma } from "../db";
 import { badRequest, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, parseBody } from "../http";
 import { requireStock } from "../auth";
-import { applyBalanceDelta } from "../inventory";
+import { receiveAgainstOrder } from "../goods_receipt";
 import { receiveSerials } from "../serials";
 import { adjudicate, type Reader } from "../vision_adjudicate";
 import { readLabel, visionConfigured } from "../vision";
@@ -104,6 +104,10 @@ receivingRouter.post(
     const body = parseBody(scanSchema, req.body);
     const actor = actorOf(req);
 
+    // Read OUTSIDE the transaction only to decide whether to spend money on
+    // vision models. The authoritative read — and the over-receive check that
+    // depends on it — happens inside, because the adjudication below can take
+    // seconds and two scanners on one pallet must not both pass a stale check.
     const line = await prisma.purchaseOrderLine.findUnique({
       where: { id: body.purchaseOrderLineId },
       include: { product: true, purchaseOrder: true },
@@ -139,16 +143,40 @@ receivingRouter.post(
 
     const serialized = line.product.trackingMode === "SERIAL";
 
+    /**
+     * One box, through the SAME pipeline the manual receive uses.
+     *
+     * This used to increment onHandQty and receivedQty and stop: no incoming
+     * decrement, no goods receipt, no movement, no cost layer for
+     * non-serialised goods, and no journal entry. Stock appeared on the shelf
+     * that the books knew nothing about, and it had no FIFO layer to consume
+     * when it later shipped.
+     */
     const result = await prisma.$transaction(async (tx) => {
+      const order = await tx.purchaseOrder.findUniqueOrThrow({
+        where: { id: line.purchaseOrderId },
+        include: { lines: { include: { product: true } } },
+      });
+
+      const receipt = await receiveAgainstOrder(tx, {
+        order,
+        requested: new Map([[line.id, 1]]),
+        actor,
+      });
+
       if (serialized) {
+        // The unit belongs to the layer this receipt just created, so its
+        // provenance points at the same document as the stock it is part of.
+        const lotId = receipt.createdLots.find((l) => l.lineId === line.id)?.lotId ?? null;
         const [unit] = await receiveSerials(tx, {
           productId: line.productId,
           warehouseId: line.warehouseId,
           unitCostCents: line.unitCostCents,
           serials: [{ serialNumber: verdict.serial, boxSerial: body.barcode ?? null }],
           warrantyStartAt: new Date(),
-          sourceType: "PURCHASE_ORDER",
-          sourceId: line.purchaseOrderId,
+          sourceType: "GOODS_RECEIPT",
+          sourceId: receipt.goodsReceipt.id,
+          lotId,
         });
         await tx.serialUnit.update({
           where: { id: unit.id },
@@ -162,16 +190,11 @@ receivingRouter.post(
         });
       }
 
-      await applyBalanceDelta(
-        tx, line.productId, line.warehouseId, { onHandQty: 1 },
-        `Cannot receive ${line.product.sku}`
-      );
-      // The field the schema author added for under-shipment, finally written.
-      const updated = await tx.purchaseOrderLine.update({
-        where: { id: line.id },
-        data: { receivedQty: { increment: 1 } },
-      });
-      return updated;
+      return {
+        line: await tx.purchaseOrderLine.findUniqueOrThrow({ where: { id: line.id } }),
+        goodsReceipt: receipt.goodsReceipt,
+        complete: receipt.complete,
+      };
     });
 
     res.json({
@@ -182,12 +205,14 @@ receivingRouter.post(
       evidence: verdict.evidence,
       flagged: verdict.needsReview,
       flagReason: verdict.reviewReason,
+      goodsReceipt: result.goodsReceipt.grnNumber,
+      orderComplete: result.complete,
       line: {
-        id: result.id,
+        id: result.line.id,
         sku: line.product.sku,
-        receivedQty: result.receivedQty,
-        quantity: result.quantity,
-        outstanding: result.quantity - result.receivedQty,
+        receivedQty: result.line.receivedQty,
+        quantity: result.line.quantity,
+        outstanding: result.line.quantity - result.line.receivedQty,
       },
       actor,
     });

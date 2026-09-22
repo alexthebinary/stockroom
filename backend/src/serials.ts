@@ -58,6 +58,16 @@ export async function receiveSerials(
     unitCostCents: number;
     serials: { serialNumber: string; boxSerial?: string | null }[];
     warrantyStartAt?: Date | null;
+    /**
+     * Attach to an EXISTING layer instead of creating one.
+     *
+     * The goods-receipt pipeline already creates a layer for everything it
+     * books, so a caller that has been through it must hand the layer over —
+     * otherwise the unit gets a second layer of its own and the same money is
+     * counted twice in Inventory. Only valid for a single serial, because one
+     * layer holding one unit is the invariant this file rests on.
+     */
+    lotId?: number | null;
   } & LotSource
 ) {
   if (!input.serials.length) {
@@ -84,17 +94,25 @@ export async function receiveSerials(
     );
   }
 
+  if (input.lotId != null && input.serials.length !== 1) {
+    throw badRequest("An existing cost layer can only be handed to a single serial");
+  }
+
   const created = [];
   for (const s of input.serials) {
-    // One layer, one unit. This is what makes the invariant structural.
-    const lot = await createLot(tx, {
-      productId: input.productId,
-      warehouseId: input.warehouseId,
-      quantity: 1,
-      unitCostCents: input.unitCostCents,
-      sourceType: input.sourceType,
-      sourceId: input.sourceId ?? null,
-    });
+    // One layer, one unit. This is what makes the invariant structural — so a
+    // handed-over layer is used as-is rather than duplicated.
+    const lot =
+      input.lotId != null
+        ? await tx.inventoryLot.findUniqueOrThrow({ where: { id: input.lotId } })
+        : await createLot(tx, {
+            productId: input.productId,
+            warehouseId: input.warehouseId,
+            quantity: 1,
+            unitCostCents: input.unitCostCents,
+            sourceType: input.sourceType,
+            sourceId: input.sourceId ?? null,
+          });
     created.push(
       await tx.serialUnit.create({
         data: {
