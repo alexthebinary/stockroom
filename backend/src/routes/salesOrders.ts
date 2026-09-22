@@ -13,6 +13,7 @@ import { attachConsumptionsToMovement, consumeFifo } from "../costing";
 import { postSimple, reverseDocumentEntry } from "../ledger";
 import { TRANSACTION_TYPE } from "../accounts";
 import { assertReferencesUsable } from "../refs";
+import { lockDocumentForPayment, paidAgainst } from "../payments";
 import {
   nextInvoiceNumber,
   nextPaymentNumber,
@@ -56,14 +57,6 @@ const reversePaymentSchema = z.object({
   paymentId: z.number().int().positive().optional(),
 });
 
-/** Money actually received against an invoice: live payments only, always summed fresh. */
-async function paidAgainstInvoice(tx: { payment: { findMany: Function } }, invoiceId: number) {
-  const payments = await tx.payment.findMany({
-    where: { invoiceId, status: { not: "VOID" } },
-    select: { amountCents: true },
-  });
-  return payments.reduce((sum: number, p: { amountCents: number }) => sum + p.amountCents, 0);
-}
 
 const include = {
   lines: { include: { product: true, warehouse: true } },
@@ -486,7 +479,10 @@ salesOrdersRouter.post(
       // Recomputed inside the transaction rather than read from the order:
       // instalments land one at a time and a stale balance is how an invoice
       // quietly ends up overpaid.
-      const alreadyPaidCents = await paidAgainstInvoice(tx, invoice.id);
+      // Lock before reading, or two concurrent partial payments both read the
+      // same balance and both pass the overpay check. See payments.ts.
+      await lockDocumentForPayment(tx, "Invoice", invoice.id);
+      const alreadyPaidCents = await paidAgainst(tx, { invoiceId: invoice.id });
       const outstandingCents = invoice.totalCents - alreadyPaidCents;
       if (outstandingCents <= 0) throw conflict("This invoice is already settled in full");
 

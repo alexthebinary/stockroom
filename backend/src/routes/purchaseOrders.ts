@@ -7,6 +7,7 @@ import { actorOf, asyncHandler, intParam, pagination, parseBody } from "../http"
 import { requireMoney, requireStock } from "../auth";
 import { applyBalanceDelta, recordMovement } from "../inventory";
 import { createLot } from "../costing";
+import { lockDocumentForPayment, paidAgainst } from "../payments";
 import { companyDetails, renderGoodsReceipt } from "../pdf";
 import { createEntry, postSimple, reverseDocumentEntry, type DraftLine } from "../ledger";
 import { ACCOUNT } from "../accounts";
@@ -53,6 +54,13 @@ const receiveSchema = z.object({
     .optional(),
 });
 
+const reversePaymentSchema = z.object({
+  reason: z.string().trim().min(1, "A reason is required — this reverses money already recorded"),
+  /// Which instalment. Omitted reverses the most recent live one, which is
+  /// all that existed before a bill could be part paid.
+  paymentId: z.number().int().positive().optional(),
+});
+
 const payBillSchema = z.object({
   /// Omitted means "settle what is left", which is what every caller meant
   /// before this field existed.
@@ -60,14 +68,6 @@ const payBillSchema = z.object({
   method: z.string().optional(),
 });
 
-/** Money actually paid against a bill: live payments only, always summed fresh. */
-async function paidAgainstBill(tx: { payment: { findMany: Function } }, billId: number) {
-  const payments = await tx.payment.findMany({
-    where: { billId, status: { not: "VOID" } },
-    select: { amountCents: true },
-  });
-  return payments.reduce((sum: number, p: { amountCents: number }) => sum + p.amountCents, 0);
-}
 
 const include = {
   lines: { include: { product: true, warehouse: true } },
@@ -458,7 +458,9 @@ purchaseOrdersRouter.post(
       // Counting payments was the old gate, and it closed the bill after the
       // first one — so a deposit plus a balance, which is how capital equipment
       // is actually bought, could not be recorded. Sum the money instead.
-      const alreadyPaidCents = await paidAgainstBill(tx, bill.id);
+      // Lock before reading; see payments.ts for what goes wrong without it.
+      await lockDocumentForPayment(tx, "Bill", bill.id);
+      const alreadyPaidCents = await paidAgainst(tx, { billId: bill.id });
       const outstandingCents = bill.totalCents - alreadyPaidCents;
       if (outstandingCents <= 0) throw conflict("This bill has already been paid in full");
 
@@ -534,19 +536,33 @@ purchaseOrdersRouter.post(
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
-    const reason = String(req.body?.reason ?? "").trim();
-    if (!reason) throw badRequest("A reason is required — this reverses money already recorded");
+    const body = parseBody(reversePaymentSchema, req.body ?? {});
+    const reason = body.reason;
 
     const result = await prisma.$transaction(async (tx) => {
       const current = await tx.purchaseOrder.findUnique({ where: { id }, include });
       if (!current) throw notFound("Purchase order not found");
 
       const billIds = current.bills.map((b) => b.id);
-      const payment = await tx.payment.findFirst({
-        where: { billId: { in: billIds }, status: { not: "VOID" } },
-        orderBy: { id: "desc" },
-      });
-      if (!payment) throw conflict("There is no live payment on this purchase order to reverse");
+      // Targetable by id, as on the sales side. Without it a bookkeeper who
+      // mis-keys a deposit and then correctly pays the balance can only ever
+      // reverse the balance — the endpoint returns 200 having undone the
+      // wrong instalment, and the mis-keyed one is stuck for good.
+      const payment = body.paymentId
+        ? await tx.payment.findFirst({
+            where: { id: body.paymentId, billId: { in: billIds }, status: { not: "VOID" } },
+          })
+        : await tx.payment.findFirst({
+            where: { billId: { in: billIds }, status: { not: "VOID" } },
+            orderBy: { id: "desc" },
+          });
+      if (!payment) {
+        throw conflict(
+          body.paymentId
+            ? `Payment ${body.paymentId} is not a live payment on this purchase order`
+            : "There is no live payment on this purchase order to reverse"
+        );
+      }
 
       // PAID walks back to POSTED. A DELIVERED order stays delivered: the goods
       // arrived regardless of what happened to the money.
