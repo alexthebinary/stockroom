@@ -76,7 +76,10 @@ describe("cross-order purchase lists", () => {
     expect(unpaid.body.data.some((b: any) => b.id === billId)).toBe(true);
     expect(paid.body.data.some((b: any) => b.id === billId)).toBe(false);
     expect(unpaid.body.data.every((b: any) => b.outstandingCents > 0)).toBe(true);
-    expect(unpaid.body.partialFilter).toBe(true);
+    // The filter used to narrow only the current page and report that page's
+    // length as the total, flagged with `partialFilter`. It now filters the
+    // whole set, so the total must count everything that matched.
+    expect(unpaid.body.total).toBeGreaterThanOrEqual(unpaid.body.data.length);
 
     // Settle it and it must cross over.
     await api.post(`/api/purchase-orders/${orderId}/pay`);

@@ -169,8 +169,7 @@ salesOrdersRouter.get(
       prisma.invoice.count({ where }),
       prisma.invoice.findMany({
         where,
-        skip,
-        take,
+        ...(settlement ? {} : { skip, take }),
         orderBy: { issueDate: "desc" },
         include: {
           customer: true,
@@ -192,6 +191,16 @@ salesOrdersRouter.get(
     // Settlement is derived, so it cannot be a database filter without denormalising
     // it. Paging happens first and this narrows the page, which is honest for a
     // filter chip and wrong for a total — so the total is recomputed, not reused.
+    /*
+     * Settlement is derived from live payments, so it cannot be a database
+     * filter without denormalising a balance that reversals would make stale.
+     * It therefore filters the WHOLE candidate set and pages in memory.
+     *
+     * It used to post-filter one page of 25 and report that page's length as
+     * the total: a page of 25 unpaid rows answered ?settlement=PAID with
+     * `data: []`, `total: 0`, `totalPages: 1`, so the UI said "none match",
+     * hid pagination, and every settled invoice further down was unreachable.
+     */
     const filtered =
       settlement === "PAID"
         ? mapped.filter((i) => i.status !== "VOID" && i.outstandingCents === 0)
@@ -199,13 +208,15 @@ salesOrdersRouter.get(
           ? mapped.filter((i) => i.status !== "VOID" && i.outstandingCents > 0)
           : mapped;
 
+    const pagedOf = settlement ? filtered.slice(skip, skip + take) : filtered;
+    const invoiceTotal = settlement ? filtered.length : total;
+
     res.json({
-      data: filtered,
+      data: pagedOf,
       page,
       pageSize,
-      total: settlement ? filtered.length : total,
-      totalPages: Math.max(1, Math.ceil((settlement ? filtered.length : total) / pageSize)),
-      partialFilter: Boolean(settlement),
+      total: invoiceTotal,
+      totalPages: Math.max(1, Math.ceil(invoiceTotal / pageSize)),
     });
   })
 );
@@ -990,6 +1001,25 @@ salesOrdersRouter.post(
       if (!current) throw notFound("Sales order not found");
       if (current.paymentStatus === "PAID") {
         throw conflict("Refund and void the payment before voiding the invoice");
+      }
+      /*
+       * PAID is no longer the only state holding money. Once an invoice can be
+       * PART paid the order sits at INVOICED with a live payment against it,
+       * and this guard used to wave that through: the invoice was voided and
+       * its entry reversed while the customer's payment stayed posted, leaving
+       * cash in the bank credited to a receivable that no longer exists and
+       * Accounts Receivable driven negative.
+       */
+      const livePayments = await tx.payment.count({
+        where: {
+          invoiceId: { in: current.invoices.map((i) => i.id) },
+          status: { not: "VOID" },
+        },
+      });
+      if (livePayments > 0) {
+        throw conflict(
+          "There is a payment recorded against this invoice — reverse it before voiding"
+        );
       }
       if (current.paymentStatus !== "INVOICED") {
         throw conflict(`There is no posted invoice to void (order is ${current.paymentStatus})`);

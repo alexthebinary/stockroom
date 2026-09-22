@@ -145,8 +145,7 @@ purchaseOrdersRouter.get(
       prisma.bill.count({ where }),
       prisma.bill.findMany({
         where,
-        skip,
-        take,
+        ...(settlement ? {} : { skip, take }),
         orderBy: { issueDate: "desc" },
         include: {
           vendor: true,
@@ -169,6 +168,16 @@ purchaseOrdersRouter.get(
     // denormalising it. Paging happens first and this narrows the page, which
     // is honest for a filter chip and wrong for a total — so the total is
     // recomputed, and the response says the filter was partial.
+    /*
+     * Settlement is derived from live payments, so it cannot be a database
+     * filter without denormalising a balance that reversals would make stale.
+     * It therefore filters the WHOLE candidate set and pages in memory.
+     *
+     * It used to post-filter one page of 25 and report that page's length as
+     * the total: a page of 25 unpaid rows answered ?settlement=PAID with
+     * `data: []`, `total: 0`, `totalPages: 1`, so the UI said "none match",
+     * hid pagination, and every settled bill further down was unreachable.
+     */
     const filtered =
       settlement === "PAID"
         ? mapped.filter((b) => b.status !== "VOID" && b.outstandingCents === 0)
@@ -176,13 +185,15 @@ purchaseOrdersRouter.get(
           ? mapped.filter((b) => b.status !== "VOID" && b.outstandingCents > 0)
           : mapped;
 
+    const pagedOf = settlement ? filtered.slice(skip, skip + take) : filtered;
+    const billTotal = settlement ? filtered.length : total;
+
     res.json({
-      data: filtered,
+      data: pagedOf,
       page,
       pageSize,
-      total: settlement ? filtered.length : total,
-      totalPages: Math.max(1, Math.ceil((settlement ? filtered.length : total) / pageSize)),
-      partialFilter: Boolean(settlement),
+      total: billTotal,
+      totalPages: Math.max(1, Math.ceil(billTotal / pageSize)),
     });
   })
 );
@@ -862,6 +873,30 @@ purchaseOrdersRouter.post(
       }
       if (current.status === "DELIVERED") {
         throw conflict("These goods have been received — the bill cannot be voided");
+      }
+      /*
+       * DELIVERED is no longer the only state holding stock. A PART received
+       * order stays POSTED, and this guard used to let it through: the bill
+       * was voided and its entry reversed (Cr Prepaid Inventory) while the
+       * goods receipts that had ALREADY credited Prepaid stayed live, crediting
+       * it twice and driving it negative, with received lines reset to PENDING
+       * behind stock that is physically on the shelf.
+       */
+      const received =
+        current.goodsReceipts.length > 0 || current.lines.some((l) => l.receivedQty > 0);
+      if (received) {
+        throw conflict(
+          "Goods have already been received against this order — the bill cannot be voided"
+        );
+      }
+      // Same reasoning as the sales side: a part paid bill sits at POSTED.
+      const livePayments = await tx.payment.count({
+        where: { billId: { in: current.bills.map((b) => b.id) }, status: { not: "VOID" } },
+      });
+      if (livePayments > 0) {
+        throw conflict(
+          "There is a payment recorded against this bill — reverse it before voiding"
+        );
       }
       if (current.status !== "POSTED") {
         throw conflict(`There is no posted bill to void (order is ${current.status})`);

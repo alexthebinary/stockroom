@@ -36,7 +36,7 @@ export default function Invoices() {
   const list = useQuery({
     queryKey: ["invoices", { settlement, status, search, page }],
     queryFn: () =>
-      api.get<Paginated<InvoiceRow> & { partialFilter?: boolean }>(
+      api.get<Paginated<InvoiceRow>>(
         `/sales-orders/invoices${qs({ settlement, status, search, page, pageSize: 25 })}`
       ),
   });
@@ -102,12 +102,6 @@ export default function Invoices() {
             w={260}
           />
         </Group>
-        {list.data?.partialFilter && (
-          <Text size="xs" c="dimmed" mt="sm">
-            Paid and unpaid are worked out from live payments, so this filter narrows the
-            current page rather than the whole list. Clear it to page through everything.
-          </Text>
-        )}
       </Card>
 
       <Card withBorder radius="md" p={0}>
