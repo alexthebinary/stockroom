@@ -12,7 +12,8 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { api, qs, type DashboardSummary, type ValuationReport } from "../api";
+import { api, qs, type Attention, type DashboardSummary, type ValuationReport } from "../api";
+import { NeedsAttention } from "../components/NeedsAttention";
 import { MovementRoute, PageHeader, QueryState, Stat, StatusBadge, formatDate, money } from "../components/ui";
 
 export default function Dashboard() {
@@ -21,6 +22,15 @@ export default function Dashboard() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["dashboard", threshold],
     queryFn: () => api.get<DashboardSummary>(`/dashboard${qs({ lowStockThreshold: threshold })}`),
+  });
+
+  // What needs doing. Same endpoint the sidebar counts come from, so a badge
+  // and this list can never disagree about how much work is outstanding.
+  const attention = useQuery({
+    queryKey: ["attention"],
+    queryFn: () => api.get<Attention>("/dashboard/attention"),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 
   // Stock value comes from the FIFO layers, not a quantity times a guess.
@@ -32,8 +42,8 @@ export default function Dashboard() {
   return (
     <>
       <PageHeader
-        title="Dashboard"
-        subtitle="Stock position across every warehouse, and what moved most recently."
+        title="Today"
+        subtitle="What needs doing, and the position behind it."
         action={
           <NumberInput
             label="Low-stock threshold"
@@ -46,9 +56,13 @@ export default function Dashboard() {
         }
       />
 
+      {/* The work first. Position is context for it, not the headline. */}
+      {attention.data && <NeedsAttention jobs={attention.data.jobs} />}
+
       <QueryState isLoading={isLoading} error={error}>
         {data && (
           <>
+            <Text className="dash-section">Position</Text>
             <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mb="lg">
               <Stat
                 label="SKUs"

@@ -86,30 +86,64 @@ dashboardRouter.get(
 dashboardRouter.get(
   "/attention",
   asyncHandler(async (_req, res) => {
+    const now = Date.now();
+    const days = (d: Date) => Math.floor((now - d.getTime()) / 86_400_000);
+    /** "0 days ago" is not something anyone says. */
+    const ago = (d: Date) => {
+      const n = days(d);
+      return n === 0 ? "today" : n === 1 ? "yesterday" : `${n} days ago`;
+    };
+
     const [invoices, bills, shipments, poLines, balances] = await Promise.all([
       prisma.invoice.findMany({
         where: { status: { not: "VOID" } },
-        select: { id: true, totalCents: true, issueDate: true, payments: { where: { status: { not: "VOID" } }, select: { amountCents: true } } },
+        select: {
+          id: true, invoiceNumber: true, totalCents: true, issueDate: true,
+          customer: { select: { name: true } },
+          salesOrder: { select: { id: true } },
+          payments: { where: { status: { not: "VOID" } }, select: { amountCents: true } },
+        },
       }),
       prisma.bill.findMany({
         where: { status: { not: "VOID" } },
-        select: { id: true, totalCents: true, issueDate: true, payments: { where: { status: { not: "VOID" } }, select: { amountCents: true } } },
+        select: {
+          id: true, billNumber: true, totalCents: true, issueDate: true,
+          vendor: { select: { name: true } },
+          purchaseOrder: { select: { id: true, poNumber: true } },
+          payments: { where: { status: { not: "VOID" } }, select: { amountCents: true } },
+        },
       }),
       prisma.shipment.findMany({
         where: { deliveredAt: null, status: { not: "VOID" } },
-        select: { id: true, shippedAt: true },
+        select: {
+          id: true, shipmentNumber: true, shippedAt: true, trackingNumber: true,
+          salesOrder: { select: { id: true, customerName: true } },
+        },
       }),
       prisma.purchaseOrderLine.findMany({
         where: { purchaseOrder: { status: { in: ["POSTED", "PAID"] } } },
-        select: { quantity: true, receivedQty: true, purchaseOrderId: true },
+        select: {
+          quantity: true, receivedQty: true, purchaseOrderId: true,
+          product: { select: { sku: true } },
+          purchaseOrder: { select: { poNumber: true, supplierName: true, createdAt: true } },
+        },
       }),
       prisma.inventoryBalance.findMany({
         where: { reorderPoint: { gt: 0 } },
-        select: { onHandQty: true, reservedQty: true, reorderPoint: true },
+        select: {
+          onHandQty: true, reservedQty: true, reorderPoint: true, incomingQty: true,
+          product: { select: { id: true, sku: true, name: true } },
+          warehouse: { select: { code: true } },
+        },
       }),
     ]);
 
-    const owing = (rows: typeof invoices) =>
+    // Generic over both documents: invoices and bills diverged once they
+    // started carrying their own party and parent order, and typing this to
+    // one of them silently made the other's totals unreachable.
+    const owing = <T extends { totalCents: number; issueDate: Date; payments: { amountCents: number }[] }>(
+      rows: T[]
+    ) =>
       rows
         .map((r) => ({
           outstanding: r.totalCents - r.payments.reduce((s, p) => s + p.amountCents, 0),
@@ -134,7 +168,120 @@ dashboardRouter.get(
       (b) => b.onHandQty - b.reservedQty < b.reorderPoint
     ).length;
 
+    /**
+     * The same facts as named jobs.
+     *
+     * A count tells an operator there is a problem; a line tells them which
+     * one, how bad, and what to press. Bounded to the few worst of each kind
+     * — this is a to-do list, not a report, and a list nobody can finish is
+     * one nobody starts.
+     */
+    type Job = {
+      id: string;
+      severity: "urgent" | "notice";
+      title: string;
+      detail: string;
+      to: string;
+      action?: { label: string; to: string };
+      amountCents?: number;
+    };
+    const jobs: Job[] = [];
+
+    for (const inv of invoices
+      .map((i) => ({ ...i, outstanding: i.totalCents - i.payments.reduce((s, p) => s + p.amountCents, 0) }))
+      .filter((i) => i.outstanding > 0)
+      .sort((a, b) => a.issueDate.getTime() - b.issueDate.getTime())
+      .slice(0, 3)) {
+      const age = days(inv.issueDate);
+      jobs.push({
+        id: `inv-${inv.id}`,
+        severity: age > 30 ? "urgent" : "notice",
+        title: `${inv.invoiceNumber} unpaid${age > 30 ? ` — ${age} days` : ""}`,
+        detail: inv.customer?.name ?? "Customer",
+        amountCents: inv.outstanding,
+        to: inv.salesOrder ? `/sales-orders/${inv.salesOrder.id}` : "/invoices",
+        action: inv.salesOrder
+          ? { label: "Record payment", to: `/sales-orders/${inv.salesOrder.id}` }
+          : undefined,
+      });
+    }
+
+    const shortByOrder = new Map<number, { poNumber: string; supplier: string; short: number; ordered: number; skus: string[]; createdAt: Date }>();
+    for (const l of poLines) {
+      if (l.receivedQty >= l.quantity) continue;
+      const row = shortByOrder.get(l.purchaseOrderId) ?? {
+        poNumber: l.purchaseOrder.poNumber, supplier: l.purchaseOrder.supplierName,
+        short: 0, ordered: 0, skus: [], createdAt: l.purchaseOrder.createdAt,
+      };
+      row.short += l.quantity - l.receivedQty;
+      row.ordered += l.quantity;
+      if (row.skus.length < 2) row.skus.push(l.product.sku);
+      shortByOrder.set(l.purchaseOrderId, row);
+    }
+    for (const [poId, row] of [...shortByOrder.entries()].slice(0, 3)) {
+      jobs.push({
+        id: `po-${poId}`,
+        severity: "urgent",
+        title: `${row.poNumber} short ${row.short} of ${row.ordered}`,
+        detail: `${row.supplier} · ${row.skus.join(", ")} · ordered ${ago(row.createdAt)}`,
+        to: `/purchase-orders/${poId}`,
+        action: { label: "Receive", to: `/purchase-orders/${poId}` },
+      });
+    }
+
+    for (const b of balances
+      .filter((x) => x.onHandQty - x.reservedQty < x.reorderPoint)
+      .sort((a, b2) => a.onHandQty - a.reservedQty - (b2.onHandQty - b2.reservedQty))
+      .slice(0, 3)) {
+      const available = b.onHandQty - b.reservedQty;
+      jobs.push({
+        id: `stock-${b.product.id}-${b.warehouse.code}`,
+        severity: available <= 0 ? "urgent" : "notice",
+        title: `${b.product.sku} at ${b.warehouse.code}: ${available} left`,
+        detail:
+          `Reorder at ${b.reorderPoint}` +
+          (b.incomingQty > 0 ? ` · ${b.incomingQty} already incoming` : " · nothing on order"),
+        to: `/products/${b.product.id}`,
+        action: b.incomingQty > 0 ? undefined : { label: "Order more", to: "/purchase-orders" },
+      });
+    }
+
+    for (const b of bills
+      .map((x) => ({ ...x, outstanding: x.totalCents - x.payments.reduce((s, p) => s + p.amountCents, 0) }))
+      .filter((x) => x.outstanding > 0)
+      .slice(0, 2)) {
+      jobs.push({
+        id: `bill-${b.id}`,
+        severity: "notice",
+        title: `${b.billNumber} to pay`,
+        detail: b.vendor?.name ?? "Vendor",
+        amountCents: b.outstanding,
+        to: b.purchaseOrder ? `/purchase-orders/${b.purchaseOrder.id}` : "/bills",
+        action: b.purchaseOrder
+          ? { label: "Pay vendor", to: `/purchase-orders/${b.purchaseOrder.id}` }
+          : undefined,
+      });
+    }
+
+    // Only the ones old enough to be worth asking about. Stockroom cannot see
+    // a delivery, so a shipment that left yesterday is not yet a problem.
+    for (const sh of shipments.filter((x) => days(x.shippedAt) >= 7).slice(0, 2)) {
+      jobs.push({
+        id: `ship-${sh.id}`,
+        severity: "notice",
+        title: `${sh.shipmentNumber} left ${ago(sh.shippedAt)}, no delivery confirmed`,
+        detail: `${sh.salesOrder?.customerName ?? "Customer"}${sh.trackingNumber ? ` · ${sh.trackingNumber}` : " · no tracking recorded"}`,
+        to: sh.salesOrder ? `/sales-orders/${sh.salesOrder.id}` : "/deliveries",
+        action: sh.salesOrder
+          ? { label: "Confirm delivery", to: `/sales-orders/${sh.salesOrder.id}` }
+          : undefined,
+      });
+    }
+
+    jobs.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "urgent" ? -1 : 1));
+
     res.json({
+      jobs,
       invoices: {
         unpaid: owedToUs.length,
         overdue: overdue.length,

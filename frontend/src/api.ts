@@ -342,7 +342,19 @@ export type ShipmentOnOrder = {
  * the thing most certain to go stale, and a badge reading "3 to chase" over an
  * empty list is worse than no badge.
  */
+export type AttentionJob = {
+  id: string;
+  severity: "urgent" | "notice";
+  title: string;
+  detail: string;
+  to: string;
+  action?: { label: string; to: string };
+  amountCents?: number;
+};
+
 export type Attention = {
+  /** The same facts as named jobs: which one, how bad, what to press. */
+  jobs: AttentionJob[];
   invoices: { unpaid: number; overdue: number; outstandingCents: number };
   bills: { unpaid: number; outstandingCents: number };
   deliveries: { inTransit: number };
