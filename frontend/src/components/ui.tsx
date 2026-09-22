@@ -94,7 +94,7 @@ export function StatusCell({ value, tone = "primary" }: { value: string; tone?: 
     return (
       <span
         className="status-cell status-cell--secondary"
-        style={{ color: `var(--mantine-color-${hue}-9)` }}
+        style={{ color: `var(--mantine-color-${hue}-light-color)` }}
       >
         {formatStatus(value)}
       </span>
@@ -104,9 +104,15 @@ export function StatusCell({ value, tone = "primary" }: { value: string; tone?: 
     <span
       className="status-cell"
       style={{
-        background: `var(--mantine-color-${hue}-0)`,
-        color: `var(--mantine-color-${hue}-9)`,
-        boxShadow: `inset 2px 0 0 var(--mantine-color-${hue}-6)`,
+        // Mantine's NUMBERED shades are fixed: `-0` is the lightest swatch in
+        // both schemes, so in dark mode this cell stayed a near-white chip on
+        // a dark page. The `-light*` variants are scheme-aware and flip with
+        // it. A contrast sweep never caught this — the text on the chip always
+        // measured fine; it is the CHIP that was the wrong lightness for the
+        // page. See feedback_measure_the_render_not_the_rect.
+        background: `var(--mantine-color-${hue}-light)`,
+        color: `var(--mantine-color-${hue}-light-color)`,
+        boxShadow: `inset 2px 0 0 var(--mantine-color-${hue}-filled)`,
       }}
     >
       {formatStatus(value)}
