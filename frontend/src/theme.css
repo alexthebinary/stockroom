@@ -553,9 +553,11 @@ h3,
  */
 :root {
   --menubar-item-h: 24px;
-  --menubar-font: 12.5px;
-  --menubar-gap: 1px;
-  --menubar-pad: 8px;
+  /* 13px, not 12.5: at 28px tall the half-pixel rendered thin and the row
+     read as cramped rather than quiet. */
+  --menubar-font: 13px;
+  --menubar-gap: 2px;
+  --menubar-pad: 10px;
   --menubar-dropdown-item-h: 28px;
   --menubar-dropdown-font: 13px;
 }
@@ -613,9 +615,16 @@ h3,
   overflow-x: auto;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
-  /* Fade the cut edge so it is visible that more exists to the right. */
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
-  mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+}
+
+/*
+ * The fade is an affordance for content that is actually cut off. Applied
+ * unconditionally it faded the last section out with half the bar empty,
+ * which reads as a rendering fault rather than as "scroll me".
+ */
+.menubar-sections[data-overflowing] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
 }
 
 .menubar-sections::-webkit-scrollbar {
@@ -657,10 +666,20 @@ h3,
   letter-spacing: -0.01em;
 }
 
+/* The wordmark, the page name and the menus are three different kinds of
+   thing. Without a rule between them they read as one run-on row of words. */
+.menubar-divider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 14px;
+  margin: 0 6px;
+  background: var(--hairline);
+}
+
 /* Where macOS names the frontmost app. Here: the page you are on. */
 .menubar-title {
   flex: 0 0 auto;
-  padding: 0 10px 0 2px;
+  padding: 0 2px;
   font-size: var(--menubar-font);
   font-weight: 650;
   color: var(--mantine-color-gray-9);

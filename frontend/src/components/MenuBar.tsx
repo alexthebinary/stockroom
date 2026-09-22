@@ -1,6 +1,6 @@
 import { Box, Menu, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import { IconAlertTriangle, IconCircleCheck, IconPackage, IconUser } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 /**
@@ -35,6 +35,31 @@ function useHasHover() {
  */
 export const MENUBAR_H_FINE = 28;
 export const MENUBAR_H_COARSE = 48;
+
+/**
+ * Is the section strip actually scrolled/scrollable?
+ *
+ * The right-edge fade was applied unconditionally, so "Settings" faded out
+ * with a screenful of empty bar beside it — the affordance was lying about
+ * overflow that was not happening. CSS cannot ask, so measure.
+ */
+export function useOverflowing(ref: React.RefObject<HTMLElement | null>) {
+  const [overflowing, setOverflowing] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const check = () => setOverflowing(el.scrollWidth - el.clientWidth > 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    el.addEventListener("scroll", check, { passive: true });
+    return () => {
+      ro.disconnect();
+      el.removeEventListener("scroll", check);
+    };
+  }, [ref]);
+  return overflowing;
+}
 
 export function useCoarsePointer() {
   const [coarse, setCoarse] = useState(
@@ -96,6 +121,8 @@ export function MenuBar({
   const [open, setOpen] = useState<string | null>(null);
   const navigate = useNavigate();
   const hasHover = useHasHover();
+  const sectionsRef = useRef<HTMLDivElement>(null);
+  const sectionsOverflow = useOverflowing(sectionsRef);
   const followPointer = (label: string) => (hasHover && open ? () => setOpen(label) : undefined);
 
 
@@ -150,9 +177,13 @@ export function MenuBar({
       {/* The slot macOS gives the frontmost app. It outranks the wordmark
           when space is short: where you ARE beats what the app is called. */}
       {activePage && (
-        <Text span className="menubar-title" aria-current="page">
-          {activePage}
-        </Text>
+        <>
+          <span className="menubar-divider" aria-hidden />
+          <Text span className="menubar-title" aria-current="page">
+            {activePage}
+          </Text>
+          <span className="menubar-divider" aria-hidden />
+        </>
       )}
 
       {/*
@@ -162,7 +193,11 @@ export function MenuBar({
         are what gives. Rendered in SECTIONS order; splitting them by whether
         they have a dropdown once reordered the bar and pushed Home to the end.
       */}
-      <div className="menubar-sections">
+      <div
+        className="menubar-sections"
+        ref={sectionsRef}
+        data-overflowing={sectionsOverflow || undefined}
+      >
         {sections.map((section) =>
         !section.items?.length ? (
           // A dropdown holding one item is a worse button, so single-page
