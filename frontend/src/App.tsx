@@ -1,5 +1,5 @@
 import { AppShell, Box, Burger, Group, Menu, ScrollArea, Stack, Text, UnstyledButton } from "@mantine/core";
-import { useDisclosure, useHotkeys, useLocalStorage } from "@mantine/hooks";
+import { useDisclosure, useHotkeys, useLocalStorage, useMediaQuery } from "@mantine/hooks";
 import {
   IconBook2,
   IconChartBar,
@@ -251,12 +251,25 @@ export default function App() {
   const location = useLocation();
   const section = sectionFor(location.pathname);
   const subItems = section?.items;
-  // Mantine collapses the navbar with a transform alone, so it stays focusable
-  // and in the accessibility tree — on desktop, where it can never be opened,
-  // Tab walked 7 to 13 invisible links before reaching the page. `inert` is a
-  // real attribute that React 18's DOM typings predate, and Mantine spreads
-  // unknown props straight onto the element, so it is applied through a spread.
-  const drawerInert = (opened ? {} : { inert: "" }) as Record<string, unknown>;
+  /**
+   * `inert` belongs to the mobile DRAWER, not to the navbar element.
+   *
+   * It was added when this element was only ever the off-canvas drawer:
+   * Mantine collapses it with a transform alone, so on desktop it stayed
+   * focusable and Tab walked 7-13 invisible links before reaching the page.
+   *
+   * Then the desktop SIDEBAR moved into the same element, and `opened` is the
+   * burger's state — always false on desktop. So the whole sidebar became
+   * inert: every link rendered, none of them could be clicked, and a hit test
+   * at a nav row returned <main>. Gate it on the drawer actually being the
+   * thing on screen.
+   */
+  // Resolve on the first render, not in an effect — the default defers to an
+  // effect and returns undefined once, which would leave the closed drawer
+  // focusable for a frame.
+  const isDrawerWidth =
+    useMediaQuery("(max-width: 47.99em)", false, { getInitialValueInEffect: false }) ?? false;
+  const drawerInert = (isDrawerWidth && !opened ? { inert: "" } : {}) as Record<string, unknown>;
   const ledger = useLedgerHealth();
   // The bar is 28px under a pointer and 48px under a finger, and AppShell
   // reserves the page's top padding from this number — so it has to be the
