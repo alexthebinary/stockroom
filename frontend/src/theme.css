@@ -26,6 +26,9 @@
 
   --accent: #2a5fd4;
   --accent-soft: rgba(42, 95, 212, 0.1);
+  /* The accent is a FILL colour; as text on a 10% tint it measures 4.36:1.
+     This is the same hue taken dark enough to set type in. */
+  --accent-strong: #1e4aa8;
 
   /* Status, as semantic tokens rather than hexes at the call site.
      The app has exactly three status axes and they were previously spelled
@@ -63,6 +66,25 @@
   --pressed: rgba(15, 32, 56, 0.1);
   --ink: #0b1b30;
   --on-accent: #ffffff;
+
+  /* Text ramp. These were 31 hardcoded var(--mantine-color-gray-N) references,
+     and a fixed grey does not flip with the colour scheme: in dark mode
+     .attention-title and .sidebar-wordmark rendered gray-9 (#212529) on a dark
+     card and measured 1.14:1 and 1.16:1 — invisible. Every contrast ratio I
+     sampled passed; looking at the screenshot is what caught it.
+     The light values below are the exact greys they replace, so light mode is
+     unchanged by construction. */
+  --text-strong: #212529;
+  --text: #343a40;
+  --text-muted: #495057;
+  /* Was gray-6 (#868e96), which measured 3.24:1 on the light surface and
+     failed AA — a pre-existing failure the ramp inherited. Measured against the
+     SUNKEN field it sits on, not the surface: #6b7280 still read 3.86:1 there,
+     #5c6673 reads 5.36:1.
+     All ten uses are on light planes; none is on the dark rail. */
+  --text-faint: #5c6673;
+  --line: #e9ecef;
+  --dot: #adb5bd;
 
   /* Mantine's default dimmed is gray-6 (#868e96) at 3.32:1 on white — below
      the 4.5:1 body-text floor. gray-7 measures 8.18:1.
@@ -127,6 +149,7 @@
 
   --accent: #7aa2ff;
   --accent-soft: rgba(122, 162, 255, 0.16);
+  --accent-strong: #9dbaff;
 
   --warn: #fb923c;
   --warn-fg: #ffb877;
@@ -160,6 +183,13 @@
      surface. gray-5 (#adb5bd) measures 6.9:1 on #121820. */
   --mantine-color-dimmed: var(--mantine-color-gray-5);
 
+  --text-strong: #e6edf7;
+  --text: #d3dceb;
+  --text-muted: #adb5bd;
+  --text-faint: #8c97a8;
+  --line: #273240;
+  --dot: #6b7789;
+
   /* Mantine paints <body> from its own token, not from --surface, so the page
      behind the app was its default dark #242424 — a warm grey against a
      navy-tinted app. Same family or the seams show. Declared at the attribute
@@ -182,6 +212,7 @@
 
     --accent: #7aa2ff;
     --accent-soft: rgba(122, 162, 255, 0.16);
+    --accent-strong: #9dbaff;
 
     --warn: #fb923c;
     --warn-fg: #ffb877;
@@ -209,6 +240,13 @@
     --pressed: rgba(180, 205, 240, 0.12);
     --ink: #e6edf7;
     --on-accent: #0b1220;
+
+    --text-strong: #e6edf7;
+    --text: #d3dceb;
+    --text-muted: #adb5bd;
+    --text-faint: #8c97a8;
+    --line: #273240;
+    --dot: #6b7789;
 
     /* Mantine paints <body> from its own token, not from --surface, so the page
        behind the app was its default dark #242424 — a warm grey against a
@@ -344,7 +382,7 @@ h3,
   font-size: 13px;
   font-weight: 500;
   letter-spacing: -0.005em;
-  color: var(--mantine-color-gray-7);
+  color: var(--text-muted);
   white-space: nowrap;
   transition: color 160ms var(--ease-out);
 }
@@ -442,7 +480,7 @@ h3,
   padding: 8px 4px 7px;
   font-size: 10.5px;
   font-weight: 500;
-  color: var(--mantine-color-gray-7);
+  color: var(--text-muted);
   transition: color 140ms var(--ease-out);
 }
 
@@ -472,7 +510,7 @@ h3,
   padding: 9px 12px 9px 34px;
   border-radius: 8px;
   font-size: 14px;
-  color: var(--mantine-color-gray-7);
+  color: var(--text-muted);
 }
 
 .drawer-link[data-section] {
@@ -511,11 +549,11 @@ h3,
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--mantine-color-gray-7);
+  color: var(--text-muted);
 }
 
 .data-grid tbody td {
-  border-bottom: 1px solid var(--mantine-color-gray-2);
+  border-bottom: 1px solid var(--line);
   font-size: 13px;
 }
 
@@ -758,7 +796,7 @@ h3,
   background: var(--glass);
   box-shadow: inset 0 -1px 0 var(--hairline);
   font-size: var(--menubar-font);
-  color: var(--mantine-color-gray-9);
+  color: var(--text-strong);
 }
 
 /* The blur lives on a pseudo-element so the items above it stay crisp. */
@@ -813,7 +851,7 @@ h3,
   border-radius: 5px;
   font-size: var(--menubar-font);
   font-weight: 450;
-  color: var(--mantine-color-gray-9);
+  color: var(--text-strong);
   white-space: nowrap;
   transition: background-color 90ms var(--ease-out);
 }
@@ -851,7 +889,7 @@ h3,
   padding: 0 2px;
   font-size: var(--menubar-font);
   font-weight: 650;
-  color: var(--mantine-color-gray-9);
+  color: var(--text-strong);
   white-space: nowrap;
 }
 
@@ -878,7 +916,7 @@ h3,
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   white-space: pre;
-  color: var(--mantine-color-gray-9);
+  color: var(--text-strong);
 }
 
 /* ---- What drops out, and in what order ---------------------------------- */
@@ -927,7 +965,7 @@ h3,
   border-radius: 5px;
   font-size: var(--menubar-dropdown-font);
   font-weight: 400;
-  color: var(--mantine-color-gray-9);
+  color: var(--text-strong);
 }
 
 .menubar-dropdown .mantine-Menu-item:hover,
@@ -939,7 +977,7 @@ h3,
 .menubar-dropdown .mantine-Menu-label {
   padding: 4px 10px;
   font-size: 11px;
-  color: var(--mantine-color-gray-7);
+  color: var(--text-muted);
 }
 
 /* A touch dropdown needs room for a thumb, and a phone-width popover should
@@ -1004,7 +1042,7 @@ h3,
   font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.015em;
-  color: var(--mantine-color-gray-9);
+  color: var(--text-strong);
 }
 
 .sidebar-collapse {
@@ -1014,13 +1052,13 @@ h3,
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  color: var(--mantine-color-gray-6);
+  color: var(--text-faint);
   transition: background 120ms var(--ease-out), color 120ms var(--ease-out);
 }
 
 .sidebar-collapse:hover {
   background: var(--surface-sunken);
-  color: var(--mantine-color-gray-9);
+  color: var(--text-strong);
 }
 
 .sidebar[data-collapsed] .sidebar-head {
@@ -1043,7 +1081,7 @@ h3,
   border-radius: 7px;
   background: var(--surface-sunken);
   box-shadow: inset 0 0 0 1px var(--hairline);
-  color: var(--mantine-color-gray-6);
+  color: var(--text-faint);
   font-size: 13px;
   transition: background 120ms var(--ease-out);
 }
@@ -1064,7 +1102,7 @@ h3,
   box-shadow: inset 0 0 0 1px var(--hairline);
   font-family: inherit;
   font-size: 11px;
-  color: var(--mantine-color-gray-6);
+  color: var(--text-faint);
 }
 
 .sidebar[data-collapsed] .sidebar-search {
@@ -1089,7 +1127,7 @@ h3,
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: var(--mantine-color-gray-6);
+  color: var(--text-faint);
 }
 
 .sidebar-link,
@@ -1100,13 +1138,13 @@ h3,
 
 .sidebar-link {
   font-weight: 500;
-  color: var(--mantine-color-gray-8);
+  color: var(--text);
 }
 
 .sidebar-sublink {
   font-size: 13px;
   font-weight: 400;
-  color: var(--mantine-color-gray-7);
+  color: var(--text-muted);
 }
 
 .sidebar-link[data-active],
@@ -1124,6 +1162,18 @@ h3,
    selected rather than disappearing into the accent fill. */
 .sidebar-count {
   font-variant-numeric: tabular-nums;
+}
+
+/* Mantine's light variant picks the label colour itself, and at 10px on a 15%
+   tint that measured 2.66:1 in light mode. The tinted background stays as the
+   tone signal; the text comes from our ramp, which is contrast-checked in both
+   modes. */
+.sidebar-count[data-tone="urgent"] {
+  color: var(--warn-fg);
+}
+
+.sidebar-count[data-tone="notice"] {
+  color: var(--text);
 }
 
 .sidebar[data-collapsed] .sidebar-link {
@@ -1147,7 +1197,7 @@ h3,
   padding: 0 8px;
   border-radius: 7px;
   font-size: 12.5px;
-  color: var(--mantine-color-gray-7);
+  color: var(--text-muted);
 }
 
 .sidebar-status:hover {
@@ -1200,12 +1250,12 @@ h3,
 .sidebar-account-name {
   font-size: 13px;
   font-weight: 500;
-  color: var(--mantine-color-gray-9);
+  color: var(--text-strong);
 }
 
 .sidebar-account-role {
   font-size: 11px;
-  color: var(--mantine-color-gray-6);
+  color: var(--text-faint);
 }
 
 .sidebar[data-collapsed] .sidebar-account,
@@ -1242,7 +1292,7 @@ h3,
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--mantine-color-gray-5);
+  background: var(--dot);
   box-shadow: 0 0 0 2px var(--surface);
 }
 
@@ -1284,7 +1334,7 @@ h3,
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: var(--mantine-color-gray-6);
+  color: var(--text-faint);
 }
 
 .palette-row {
@@ -1319,12 +1369,12 @@ h3,
   align-items: center;
   font-size: 13.5px;
   font-weight: 500;
-  color: var(--mantine-color-gray-9);
+  color: var(--text-strong);
 }
 
 .palette-row-detail {
   font-size: 12px;
-  color: var(--mantine-color-gray-6);
+  color: var(--text-faint);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1334,7 +1384,7 @@ h3,
   flex: 0 0 auto;
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
-  color: var(--mantine-color-gray-7);
+  color: var(--text-muted);
 }
 
 .palette-row-go {
@@ -1351,7 +1401,7 @@ h3,
   padding: 26px 12px;
   text-align: center;
   font-size: 13px;
-  color: var(--mantine-color-gray-6);
+  color: var(--text-faint);
 }
 
 .palette-foot {
@@ -1361,7 +1411,7 @@ h3,
   box-shadow: inset 0 1px 0 var(--hairline);
   background: var(--surface-sunken);
   font-size: 11.5px;
-  color: var(--mantine-color-gray-6);
+  color: var(--text-faint);
 }
 
 /* ---- Needs attention ---------------------------------------------------- */
@@ -1405,7 +1455,7 @@ h3,
 }
 
 .attention-title {
-  color: var(--mantine-color-gray-9);
+  color: var(--text-strong);
   text-decoration: none;
 }
 
@@ -1416,6 +1466,18 @@ h3,
 .attention-amount {
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
+}
+
+/* Mantine's light variant sets its own label colour, and in light mode the
+   "now" badge measured 2.73:1 and the light-variant action buttons 4.36:1 —
+   both under AA, both pre-existing. The tint stays; the text comes from the
+   ramp. Dark mode already passed, and these tokens flip with it. */
+.attention-now {
+  color: var(--warn-fg);
+}
+
+.attention-action[data-variant="light"] {
+  color: var(--accent-strong);
 }
 
 .attention-clear {
@@ -1430,5 +1492,5 @@ h3,
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: var(--mantine-color-gray-6);
+  color: var(--text-faint);
 }

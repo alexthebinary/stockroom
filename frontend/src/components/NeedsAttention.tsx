@@ -55,7 +55,7 @@ export function NeedsAttention({ jobs }: { jobs: AttentionJob[] }) {
                 {job.title}
               </Text>
               {job.severity === "urgent" && (
-                <Badge size="xs" variant="light" color="orange">
+                <Badge size="xs" variant="light" color="orange" className="attention-now">
                   now
                 </Badge>
               )}
@@ -77,6 +77,7 @@ export function NeedsAttention({ jobs }: { jobs: AttentionJob[] }) {
               to={job.action.to}
               size="compact-sm"
               variant={job.severity === "urgent" ? "filled" : "light"}
+              className="attention-action"
             >
               {job.action.label}
             </Button>

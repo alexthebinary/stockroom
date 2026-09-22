@@ -93,6 +93,7 @@ export function AppSidebar({
         variant="light"
         color={result.tone === "urgent" ? "orange" : "gray"}
         className="sidebar-count"
+        data-tone={result.tone}
       >
         {result.count}
       </Badge>

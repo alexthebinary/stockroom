@@ -34,7 +34,7 @@ function Lane({
         role="img"
         aria-label={`${title}: ${steps.map((s) => s.label).join(" then ")}`}
       >
-        <text x={0} y={14} fontSize={12} fontWeight={700} fill="var(--mantine-color-gray-7)">
+        <text x={0} y={14} fontSize={12} fontWeight={700} fill="var(--text-muted)">
           {title}
         </text>
         {steps.map((step, i) => {
@@ -63,22 +63,22 @@ function Lane({
               </text>
 
               {step.stock && (
-                <text x={x} y={y + 52} fontSize={10.5} fill="var(--mantine-color-gray-7)">
+                <text x={x} y={y + 52} fontSize={10.5} fill="var(--text-muted)">
                   {step.stock}
                 </text>
               )}
               {step.posting && (
-                <text x={x} y={y + 52 + (step.stock ? 14 : 0)} fontSize={10.5} fill="var(--mantine-color-indigo-7)">
+                <text x={x} y={y + 52 + (step.stock ? 14 : 0)} fontSize={10.5} fill="var(--accent)">
                   {step.posting}
                 </text>
               )}
 
               {i < steps.length - 1 && (
-                <g stroke="var(--mantine-color-gray-5)" strokeWidth={1.5}>
+                <g stroke="var(--dot)" strokeWidth={1.5}>
                   <line x1={x + boxW + 6} y1={y + 17} x2={x + boxW + gap - 9} y2={y + 17} />
                   <path
                     d={`M ${x + boxW + gap - 9} ${y + 17} l -5 -3.5 l 0 7 z`}
-                    fill="var(--mantine-color-gray-5)"
+                    fill="var(--dot)"
                     stroke="none"
                   />
                 </g>

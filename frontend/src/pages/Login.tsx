@@ -37,7 +37,7 @@ export default function Login() {
   // with no gutter. A max-width plus page padding keeps the card its intended
   // size on a desktop and lets it shrink on a phone.
   return (
-    <Center mih="100vh" p="md" bg="var(--mantine-color-gray-0)">
+    <Center mih="100vh" p="md" bg="var(--surface-sunken)">
       <Card withBorder shadow="sm" radius="md" p="xl" w="100%" maw={380}>
         <form onSubmit={submit}>
           <Stack>
