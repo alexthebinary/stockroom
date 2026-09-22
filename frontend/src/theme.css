@@ -609,13 +609,6 @@ h3,
   }
 }
 
-/*
- * AppShell reserves the header's height for the page below it, and that
- * number was hardcoded to 28 — so on a touch device, where the bar grows to
- * 48, the first 20px of every page sat underneath it. Drive the reservation
- * from the same token as the bar and the two can never disagree.
- */
-
 .menubar {
   position: relative;
   z-index: 300;
