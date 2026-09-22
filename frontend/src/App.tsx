@@ -18,6 +18,7 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 import { api, type TrialBalance } from "./api";
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
+import { MenuBar } from "./components/MenuBar";
 import About from "./pages/About";
 import Adjustments from "./pages/Adjustments";
 import Bills from "./pages/Bills";
@@ -146,25 +147,8 @@ function sectionFor(pathname: string): Section | undefined {
 }
 
 const RAIL_H = 52;
+const MENUBAR_H = 28;
 const SUB_H = 44;
-
-function SectionButton({ section, active }: { section: Section; active: boolean }) {
-  const Icon = section.icon;
-  return (
-    <UnstyledButton
-      component={Link}
-      to={section.to}
-      className="rail-link"
-      data-active={active || undefined}
-      aria-current={active ? "page" : undefined}
-    >
-      <Icon size={16} stroke={1.8} />
-      <Text span size="sm" fw={510} visibleFrom="md">
-        {section.label}
-      </Text>
-    </UnstyledButton>
-  );
-}
 
 /**
  * The books being wrong is the one condition worth interrupting for, and until
@@ -173,14 +157,19 @@ function SectionButton({ section, active }: { section: Section; active: boolean 
  * stopping the whole app for a ledger problem halts work the problem does not
  * touch, which teaches people to click through warnings.
  */
-function LedgerHealth() {
+function useLedgerHealth() {
   const trial = useQuery({
     queryKey: ["trial-balance", "health"],
     queryFn: () => api.get<TrialBalance>("/trial-balance"),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
-  if (!trial.data || trial.data.sound) return null;
+
+  // Returns null only while nothing is known. Once an answer exists it reports
+  // BOTH states: the old badge rendered nothing when sound and nothing when
+  // the query failed, so its silence could not be told apart.
+  if (!trial.data) return null;
+  if (trial.data.sound) return { sound: true, summary: "The books tie out." };
 
   const counts = [
     trial.data.unbalancedEntries.length && `${trial.data.unbalancedEntries.length} unbalanced`,
@@ -189,16 +178,7 @@ function LedgerHealth() {
     trial.data.chartInconsistencies.length && `${trial.data.chartInconsistencies.length} mis-signed`,
   ].filter(Boolean).join(", ");
 
-  return (
-    <Tooltip label={`The books do not tie out: ${counts}. Open the ledger.`} withArrow>
-      <UnstyledButton component={NavLink} to="/ledger" className="rail-alarm">
-        <IconAlertTriangle size={15} stroke={2} />
-        <Text span size="xs" fw={600} visibleFrom="sm">
-          Books
-        </Text>
-      </UnstyledButton>
-    </Tooltip>
-  );
+  return { sound: false, summary: `The books do not tie out: ${counts}. Open the ledger.` };
 }
 
 /**
@@ -265,6 +245,17 @@ export default function App() {
   // real attribute that React 18's DOM typings predate, and Mantine spreads
   // unknown props straight onto the element, so it is applied through a spread.
   const drawerInert = (opened ? {} : { inert: "" }) as Record<string, unknown>;
+  const ledger = useLedgerHealth();
+
+  /**
+   * The name of where you are, for the slot macOS gives the frontmost app.
+   * Prefers the sub-item, because "Stock on hand" says more than "Inventory";
+   * falls back to the section, then to nothing on a 404.
+   */
+  const activePage =
+    section?.items?.find(
+      (i) => location.pathname === i.to || location.pathname.startsWith(`${i.to}/`)
+    )?.label ?? section?.label;
 
   // A route change from inside the drawer must close it, or the next page
   // renders underneath an open overlay.
@@ -274,70 +265,61 @@ export default function App() {
 
   return (
     <AppShell
-      header={{ height: subItems ? RAIL_H + SUB_H : RAIL_H }}
+      header={{
+        // 28px of chrome on a desktop full of dense tables; the phone keeps
+        // the rail it can actually tap.
+        height: { base: subItems ? RAIL_H + SUB_H : RAIL_H, sm: MENUBAR_H },
+      }}
       navbar={{ width: 260, breakpoint: "sm", collapsed: { mobile: !opened, desktop: true } }}
       padding="lg"
     >
       <AppShell.Header className="app-header">
-        <Box className="rail" h={RAIL_H}>
+        {/* Desktop: one 28px macOS-style strip. */}
+        <MenuBar
+          sections={SECTIONS}
+          activeSection={section}
+          activePage={activePage}
+          user={user}
+          onSignOut={logout}
+          onActAs={(role) => void actAs(role)}
+          ledger={ledger}
+        />
+
+        {/* Phone: the tappable rail, unchanged. A 28px bar with dropdowns is
+            a pointer gesture and this is a gloved, one-handed tool. */}
+        <Box className="rail" h={RAIL_H} hiddenFrom="sm">
           <Group h="100%" px="md" justify="space-between" wrap="nowrap">
             <Group gap="xs" wrap="nowrap">
               <Burger
                 opened={opened}
                 onClick={toggle}
-                hiddenFrom="sm"
                 size="sm"
                 color="var(--rail-fg)"
                 aria-label="Navigation"
               />
-              <Text fw={680} size="sm" mr="sm" className="wordmark">
-                Stockroom
+              <Text fw={680} size="sm" className="wordmark">
+                {activePage ?? "Stockroom"}
               </Text>
-              <Group gap={2} wrap="nowrap" visibleFrom="sm">
-                {SECTIONS.map((s) => (
-                  <SectionButton key={s.label} section={s} active={s === section} />
-                ))}
-              </Group>
             </Group>
 
-            <LedgerHealth />
-
-            <Menu position="bottom-end" shadow="md" radius="md">
-              <Menu.Target>
-                <UnstyledButton className="rail-account">
-                  <Text span size="xs">
-                    {user.email}
-                  </Text>
+            {ledger && !ledger.sound && (
+              <Tooltip label={ledger.summary} withArrow>
+                <UnstyledButton component={Link} to="/ledger" className="rail-alarm">
+                  <IconAlertTriangle size={15} stroke={2} />
                 </UnstyledButton>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Label>
-                  {user.name} · {String(user.actualRole ?? user.role).toLowerCase()}
-                </Menu.Label>
-                {user.actualCan?.users && (
-                  <>
-                    <Menu.Divider />
-                    <Menu.Label>Work as</Menu.Label>
-                    {["ADMIN", "FINANCE", "WAREHOUSE", "VIEWER"].map((r) => (
-                      <Menu.Item
-                        key={r}
-                        onClick={() => actAs(r === user.actualRole ? null : r)}
-                        rightSection={user.role === r ? "✓" : undefined}
-                      >
-                        {r.charAt(0) + r.slice(1).toLowerCase()}
-                      </Menu.Item>
-                    ))}
-                  </>
-                )}
-                <Menu.Divider />
-                <Menu.Item onClick={logout}>Sign out</Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
+              </Tooltip>
+            )}
           </Group>
         </Box>
 
         {subItems && (
-          <Box component="nav" className="subrail" h={SUB_H} aria-label={`${section!.label} pages`}>
+          <Box
+            component="nav"
+            className="subrail"
+            h={SUB_H}
+            hiddenFrom="sm"
+            aria-label={`${section!.label} pages`}
+          >
             <ScrollArea type="auto" h="100%" scrollbarSize={4}>
               <Group h={SUB_H} px="md" gap={2} wrap="nowrap">
                 {subItems.map((item) => (

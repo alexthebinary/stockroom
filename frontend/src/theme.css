@@ -567,3 +567,151 @@ h3,
     mask-image: none;
   }
 }
+
+/* ---- macOS-style menu bar (desktop only) -------------------------------- */
+
+/*
+ * Apple HIG menu bar, adapted from PuruVJ/macos-web: a ~28px translucent
+ * strip, app name bold and first, status items right-aligned.
+ *
+ * Light glass rather than the dark rail, because a macOS bar sits ON the
+ * desktop rather than above it. Text is gray-9 on a 72%-white scrim, which
+ * measures well past the 4.5:1 floor even where the page behind it is dark.
+ */
+.menubar {
+  position: relative;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 28px;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 -1px 0 var(--hairline);
+  font-size: 12.5px;
+  color: var(--mantine-color-gray-9);
+}
+
+/* The blur lives on a pseudo-element so the items above it stay crisp. */
+.menubar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+.menubar-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  /* 24px, not the 20 the visual suggests: WCAG 2.5.8 wants 24x24 and the bar
+     is only 28 tall, so the hit area takes all of it bar a 2px margin. */
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  font-weight: 450;
+  color: var(--mantine-color-gray-9);
+  white-space: nowrap;
+  transition: background-color 90ms var(--ease-out);
+}
+
+.menubar-item:hover,
+.menubar-item[data-open] {
+  background: rgba(15, 32, 56, 0.1);
+}
+
+/* The section you are inside, marked without stealing the bold used by the
+   app name — two bold things in a 28px strip is no hierarchy at all. */
+.menubar-item[data-active] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.menubar-wordmark {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Where macOS names the frontmost app. Here: the page you are on. */
+.menubar-title {
+  padding: 0 10px 0 2px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--mantine-color-gray-9);
+  white-space: nowrap;
+}
+
+.menubar-status {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.menubar-status-item {
+  font-variant-numeric: tabular-nums;
+}
+
+.menubar-status-item[data-alarm] {
+  color: #9a3412;
+  font-weight: 600;
+}
+
+.menubar-status-label {
+  font-size: 12px;
+}
+
+.menubar-clock {
+  padding: 0 4px 0 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+  color: var(--mantine-color-gray-9);
+}
+
+/* ---- Menu bar dropdowns ------------------------------------------------- */
+
+.menubar-dropdown {
+  min-width: 15rem;
+  padding: 5px;
+  background: rgba(255, 255, 255, 0.78) !important;
+  backdrop-filter: saturate(180%) blur(25px);
+  -webkit-backdrop-filter: saturate(180%) blur(25px);
+  border: 1px solid rgba(15, 32, 56, 0.1) !important;
+  box-shadow: 0 10px 34px rgba(15, 32, 56, 0.18);
+}
+
+.menubar-dropdown .mantine-Menu-item {
+  padding: 4px 8px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--mantine-color-gray-9);
+}
+
+.menubar-dropdown .mantine-Menu-item:hover,
+.menubar-dropdown .mantine-Menu-item[data-hovered] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.menubar-dropdown .mantine-Menu-label {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--mantine-color-gray-7);
+}
+
+/* A translucent bar over a translucent sheet turns to mud in dark mode, and
+   this app has no dark theme yet — so pin the light treatment explicitly
+   rather than inheriting a scheme that does not exist. */
+@media (prefers-contrast: more) {
+  .menubar,
+  .menubar-dropdown {
+    background: #fff !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
