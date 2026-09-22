@@ -796,3 +796,401 @@ h3,
     mask-image: none;
   }
 }
+
+/* ---- Sidebar ------------------------------------------------------------ */
+
+/*
+ * Navigation as a list, not a bar.
+ *
+ * 22 destinations is too many for a horizontal strip, a dropdown hides
+ * structure a list shows at rest, and a vertical list can be filtered by role
+ * — which is what closes the gap between what the server enforces and what the
+ * UI offers.
+ *
+ * Rows carry counts, so the navigation answers "what needs doing" rather than
+ * only "where is it".
+ */
+:root {
+  --sidebar-w: 248px;
+  --sidebar-w-collapsed: 60px;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--surface);
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 48px;
+  padding: 0 10px 0 14px;
+  flex: 0 0 auto;
+}
+
+.sidebar-wordmark {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--mantine-color-gray-9);
+}
+
+.sidebar-collapse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--mantine-color-gray-6);
+  transition: background 120ms var(--ease-out), color 120ms var(--ease-out);
+}
+
+.sidebar-collapse:hover {
+  background: var(--surface-sunken);
+  color: var(--mantine-color-gray-9);
+}
+
+.sidebar[data-collapsed] .sidebar-head {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebar[data-collapsed] .sidebar-collapse {
+  transform: rotate(180deg);
+}
+
+/* Search sits in the top slot: the thing a tool people live in reaches for. */
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  margin: 0 10px 10px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: var(--surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--mantine-color-gray-6);
+  font-size: 13px;
+  transition: background 120ms var(--ease-out);
+}
+
+.sidebar-search:hover {
+  background: #eef1f6;
+}
+
+.sidebar-search-label {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.sidebar-kbd {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--mantine-color-gray-6);
+}
+
+.sidebar[data-collapsed] .sidebar-search {
+  justify-content: center;
+  margin: 0 8px 10px;
+  padding: 0;
+}
+
+.sidebar-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 8px;
+}
+
+.sidebar-group + .sidebar-group {
+  margin-top: 14px;
+}
+
+.sidebar-group-label {
+  padding: 0 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--mantine-color-gray-6);
+}
+
+.sidebar-link,
+.sidebar-sublink {
+  border-radius: 7px;
+  font-size: 13.5px;
+}
+
+.sidebar-link {
+  font-weight: 500;
+  color: var(--mantine-color-gray-8);
+}
+
+.sidebar-sublink {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--mantine-color-gray-7);
+}
+
+.sidebar-link[data-active],
+.sidebar-sublink[data-active] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sidebar-link[data-active] svg {
+  color: var(--accent);
+}
+
+/* The count is information, not decoration: it stays legible when the row is
+   selected rather than disappearing into the accent fill. */
+.sidebar-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar[data-collapsed] .sidebar-link {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.sidebar-foot {
+  flex: 0 0 auto;
+  padding: 8px;
+  border-top: 1px solid var(--hairline);
+}
+
+.sidebar-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: var(--mantine-color-gray-7);
+}
+
+.sidebar-status:hover {
+  background: var(--surface-sunken);
+}
+
+/* Amber, not red: the books being wrong is worth noticing on every screen
+   without reading as a crash. */
+.sidebar-status[data-alarm] {
+  color: #9a3412;
+  font-weight: 600;
+}
+
+.sidebar-account {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 40px;
+  padding: 0 8px;
+  border-radius: 7px;
+  transition: background 120ms var(--ease-out);
+}
+
+.sidebar-account:hover {
+  background: var(--surface-sunken);
+}
+
+.sidebar-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sidebar-account-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.15;
+  min-width: 0;
+}
+
+.sidebar-account-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--mantine-color-gray-9);
+}
+
+.sidebar-account-role {
+  font-size: 11px;
+  color: var(--mantine-color-gray-6);
+}
+
+.sidebar[data-collapsed] .sidebar-account,
+.sidebar[data-collapsed] .sidebar-status {
+  justify-content: center;
+  padding: 0;
+}
+
+/* Touch: the same 44pt floor the menu bar uses. */
+@media (pointer: coarse) {
+  .sidebar-link,
+  .sidebar-sublink,
+  .sidebar-search,
+  .sidebar-account {
+    min-height: 44px;
+  }
+}
+
+/*
+ * Collapsed, a row has no room for a count — but dropping the signal entirely
+ * defeats the reason for carrying it. A dot says something is waiting; the
+ * tooltip says how much.
+ */
+.sidebar-icon {
+  position: relative;
+  display: inline-flex;
+}
+
+.sidebar-icon[data-pending]::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mantine-color-gray-5);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.sidebar-icon[data-pending="urgent"]::after {
+  background: #f97316;
+}
+
+/* ---- Command palette ---------------------------------------------------- */
+
+/*
+ * Opens on what needs doing, not an empty box. An operator arrives with a
+ * task; a blank field asks them to translate it into a noun first.
+ */
+.palette {
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(15, 32, 56, 0.22);
+}
+
+.palette-input input {
+  height: 52px;
+  padding-left: 4px;
+  font-size: 15px;
+}
+
+.palette-input {
+  padding: 0 16px;
+  box-shadow: inset 0 -1px 0 var(--hairline);
+}
+
+.palette-list {
+  max-height: 52vh;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.palette-group {
+  padding: 10px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--mantine-color-gray-6);
+}
+
+.palette-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Selection follows the keyboard AND the pointer, so the two never disagree
+   about which row Enter will open. */
+.palette-row[data-selected] {
+  background: var(--accent-soft);
+}
+
+.palette-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.palette-row-label {
+  display: flex;
+  align-items: center;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--mantine-color-gray-9);
+}
+
+.palette-row-detail {
+  font-size: 12px;
+  color: var(--mantine-color-gray-6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-row-trailing {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--mantine-color-gray-7);
+}
+
+.palette-row-go {
+  flex: 0 0 auto;
+  opacity: 0;
+  color: var(--accent);
+}
+
+.palette-row[data-selected] .palette-row-go {
+  opacity: 1;
+}
+
+.palette-empty {
+  padding: 26px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--mantine-color-gray-6);
+}
+
+.palette-foot {
+  display: flex;
+  gap: 14px;
+  padding: 8px 14px;
+  box-shadow: inset 0 1px 0 var(--hairline);
+  background: var(--surface-sunken);
+  font-size: 11.5px;
+  color: var(--mantine-color-gray-6);
+}

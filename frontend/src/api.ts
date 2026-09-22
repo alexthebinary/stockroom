@@ -335,6 +335,21 @@ export type ShipmentOnOrder = {
   warehouseId: number | null;
 };
 
+/**
+ * What needs doing, computed server-side so the badge and the page agree.
+ *
+ * Every figure is derived per request. A stored count of outstanding work is
+ * the thing most certain to go stale, and a badge reading "3 to chase" over an
+ * empty list is worse than no badge.
+ */
+export type Attention = {
+  invoices: { unpaid: number; overdue: number; outstandingCents: number };
+  bills: { unpaid: number; outstandingCents: number };
+  deliveries: { inTransit: number };
+  receipts: { ordersShort: number };
+  stock: { belowReorderPoint: number };
+};
+
 /** A row of the cross-order bill list. The inbound mirror of InvoiceRow. */
 export type BillRow = {
   id: number;

@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -57,6 +58,7 @@ function readStoredUser(): DemoUser | null {
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<DemoUser | null>(readStoredUser);
+  const queryClient = useQueryClient();
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.post<{ token: string; user: DemoUser }>("/auth/login", {
@@ -66,23 +68,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(AUTH_TOKEN_KEY, res.token);
     localStorage.setItem(DEMO_USER_KEY, JSON.stringify(res.user));
     setUser(res.user);
-  }, []);
+    // Anything that 401'd while signed out is cached as an error and will not
+    // retry on its own, so the app renders signed-in with holes where that
+    // data should be — the sidebar's counts came up blank until a manual
+    // reload. Throw the cache away; none of it belongs to this session.
+    queryClient.clear();
+  }, [queryClient]);
 
   // The API layer clears storage the moment a token is rejected; this is what
   // turns that into a render, so the sign-in form actually appears instead of
   // a shell full of failed panels.
   useEffect(() => {
-    const onExpired = () => setUser(null);
+    const onExpired = () => {
+      setUser(null);
+      queryClient.clear();
+    };
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
-  }, []);
+  }, [queryClient]);
 
   const logout = useCallback(() => {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(DEMO_USER_KEY);
     localStorage.removeItem(ACTING_ROLE_KEY);
     setUser(null);
-  }, []);
+    // And on the way out, so the next person to sign in on this machine never
+    // sees a flash of the last one's data.
+    queryClient.clear();
+  }, [queryClient]);
 
   const actAs = useCallback(async (role: string | null) => {
     try {

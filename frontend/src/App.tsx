@@ -1,5 +1,5 @@
 import { AppShell, Box, Burger, Group, Menu, ScrollArea, Stack, Text, UnstyledButton } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
+import { useDisclosure, useHotkeys, useLocalStorage } from "@mantine/hooks";
 import {
   IconBook2,
   IconChartBar,
@@ -11,19 +11,16 @@ import {
   IconTruckLoading,
   IconSettings,
 } from "@tabler/icons-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Tooltip } from "@mantine/core";
 import { IconAlertTriangle } from "@tabler/icons-react";
-import { api, type TrialBalance } from "./api";
+import { api, type Attention, type TrialBalance } from "./api";
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
-import {
-  MENUBAR_H_COARSE,
-  MENUBAR_H_FINE,
-  MenuBar,
-  useCoarsePointer,
-} from "./components/MenuBar";
+import { AppSidebar } from "./components/AppSidebar";
+import { CommandPalette } from "./components/CommandPalette";
+import { NAV } from "./nav";
 import About from "./pages/About";
 import Adjustments from "./pages/Adjustments";
 import Bills from "./pages/Bills";
@@ -161,6 +158,17 @@ const SUB_H = 44;
  * stopping the whole app for a ledger problem halts work the problem does not
  * touch, which teaches people to click through warnings.
  */
+/** What needs doing. Polled, because the answer changes while you look at it. */
+function useAttention() {
+  const query = useQuery({
+    queryKey: ["attention"],
+    queryFn: () => api.get<Attention>("/dashboard/attention"),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  return query.data;
+}
+
 function useLedgerHealth() {
   const trial = useQuery({
     queryKey: ["trial-balance", "health"],
@@ -253,7 +261,18 @@ export default function App() {
   // The bar is 28px under a pointer and 48px under a finger, and AppShell
   // reserves the page's top padding from this number — so it has to be the
   // real one, not a constant.
-  const menubarHeight = useCoarsePointer() ? MENUBAR_H_COARSE : MENUBAR_H_FINE;
+  const attention = useAttention();
+  // Collapse survives a reload: a rail you re-collapse every morning is a rail
+  // that is not actually collapsible.
+  const [railCollapsed, setRailCollapsed] = useLocalStorage({
+    key: "stockroom-sidebar-collapsed",
+    defaultValue: false,
+  });
+  useHotkeys([
+    ["mod+B", () => setRailCollapsed((v) => !v)],
+    ["mod+K", () => setSearchOpen(true)],
+  ]);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   /**
    * The name of where you are, for the slot macOS gives the frontmost app.
@@ -273,28 +292,24 @@ export default function App() {
 
   return (
     <AppShell
+      // The header is a PHONE surface now. On a desktop the navigation lives
+      // in the sidebar and there is nothing left to put across the top.
       header={{
-        // 28px of chrome on a desktop full of dense tables; the phone keeps
-        // the rail it can actually tap.
-        height: { base: subItems ? RAIL_H + SUB_H : RAIL_H, sm: menubarHeight },
+        // Zero on desktop rather than `collapsed`, which AppShell only accepts
+        // as a plain boolean — the navigation lives in the sidebar there and
+        // there is nothing left to put across the top.
+        height: { base: subItems ? RAIL_H + SUB_H : RAIL_H, sm: 0 },
       }}
-      navbar={{ width: 260, breakpoint: "sm", collapsed: { mobile: !opened, desktop: true } }}
+      navbar={{
+        width: railCollapsed ? 60 : 248,
+        breakpoint: "sm",
+        collapsed: { mobile: !opened, desktop: false },
+      }}
       padding="lg"
     >
       <AppShell.Header className="app-header">
-        {/* Desktop: one 28px macOS-style strip. */}
-        <MenuBar
-          sections={SECTIONS}
-          activeSection={section}
-          activePage={activePage}
-          user={user}
-          onSignOut={logout}
-          onActAs={(role) => void actAs(role)}
-          ledger={ledger}
-        />
-
-        {/* Phone: the tappable rail, unchanged. A 28px bar with dropdowns is
-            a pointer gesture and this is a gloved, one-handed tool. */}
+        {/* Phone: the tappable rail, unchanged. A list of 22 destinations is
+            desk work; the dock keeps its bottom bar and drawer. */}
         <Box className="rail" h={RAIL_H} hiddenFrom="sm">
           <Group h="100%" px="md" justify="space-between" wrap="nowrap">
             <Group gap="xs" wrap="nowrap">
@@ -346,7 +361,25 @@ export default function App() {
         )}
       </AppShell.Header>
 
-      <AppShell.Navbar p="sm" className="drawer" {...drawerInert}>
+      <AppShell.Navbar className="drawer" {...drawerInert}>
+        {/* Desktop: the real navigation. */}
+        <Box visibleFrom="sm" h="100%">
+          <AppSidebar
+            groups={NAV}
+            attention={attention}
+            collapsed={railCollapsed}
+            onToggle={() => setRailCollapsed((v) => !v)}
+            onSearch={() => setSearchOpen(true)}
+            can={user.can}
+            ledger={ledger}
+            user={user}
+            onSignOut={logout}
+            onActAs={(role) => void actAs(role)}
+          />
+        </Box>
+
+        {/* Phone: the drawer keeps its own simpler list. */}
+        <Box hiddenFrom="sm" p="sm">
         <ScrollArea>
           <Stack gap={2}>
             {SECTIONS.map((s) => (
@@ -376,6 +409,7 @@ export default function App() {
             ))}
           </Stack>
         </ScrollArea>
+              </Box>
       </AppShell.Navbar>
 
       <AppShell.Main className="app-main has-bottom-bar">
@@ -422,6 +456,13 @@ export default function App() {
       </AppShell.Main>
 
       <BottomBar current={section} pathname={location.pathname} />
+
+      <CommandPalette
+        opened={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        attention={attention}
+        can={user.can}
+      />
     </AppShell>
   );
 }
