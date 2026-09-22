@@ -40,6 +40,19 @@ const createSchema = z.object({
     .min(1, "A purchase order needs at least one line"),
 });
 
+const receiveSchema = z.object({
+  /// Omitted receives everything still outstanding, which is what every caller
+  /// meant before a receipt could be partial.
+  lines: z
+    .array(
+      z.object({
+        lineId: z.number().int().positive(),
+        quantity: z.number().int().min(0),
+      })
+    )
+    .optional(),
+});
+
 const payBillSchema = z.object({
   /// Omitted means "settle what is left", which is what every caller meant
   /// before this field existed.
@@ -209,14 +222,35 @@ purchaseOrdersRouter.get(
         include: {
           warehouse: { select: { id: true, name: true, code: true } },
           purchaseOrder: {
-            select: { id: true, poNumber: true, supplierName: true, status: true },
+            select: {
+              id: true,
+              poNumber: true,
+              supplierName: true,
+              status: true,
+              // Coverage, so a row can say whether its order is still short.
+              lines: { select: { quantity: true, receivedQty: true } },
+            },
           },
         },
       }),
     ]);
 
     res.json({
-      data: rows,
+      // A receipt is a historical document, but the useful question on this
+      // page is "is that order still short?" — so each row carries its order's
+      // CURRENT coverage rather than a frozen status that always read POSTED.
+      data: rows.map(({ purchaseOrder, ...grn }) => {
+        const ordered = purchaseOrder.lines.reduce((sum, l) => sum + l.quantity, 0);
+        const received = purchaseOrder.lines.reduce((sum, l) => sum + l.receivedQty, 0);
+        const { lines: _lines, ...order } = purchaseOrder;
+        return {
+          ...grn,
+          purchaseOrder: order,
+          orderQuantity: ordered,
+          orderReceivedQty: received,
+          orderComplete: received >= ordered,
+        };
+      }),
       page,
       pageSize,
       total,
@@ -548,6 +582,7 @@ purchaseOrdersRouter.post(
   asyncHandler(async (req, res) => {
     const id = intParam(req.params.id, "id");
     const actor = actorOf(req);
+    const body = parseBody(receiveSchema, req.body ?? {});
 
     const result = await prisma.$transaction(async (tx) => {
       const current = await tx.purchaseOrder.findUnique({ where: { id }, include });
@@ -560,15 +595,51 @@ purchaseOrdersRouter.post(
         );
       }
 
-      const claimed = await tx.purchaseOrder.updateMany({
-        where: { id, status: current.status },
-        data: { status: "DELIVERED" },
-      });
-      if (claimed.count === 0) throw conflict("This purchase order was already received");
+      /**
+       * What is arriving THIS time.
+       *
+       * Suppliers under-ship and back-order, so a receipt is per line and per
+       * quantity. Omitting the body receives everything still outstanding,
+       * which is what the all-or-nothing version did.
+       */
+      const outstandingOf = (line: { quantity: number; receivedQty: number }) =>
+        line.quantity - line.receivedQty;
 
-      // Only named when the whole receipt lands in one warehouse.
-      const warehouseIds = new Set(current.lines.map((l) => l.warehouseId));
-      const warehouseId = warehouseIds.size === 1 ? current.lines[0].warehouseId : null;
+      const requested = new Map<number, number>();
+      if (body.lines) {
+        for (const ask of body.lines) {
+          const line = current.lines.find((l) => l.id === ask.lineId);
+          if (!line) throw badRequest(`Line ${ask.lineId} is not on ${current.poNumber}`);
+          if (requested.has(ask.lineId)) throw badRequest(`Line ${ask.lineId} appears twice`);
+          const outstanding = outstandingOf(line);
+          if (ask.quantity > outstanding) {
+            throw badRequest(
+              `${line.product.sku}: cannot receive ${ask.quantity}, only ${outstanding} outstanding`
+            );
+          }
+          if (ask.quantity > 0) requested.set(ask.lineId, ask.quantity);
+        }
+      } else {
+        for (const line of current.lines) {
+          const outstanding = outstandingOf(line);
+          if (outstanding > 0) requested.set(line.id, outstanding);
+        }
+      }
+
+      if (requested.size === 0) {
+        throw badRequest(
+          current.lines.every((l) => outstandingOf(l) === 0)
+            ? "Everything on this order has already been received"
+            : "Nothing to receive — every line was given a quantity of zero"
+        );
+      }
+
+      const arriving = current.lines.filter((l) => requested.has(l.id));
+
+      // Only named when THIS receipt lands in one warehouse. Two pallets to two
+      // sites on one day are two receipts as far as the document is concerned.
+      const warehouseIds = new Set(arriving.map((l) => l.warehouseId));
+      const warehouseId = warehouseIds.size === 1 ? arriving[0].warehouseId : null;
       const grn = await tx.goodsReceipt.create({
         data: {
           grnNumber: await nextGrnNumber(tx),
@@ -586,19 +657,15 @@ purchaseOrdersRouter.post(
       const goodsCents = current.lines.reduce((s, l) => s + l.lineTotalCents, 0);
       const extrasCents = current.taxCents + current.shippingCents;
 
-      let totalCostCents = 0;
+      /**
+       * Each line's FULL landed cost, computed over the whole order so the
+       * parts always sum to the vendor's total — the last line absorbs the
+       * remainder. A partial receipt then clears a slice of this, and the
+       * slices for a line necessarily add back up to it.
+       */
+      const fullLandedCost = new Map<number, number>();
       let extrasAllocated = 0;
       for (const [index, line] of current.lines.entries()) {
-        await applyBalanceDelta(
-          tx,
-          line.productId,
-          line.warehouseId,
-          { incomingQty: -line.quantity, onHandQty: line.quantity },
-          `Cannot receive ${line.product.sku}`
-        );
-
-        // Allocate the extras by line value, giving the last line whatever
-        // remains so the parts always sum to the whole — no lost cents.
         const isLast = index === current.lines.length - 1;
         const lineExtras = isLast
           ? extrasCents - extrasAllocated
@@ -606,27 +673,63 @@ purchaseOrdersRouter.post(
             ? Math.round((extrasCents * line.lineTotalCents) / goodsCents)
             : 0;
         extrasAllocated += lineExtras;
+        fullLandedCost.set(line.id, line.lineTotalCents + lineExtras);
+      }
 
-        const lineCost = line.lineTotalCents + lineExtras;
-        // Landed unit cost, rounded to the cent; the layer's total is the
-        // authority, so the remainder rides on the line rather than vanishing.
-        const landedUnitCost = Math.round(lineCost / line.quantity);
+      /**
+       * How much of a line's landed cost has been cleared by the time `n` units
+       * have arrived. Exact at the end by construction, so the final receipt of
+       * a line clears precisely what is left and Prepaid Inventory reaches zero
+       * however the deliveries were split.
+       */
+      const clearedAt = (lineId: number, n: number, quantity: number) => {
+        const full = fullLandedCost.get(lineId)!;
+        if (n >= quantity) return full;
+        if (n <= 0) return 0;
+        return Math.round((full * n) / quantity);
+      };
+
+      let totalCostCents = 0;
+      let prepaidClearedCents = 0;
+      for (const line of arriving) {
+        const qty = requested.get(line.id)!;
+        const alreadyReceived = line.receivedQty;
+        const nowReceived = alreadyReceived + qty;
+
+        await applyBalanceDelta(
+          tx,
+          line.productId,
+          line.warehouseId,
+          { incomingQty: -qty, onHandQty: qty },
+          `Cannot receive ${line.product.sku}`
+        );
+
+        // The slice of this line's landed cost that THIS delivery clears.
+        const lineCost =
+          clearedAt(line.id, nowReceived, line.quantity) -
+          clearedAt(line.id, alreadyReceived, line.quantity);
+        prepaidClearedCents += lineCost;
+
+        // Landed unit cost for this delivery, rounded to the cent. A later
+        // delivery of the same line may land on a different unit cost, which is
+        // correct: it is a separate FIFO layer bought under the same order.
+        const landedUnitCost = Math.round(lineCost / qty);
 
         await createLot(tx, {
           productId: line.productId,
           warehouseId: line.warehouseId,
-          quantity: line.quantity,
+          quantity: qty,
           unitCostCents: landedUnitCost,
           sourceType: "GOODS_RECEIPT",
           sourceId: grn.id,
         });
 
-        totalCostCents += landedUnitCost * line.quantity;
+        totalCostCents += landedUnitCost * qty;
 
         await recordMovement(tx, {
           productId: line.productId,
           toWarehouseId: line.warehouseId,
-          quantity: line.quantity,
+          quantity: qty,
           movementType: "PURCHASE_RECEIPT",
           reason: `Received on ${grn.grnNumber} (${current.poNumber})`,
           referenceType: "GOODS_RECEIPT",
@@ -634,7 +737,27 @@ purchaseOrdersRouter.post(
           totalCostCents: lineCost,
           actor,
         });
-        await tx.purchaseOrderLine.update({ where: { id: line.id }, data: { status: "RECEIVED" } });
+
+        await tx.purchaseOrderLine.update({
+          where: { id: line.id },
+          data: {
+            receivedQty: nowReceived,
+            status: nowReceived >= line.quantity ? "RECEIVED" : "PARTIAL",
+          },
+        });
+      }
+
+      // DELIVERED only when nothing is outstanding anywhere on the order. Until
+      // then the order stays payable and receivable, which is what an open
+      // back-order is.
+      const after = await tx.purchaseOrderLine.findMany({ where: { purchaseOrderId: id } });
+      const complete = after.every((l) => l.receivedQty >= l.quantity);
+      if (complete) {
+        const claimed = await tx.purchaseOrder.updateMany({
+          where: { id, status: current.status },
+          data: { status: "DELIVERED" },
+        });
+        if (claimed.count === 0) throw conflict("This purchase order was already received");
       }
 
       await tx.goodsReceipt.update({ where: { id: grn.id }, data: { totalCostCents } });
@@ -652,7 +775,7 @@ purchaseOrdersRouter.post(
        * is cleared by exactly what the bill put there, and the difference is
        * named as a rounding variance rather than hidden in either.
        */
-      const varianceCents = current.totalCents - totalCostCents;
+      const varianceCents = prepaidClearedCents - totalCostCents;
       const lines: DraftLine[] = [
         {
           accountCode: ACCOUNT.INVENTORY,
@@ -661,8 +784,10 @@ purchaseOrdersRouter.post(
         },
         {
           accountCode: ACCOUNT.PREPAID_INVENTORY,
-          creditCents: current.totalCents,
-          memo: `Clears ${current.poNumber}`,
+          creditCents: prepaidClearedCents,
+          memo: complete
+            ? `Clears ${current.poNumber}`
+            : `Part of ${current.poNumber} — ${grn.grnNumber}`,
         },
       ];
       if (varianceCents > 0) {
@@ -682,7 +807,9 @@ purchaseOrdersRouter.post(
       const entry = await createEntry(tx, {
         transactionType: TRANSACTION_TYPE.GOODS_RECEIPT,
         lines,
-        memo: `Goods receipt ${grn.grnNumber} for ${current.poNumber}`,
+        memo: complete
+          ? `Goods receipt ${grn.grnNumber} completes ${current.poNumber}`
+          : `Goods receipt ${grn.grnNumber} part-receives ${current.poNumber}`,
         referenceType: "GOODS_RECEIPT",
         referenceId: grn.id,
         actor,
@@ -691,6 +818,7 @@ purchaseOrdersRouter.post(
       return {
         goodsReceipt: { ...grn, totalCostCents },
         entry,
+        complete,
         order: await tx.purchaseOrder.findUniqueOrThrow({ where: { id }, include }),
       };
     });

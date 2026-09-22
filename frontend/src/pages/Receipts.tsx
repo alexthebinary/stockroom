@@ -39,6 +39,11 @@ export default function Receipts() {
 
   const rows = list.data?.data ?? [];
   const landed = rows.reduce((sum, g) => sum + g.totalCostCents, 0);
+  // Count ORDERS, not receipt rows: three partial deliveries against one order
+  // are one order still short, not three.
+  const shortOrders = new Set(
+    rows.filter((g) => !g.orderComplete).map((g) => g.purchaseOrderId)
+  ).size;
 
   return (
     <>
@@ -53,6 +58,11 @@ export default function Receipts() {
           label="Landed cost on this page"
           value={money(landed)}
           hint="What the cost layers were created at"
+        />
+        <Stat
+          label="Orders still short"
+          value={shortOrders}
+          hint={shortOrders > 0 ? "Deliveries outstanding" : "Every order fully received"}
         />
       </Group>
 
@@ -127,9 +137,23 @@ export default function Receipts() {
                     </Table.Td>
                     <Table.Td ta="right">{money(grn.totalCostCents)}</Table.Td>
                     <Table.Td>
-                      <Badge variant="light" color={grn.status === "POSTED" ? "teal" : "gray"}>
-                        {grn.status === "POSTED" ? "Posted" : grn.status}
-                      </Badge>
+                      {/* The document status only ever read POSTED, which
+                          carried no information. What a dock actually wants to
+                          know is whether the ORDER is still short. */}
+                      {grn.orderComplete ? (
+                        <Badge variant="light" color="teal">
+                          Complete
+                        </Badge>
+                      ) : (
+                        <Group gap={6} wrap="nowrap">
+                          <Badge variant="light" color="orange">
+                            Partial
+                          </Badge>
+                          <Text span size="xs" c="dimmed">
+                            {grn.orderReceivedQty} of {grn.orderQuantity}
+                          </Text>
+                        </Group>
+                      )}
                     </Table.Td>
                     <Table.Td>
                       <Anchor

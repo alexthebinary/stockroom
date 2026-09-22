@@ -1,4 +1,20 @@
-import { Anchor, Card, Divider, Grid, Group, SimpleGrid, Table, Text, Title } from "@mantine/core";
+import {
+  Anchor,
+  Button,
+  Card,
+  Divider,
+  Grid,
+  Group,
+  Modal,
+  NumberInput,
+  Progress,
+  SimpleGrid,
+  Table,
+  Text,
+  Title,
+} from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api, type PurchaseOrder } from "../api";
@@ -45,6 +61,52 @@ export default function PurchaseOrderDetail() {
   const status = data?.status;
   const busy = (verb: Verb) => action.isPending && action.variables === verb;
 
+  // --- receiving -----------------------------------------------------------
+  // A delivery is per line and per quantity, because suppliers under-ship and
+  // back-order. The dialog opens pre-filled with everything outstanding, so
+  // the common case — it all turned up — is still one click.
+  const [receiveOpen, receive] = useDisclosure(false);
+  const [counts, setCounts] = useState<Record<number, number | "">>({});
+
+  const outstandingOf = (line: { quantity: number; receivedQty?: number }) =>
+    line.quantity - (line.receivedQty ?? 0);
+
+  const openReceive = () => {
+    const next: Record<number, number | ""> = {};
+    for (const line of data?.lines ?? []) next[line.id] = outstandingOf(line);
+    setCounts(next);
+    receive.open();
+  };
+
+  const receiveMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ complete: boolean; goodsReceipt: { grnNumber: string } }>(
+        `/purchase-orders/${orderId}/receive`,
+        {
+          lines: (data?.lines ?? []).map((l) => ({
+            lineId: l.id,
+            quantity: Number(counts[l.id] || 0),
+          })),
+        }
+      ),
+    onSuccess: (res) => {
+      toastOk(
+        res.complete
+          ? `${res.goodsReceipt.grnNumber} received — the order is complete`
+          : `${res.goodsReceipt.grnNumber} received — the order is still short`
+      );
+      receive.close();
+      queryClient.invalidateQueries();
+    },
+    onError: toastErr,
+  });
+
+  const receivingTotal = (data?.lines ?? []).reduce(
+    (sum, l) => sum + Number(counts[l.id] || 0),
+    0
+  );
+  const anyOutstanding = (data?.lines ?? []).some((l) => outstandingOf(l) > 0);
+
   return (
     <>
       <PageHeader
@@ -82,15 +144,16 @@ export default function PurchaseOrderDetail() {
               </GatedButton>
               <GatedButton
                 color="teal.9"
-                onClick={() => action.mutate("receive")}
-                loading={busy("receive")}
+                onClick={openReceive}
                 reason={
                   status !== "POSTED" && status !== "PAID"
                     ? `Only a posted or paid purchase order can be received — this one is ${formatStatus(status!).toLowerCase()}`
-                    : undefined
+                    : !anyOutstanding
+                      ? "Everything on this order has already been received"
+                      : undefined
                 }
               >
-                Receive (GRN)
+                Receive
               </GatedButton>
               {status === "POSTED" && (
                 <GatedButton
@@ -151,6 +214,7 @@ export default function PurchaseOrderDetail() {
                         <Table.Th>Product</Table.Th>
                         <Table.Th>Warehouse</Table.Th>
                         <Table.Th ta="right">Qty</Table.Th>
+                        <Table.Th ta="right">Received</Table.Th>
                         <Table.Th ta="right">Unit cost</Table.Th>
                         <Table.Th ta="right">Line total</Table.Th>
                         <Table.Th>Status</Table.Th>
@@ -167,6 +231,19 @@ export default function PurchaseOrderDetail() {
                           <Table.Td>{l.product?.name}</Table.Td>
                           <Table.Td>{l.warehouse?.code}</Table.Td>
                           <Table.Td ta="right">{l.quantity}</Table.Td>
+                          <Table.Td ta="right">
+                            {/* Short deliveries are ordinary, so the shortfall
+                                is stated rather than left to subtraction. */}
+                            <Text span fw={(l.receivedQty ?? 0) < l.quantity ? 700 : 400}>
+                              {l.receivedQty ?? 0}
+                            </Text>
+                            {(l.receivedQty ?? 0) < l.quantity && (
+                              <Text span size="xs" c="dimmed">
+                                {" "}
+                                ({l.quantity - (l.receivedQty ?? 0)} short)
+                              </Text>
+                            )}
+                          </Table.Td>
                           <Table.Td ta="right">{money(l.unitCostCents)}</Table.Td>
                           <Table.Td ta="right" fw={600}>
                             {money(l.lineTotalCents)}
@@ -242,6 +319,105 @@ export default function PurchaseOrderDetail() {
           </>
         )}
       </QueryState>
+
+      <Modal
+        opened={receiveOpen}
+        onClose={receive.close}
+        title={`Receive against ${data?.poNumber ?? ""}`}
+        size="lg"
+      >
+        <Text size="sm" c="dimmed" mb="md">
+          Enter what actually arrived. Anything left short stays on the order and can be
+          received later — the order stays open until nothing is outstanding.
+        </Text>
+        <Table verticalSpacing="sm">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Item</Table.Th>
+              <Table.Th ta="right">Ordered</Table.Th>
+              <Table.Th ta="right">Already in</Table.Th>
+              <Table.Th ta="right">Outstanding</Table.Th>
+              <Table.Th w={130}>Arriving now</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {(data?.lines ?? []).map((line) => {
+              const outstanding = outstandingOf(line);
+              return (
+                <Table.Tr key={line.id}>
+                  <Table.Td>
+                    <Text size="sm" fw={600}>
+                      {line.product?.sku}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {line.product?.name} · {line.warehouse?.code}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td ta="right">{line.quantity}</Table.Td>
+                  <Table.Td ta="right">{line.receivedQty ?? 0}</Table.Td>
+                  <Table.Td ta="right" fw={600}>
+                    {outstanding}
+                  </Table.Td>
+                  <Table.Td>
+                    <NumberInput
+                      value={counts[line.id] ?? 0}
+                      onChange={(value) =>
+                        setCounts((prev) => ({
+                          ...prev,
+                          [line.id]: value === "" ? "" : Number(value),
+                        }))
+                      }
+                      min={0}
+                      max={outstanding}
+                      // Nothing left on this line, so there is nothing to type.
+                      disabled={outstanding === 0}
+                      clampBehavior="strict"
+                      size="sm"
+                    />
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
+          </Table.Tbody>
+        </Table>
+
+        <Group justify="space-between" mt="lg">
+          <div>
+            <Text size="sm" fw={600}>
+              {receivingTotal} unit{receivingTotal === 1 ? "" : "s"} arriving
+            </Text>
+            <Text size="xs" c="dimmed">
+              Posting creates a goods receipt and its FIFO cost layers.
+            </Text>
+          </div>
+          <Group gap="xs">
+            <Button variant="default" onClick={receive.close}>
+              Cancel
+            </Button>
+            <Button
+              color="teal.9"
+              loading={receiveMutation.isPending}
+              disabled={receivingTotal <= 0}
+              onClick={() => receiveMutation.mutate()}
+            >
+              Post receipt
+            </Button>
+          </Group>
+        </Group>
+
+        {data && receivingTotal > 0 && (
+          <Progress
+            mt="md"
+            value={
+              (((data.lines ?? []).reduce((s, l) => s + (l.receivedQty ?? 0), 0) + receivingTotal) /
+                Math.max((data.lines ?? []).reduce((s, l) => s + l.quantity, 0), 1)) *
+              100
+            }
+            color="teal"
+            size="sm"
+          />
+        )}
+      </Modal>
     </>
   );
 }

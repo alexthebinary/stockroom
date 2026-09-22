@@ -278,6 +278,10 @@ export type OrderLine = {
   productId: number;
   warehouseId: number;
   quantity: number;
+  /** Purchase lines only: how much has actually arrived. Suppliers under-ship. */
+  receivedQty?: number;
+  /** Sales lines only: how much has actually left. */
+  shippedQty?: number;
   unitPriceCents?: number;
   unitCostCents?: number;
   lineTotalCents?: number;
@@ -362,6 +366,10 @@ export type GoodsReceiptRow = {
   warehouse?: { id: number; name: string; code: string } | null;
   purchaseOrderId: number;
   purchaseOrder?: { id: number; poNumber: string; supplierName: string; status: string } | null;
+  /** The ORDER's current coverage, so a row can say whether it is still short. */
+  orderQuantity: number;
+  orderReceivedQty: number;
+  orderComplete: boolean;
 };
 
 /** A row of the cross-order invoice list. */
