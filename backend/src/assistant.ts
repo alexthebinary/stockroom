@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ApiError, badRequest } from "./errors";
+import { routeWithJev, SCREENS } from "./jev";
 
 /**
  * The Stockroom assistant: a copilot, not an autopilot.
@@ -180,6 +181,8 @@ export function assistantConfigured() {
 
 /** Which chain step answered the last call, for the response and the logs. */
 let lastModel = "";
+/** Tokens each model reply cost, keyed by the reply object so concurrent turns cannot mix. */
+const usageOf = new WeakMap<object, { input: number; output: number }>();
 
 const chainLlm: Llm = async (messages, tools) => {
   const steps = chain();
@@ -219,6 +222,8 @@ const chainLlm: Llm = async (messages, tools) => {
         continue;
       }
       lastModel = `${step.provider}:${step.model}`;
+      const u = (Array.isArray(d) ? d[0] : d)?.usage ?? {};
+      usageOf.set(message, { input: Number(u.prompt_tokens ?? 0), output: Number(u.completion_tokens ?? 0) });
       return message;
     } catch (e) {
       last = `${step.provider}:${step.model}: ${(e as Error).message}`;
@@ -356,7 +361,15 @@ function checkProposal(args: Record<string, unknown>): Proposal | { error: strin
 export async function chat(
   app: Express,
   caller: Caller,
-  input: { messages: ChatTurn[]; route: string; image?: string }
+  input: {
+    messages: ChatTurn[];
+    route: string;
+    image?: string;
+    /** Skip the Jev front door (the user pressed "Ask the assistant instead"). */
+    full?: boolean;
+    /** The client says the conversation is fresh or its last answer was a fast one. */
+    fastOk?: boolean;
+  }
 ) {
   if (!assistantConfigured()) {
     throw new ApiError(503, "The assistant is not configured on this server (ASSISTANT_KEY is not set)");
@@ -368,7 +381,41 @@ export async function chat(
     throw badRequest("The photo must be a JPEG, PNG or WebP data URL");
   }
 
+  // ---- the front door ----------------------------------------------------
+  // Text-only, and only where a quick answer cannot be taken out of context
+  // (a fresh conversation, or one whose last answer was itself quick). A reply
+  // like "yes, do that" must reach the model that knows what "that" is.
+  const latestText = input.messages[input.messages.length - 1].content.trim();
+  if (!input.image && !input.full && input.fastOk !== false && latestText) {
+    const r = await routeWithJev(latestText, input.route);
+    const none = { input: 0, output: 0, calls: 0 };
+    if (r?.kind === "navigate" && r.screen && SCREENS[r.screen]) {
+      return {
+        reply: `That's the ${SCREENS[r.screen]} screen.`,
+        proposals: [],
+        looked: [`jev navigate ${r.screen}`],
+        model: "jev",
+        usage: none,
+        fast: true,
+        navigate: { to: r.screen, label: SCREENS[r.screen] },
+      };
+    }
+    if (r?.kind === "howto" && r.page && wikiPages().includes(r.page)) {
+      const page = String(readWiki(r.page));
+      return {
+        reply: plain(page.replace(/^# .*\n+/, "")),
+        proposals: [],
+        looked: [`jev wiki ${r.page}`],
+        model: "jev",
+        usage: none,
+        fast: true,
+        wikiPage: r.page,
+      };
+    }
+  }
+
   const llm = llmOverride ?? chainLlm;
+  const turnUsage = { input: 0, output: 0, calls: 0 };
   const history = input.messages.slice(-20);
   const messages: LlmMessage[] = [
     { role: "system", content: systemPrompt(input.route) },
@@ -392,12 +439,22 @@ export async function chat(
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const reply = await llm(messages, ASSISTANT_TOOLS);
+    const u = usageOf.get(reply);
+    turnUsage.calls += 1;
+    turnUsage.input += u?.input ?? 0;
+    turnUsage.output += u?.output ?? 0;
     // Kept verbatim: Gemini attaches a thought signature to tool calls that
     // must be echoed back on the next request or it rejects the conversation.
     messages.push(reply);
     const calls = (reply.tool_calls as { id: string; function: { name: string; arguments: string } }[] | undefined) ?? [];
     if (calls.length === 0) {
-      return { reply: plain(String(reply.content ?? "")) || "Done.", proposals, looked, model: lastModel };
+      return {
+        reply: plain(String(reply.content ?? "")) || "Done.",
+        proposals,
+        looked,
+        model: lastModel,
+        usage: { ...turnUsage },
+      };
     }
     for (const call of calls) {
       let args: Record<string, unknown> = {};

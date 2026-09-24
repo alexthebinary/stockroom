@@ -16,7 +16,7 @@ import {
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { IconSparkles, IconCamera, IconSend, IconX } from '@tabler/icons-react';
 import { api } from '../api';
 import { toastOk, toastErr } from './ui';
@@ -48,6 +48,11 @@ interface AssistantDisplayMessage {
   content: string;
   proposals?: Proposal[];
   looked?: string[];
+  /** Answered by the Jev front door (a screen link or a wiki page), not the model. */
+  fast?: boolean;
+  navigate?: { to: string; label: string };
+  /** The question this answered, so "Ask the assistant instead" can resend it. */
+  question?: string;
 }
 
 type DisplayMessage = UserDisplayMessage | AssistantDisplayMessage;
@@ -122,6 +127,7 @@ export function AssistantPanel() {
     staleTime: 5 * 60_000,
   });
   const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -139,7 +145,7 @@ export function AssistantPanel() {
     content: m.content || (m.role === 'user' && 'image' in m && m.image ? '(photo attached)' : ''),
   }));
 
-  async function sendMessage(text?: string, imageOverride?: string) {
+  async function sendMessage(text?: string, imageOverride?: string, full = false) {
     const content = (text ?? input).trim();
     const imageToSend = imageOverride ?? attachedImage;
 
@@ -163,17 +169,31 @@ export function AssistantPanel() {
     setIsLoading(true);
 
     try {
+      // A quick answer only makes sense at the start of a conversation or right
+      // after another quick answer; a reply like "yes, do it" needs the model
+      // that knows what "it" is.
+      const last = [...messages].reverse().find((m) => m.role === 'assistant') as AssistantDisplayMessage | undefined;
       const payload: {
         messages: ChatMessage[];
         route: string;
         image?: string;
+        full?: boolean;
+        fastOk?: boolean;
       } = {
         messages: [...apiMessages, { role: 'user', content: content || '(photo attached)' }],
         route: location.pathname,
+        full,
+        fastOk: !last || Boolean(last.fast),
       };
       if (imageToSend) payload.image = imageToSend;
 
-      const res = await api.post<{ reply: string; proposals: Proposal[]; looked: string[] }>(
+      const res = await api.post<{
+        reply: string;
+        proposals: Proposal[];
+        looked: string[];
+        fast?: boolean;
+        navigate?: { to: string; label: string };
+      }>(
         '/assistant/chat',
         payload
       );
@@ -183,7 +203,10 @@ export function AssistantPanel() {
         role: 'assistant',
         content: res.reply,
         proposals: res.proposals,
-        looked: res.looked,
+        looked: res.fast ? [] : res.looked,
+        fast: res.fast,
+        navigate: res.navigate,
+        question: content,
       };
       setMessages((prev) => [...prev, assistantMsg]);
     } catch (err: unknown) {
@@ -383,6 +406,30 @@ export function AssistantPanel() {
                       {msg.content}
                     </Text>
                   </Paper>
+
+                  {msg.role === 'assistant' && (msg as AssistantDisplayMessage).navigate && (
+                    <Button
+                      size="compact-sm"
+                      onClick={() => {
+                        navigate((msg as AssistantDisplayMessage).navigate!.to);
+                        if (isMobile) setOpened(false);
+                      }}
+                    >
+                      Open {(msg as AssistantDisplayMessage).navigate!.label}
+                    </Button>
+                  )}
+
+                  {msg.role === 'assistant' && (msg as AssistantDisplayMessage).fast && (
+                    <Text
+                      size="xs"
+                      c="dimmed"
+                      td="underline"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => sendMessage((msg as AssistantDisplayMessage).question ?? '', undefined, true)}
+                    >
+                      Not what you meant? Ask the assistant instead
+                    </Text>
+                  )}
 
                   {msg.looked && msg.looked.length > 0 && (
                     <Text size="xs" c="dimmed">

@@ -145,3 +145,60 @@ describe("open beta guards", () => {
     expect(assistantRateLimitHit("test-client", t0 + 11 * 60_000)).toBe(false); // window rolled over
   });
 });
+
+describe("Jev front door", () => {
+  const llmCalls: number[] = [];
+  const countingLlm: Llm = async () => {
+    llmCalls.push(1);
+    return { role: "assistant", content: "full answer" };
+  };
+  afterEach(async () => {
+    const { setJevForTests } = await import("../src/jev");
+    setJevForTests(undefined);
+    llmCalls.length = 0;
+  });
+
+  async function withJev(route: import("../src/jev").JevRoute | null) {
+    const { setJevForTests } = await import("../src/jev");
+    setJevForTests(async () => route);
+    setAssistantLlmForTests(countingLlm);
+  }
+  const say = (content: string, extra: Record<string, unknown> = {}) =>
+    as(app, token).post("/api/assistant/chat").send({ messages: [{ role: "user", content }], route: "/", ...extra });
+
+  it("'take me to' answers instantly with a screen, no model call", async () => {
+    await withJev({ kind: "navigate", screen: "/transfers", ms: 5 });
+    const res = await say("go to transfers");
+    expect(res.body.fast).toBe(true);
+    expect(res.body.navigate).toEqual({ to: "/transfers", label: "Transfers" });
+    expect(llmCalls).toHaveLength(0);
+  });
+
+  it("'how do I' answers instantly with the wiki page, no model call", async () => {
+    await withJev({ kind: "howto", page: "returns", ms: 5 });
+    const res = await say("how do I do a return?");
+    expect(res.body.wikiPage).toBe("returns");
+    expect(res.body.reply).toContain("Return items");
+    expect(res.body.reply).not.toContain("**");
+    expect(llmCalls).toHaveLength(0);
+  });
+
+  it("data and change requests, Jev failures, 'full', photos and follow-ups all reach the model", async () => {
+    await withJev({ kind: "assistant", ms: 5 });
+    expect((await say("how many spools do we have?")).body.reply).toBe("full answer");
+    await withJev(null); // Jev down or unsure
+    expect((await say("go to transfers")).body.reply).toBe("full answer");
+    await withJev({ kind: "navigate", screen: "/transfers", ms: 5 });
+    expect((await say("go to transfers", { full: true })).body.reply).toBe("full answer");
+    expect((await say("go to transfers", { fastOk: false })).body.reply).toBe("full answer");
+    expect((await say("", { image: "data:image/jpeg;base64,AAAA" })).body.reply).toBe("full answer");
+    expect(llmCalls).toHaveLength(5);
+  });
+
+  it("an unknown screen or page from Jev is not trusted", async () => {
+    await withJev({ kind: "navigate", screen: "/admin/secret", ms: 5 });
+    expect((await say("open admin")).body.reply).toBe("full answer");
+    await withJev({ kind: "howto", page: "../../etc/passwd", ms: 5 });
+    expect((await say("how do I hack")).body.reply).toBe("full answer");
+  });
+});

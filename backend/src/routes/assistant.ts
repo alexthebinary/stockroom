@@ -36,6 +36,8 @@ const chatSchema = z.object({
     .max(60),
   route: z.string().max(200).default("/"),
   image: z.string().max(7_000_000).optional(),
+  full: z.boolean().optional(),
+  fastOk: z.boolean().optional(),
 });
 
 /** GET /api/assistant/status — lets the UI hide the button when it is not configured. */
