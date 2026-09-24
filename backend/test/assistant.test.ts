@@ -32,6 +32,7 @@ const call = (id: string, name: string, args: unknown) => ({
 describe("assistant", () => {
   it("answers 503 when no model is configured", async () => {
     delete process.env.ASSISTANT_KEY;
+    delete process.env.ZENMUX_KEY;
     const res = await as(app, token).post("/api/assistant/chat").send({ messages: [{ role: "user", content: "hi" }] });
     expect(res.status).toBe(503);
     expect((await as(app, token).get("/api/assistant/status")).body.configured).toBe(false);

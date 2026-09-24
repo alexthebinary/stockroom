@@ -2,6 +2,8 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Express } from "express";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { ApiError, badRequest } from "./errors";
 
 /**
@@ -15,14 +17,41 @@ import { ApiError, badRequest } from "./errors";
  * every guard it applies to a click, because it IS a click. The model is never
  * a second route into the books.
  *
- * Model: Gemini through its OpenAI-compatible endpoint (operator's choice,
- * 2026-09-24), with a fallback chain because 3.8 Flash answered 503 "high
- * demand" on every probe that day while 3.6 answered. Reasoning effort is low:
- * measured 5.7 s vs 18.8 s for the same photo + tool call.
+ * Models: a chain, like nimrun's lanes. Benched 2026-09-24 on the real job (a
+ * packing-slip photo → find the PO → propose the exact receipt), 3 runs each:
+ *   zenmux google/gemini-3.6-flash   3/3  17–21 s   ← primary
+ *   zenmux qwen/qwen3.8-flash        3/3  24–36 s   ← overflow, a different vendor
+ *   zenmux google/gemini-3.8-flash   3/3  22–29 s   (same upstream as the primary)
+ *   zenmux anthropic/claude-haiku    1/3            (fast, wrong quantities)
+ *   Google direct 3.6 / 3.8          429 / 503      (that key is throttled like a free tier)
+ *   zenmux z-ai/glm-4.6v-flash-free  429 on call 1  (free tiers are not a dependency)
+ * The overflow is deliberately NOT another Google route: the day's failures
+ * were Google-side, and a fallback that shares the outage is not one.
  */
 
-const DEFAULT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-const DEFAULT_MODELS = "gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash";
+const PROVIDERS: Record<string, { url: string; keyEnv: string }> = {
+  zenmux: { url: "https://zenmux.ai/api/v1/chat/completions", keyEnv: "ZENMUX_KEY" },
+  google: { url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", keyEnv: "ASSISTANT_KEY" },
+};
+const DEFAULT_CHAIN = "zenmux:google/gemini-3.6-flash,zenmux:qwen/qwen3.8-flash,google:gemini-3.6-flash";
+
+type Step = { provider: string; model: string; url: string; key: string };
+
+/** The configured chain, keeping only steps whose key is present. */
+function chain(): Step[] {
+  return (process.env.ASSISTANT_CHAIN || DEFAULT_CHAIN)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .flatMap((spec) => {
+      const i = spec.indexOf(":");
+      const provider = spec.slice(0, i);
+      const model = spec.slice(i + 1);
+      const p = PROVIDERS[provider];
+      const key = p ? process.env[p.keyEnv] : undefined;
+      return p && key && model ? [{ provider, model, url: p.url, key }] : [];
+    });
+}
 const MAX_ROUNDS = 6;
 const TOOL_RESULT_CHARS = 6000;
 
@@ -45,7 +74,7 @@ const PROPOSABLE: { pattern: RegExp; what: string }[] = [
   { pattern: /^\/stock-adjustments$/, what: "adjust stock with a reason" },
 ];
 
-const TOOLS = [
+export const ASSISTANT_TOOLS = [
   {
     type: "function",
     function: {
@@ -60,6 +89,33 @@ const TOOLS = [
         type: "object",
         properties: { path: { type: "string", description: "Path starting with /, may include a query string" } },
         required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_wiki",
+      description: "Read one page of the Stockroom wiki (how a screen or workflow works, exact button names, rules).",
+      parameters: {
+        type: "object",
+        properties: { page: { type: "string", description: "Page name from the wiki index, e.g. receiving" } },
+        required: ["page"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "lookup",
+      description:
+        "Find a record by anything a person would quote — PO number, order number, invoice, SKU, serial, " +
+        "customer or vendor name — and get its FULL details in the same step (lines, quantities, receivedQty, " +
+        "ids). Prefer this over api_get for finding things: it saves a step.",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string" } },
+        required: ["query"],
       },
     },
   },
@@ -89,7 +145,7 @@ const TOOLS = [
   },
 ];
 
-function systemPrompt(route: string) {
+export function systemPrompt(route: string) {
   return `You are the assistant inside Stockroom, an inventory and accounting app for a small brand that sells through Shopify, Amazon, wholesale and a showroom. The user is on the page ${route}.
 
 What you do:
@@ -97,15 +153,11 @@ What you do:
 - Find records and answer questions by READING with api_get. Never guess an id, quantity or status — read it.
 - Prepare work with propose_action. You never change anything yourself; the user approves each proposal.
 
-How the app works (use this to guide people):
-- Receive (Operations): pick the arriving purchase order line and scan boxes, or open the PO and press Receive for a partial or full receipt. Serial-tracked products must be scanned box by box on the Receive screen.
-- Sales orders: Pack reserves stock. Ship books cost and raises the invoice. Shopify/Amazon/Showroom orders are paid at checkout ("Take payment"); wholesale and direct orders are invoiced when they ship and are due in 30 days.
-- Showroom sale (Operations): a walk-in client pays at the counter and leaves with the goods and a paid invoice.
-- Returns: open the shipped order and press "Return items"; each unit goes back on the shelf or is written off; the customer is credited and refunded what they overpaid.
-- Month-end close (Finance): every check that proves the month's stock and books are right; close the month when nothing blocks.
-- Live Audit (bottom of the sidebar): passing means the ledger checks hold right now.
+How-to knowledge lives in the Stockroom wiki. Its index is below; call read_wiki with a page name when you need the steps, button names or rules for an area. Do not guess button names — read the page.
 
-Delivery photos: read the packing slip (vendor, PO number, SKUs, quantities). Search for the PO, read it, compare what arrived with what is outstanding (quantity − receivedQty per line), then propose ONE receipt for the quantities that arrived and say clearly what is short, extra or unmatched. If the photo is unreadable, say what you can and cannot see.
+${wikiIndex()}
+
+Delivery photos: read the packing slip (vendor, PO number, SKUs, quantities). Use lookup with the PO number (it returns the PO's lines in one step), compare what arrived with what is outstanding (quantity − receivedQty per line), then propose ONE receipt for the quantities that arrived and say clearly what is short, extra or unmatched. If the photo is unreadable, say what you can and cannot see.
 
 Be brief. Write PLAIN TEXT: no markdown, no asterisks, no # headings — the panel shows text as-is. Use "1." style numbered steps for instructions. Proposals appear as cards BELOW your message. Money is in cents in the data; show it as dollars.`;
 }
@@ -123,36 +175,54 @@ export function setAssistantLlmForTests(fn: Llm | null) {
 }
 
 export function assistantConfigured() {
-  return Boolean(llmOverride || process.env.ASSISTANT_KEY);
+  return Boolean(llmOverride || chain().length > 0);
 }
 
-const geminiLlm: Llm = async (messages, tools) => {
-  const key = process.env.ASSISTANT_KEY!;
-  const url = process.env.ASSISTANT_URL || DEFAULT_URL;
-  const models = (process.env.ASSISTANT_MODELS || DEFAULT_MODELS).split(",").map((m) => m.trim()).filter(Boolean);
+/** Which chain step answered the last call, for the response and the logs. */
+let lastModel = "";
+
+const chainLlm: Llm = async (messages, tools) => {
+  const steps = chain();
   let last = "no model configured";
-  for (const model of models) {
+  for (const step of steps) {
+    const google = step.model.includes("gemini");
+    // Gemini's thought signatures are Gemini-only; another vendor may reject the
+    // unknown field when a conversation falls over to it mid-turn.
+    const sent = google ? messages : messages.map(({ extra_content: _drop, ...m }) => m);
     try {
-      const res = await fetch(url, {
+      const res = await fetch(step.url, {
         method: "POST",
-        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model, messages, tools, reasoning_effort: "low" }),
-        signal: AbortSignal.timeout(45_000),
+        headers: { Authorization: `Bearer ${step.key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: step.model,
+          messages: sent,
+          tools,
+          ...(google ? { reasoning_effort: "low" } : {}),
+        }),
+        signal: AbortSignal.timeout(40_000),
       });
       if (res.status === 429 || res.status >= 500) {
-        last = `${model} answered ${res.status}`;
-        continue; // overloaded or rate-limited: the next model in the chain
+        last = `${step.provider}:${step.model} answered ${res.status}`;
+        console.warn(`[assistant] ${last}; trying the next model`);
+        continue;
       }
       const text = await res.text();
-      if (!res.ok) throw new ApiError(502, `The assistant model refused the request (${res.status}): ${text.slice(0, 200)}`);
+      if (!res.ok) {
+        last = `${step.provider}:${step.model} refused (${res.status}): ${text.slice(0, 160)}`;
+        console.warn(`[assistant] ${last}`);
+        continue;
+      }
       const d = JSON.parse(text);
-      const body = Array.isArray(d) ? d[0] : d;
-      const message = body?.choices?.[0]?.message;
-      if (!message) throw new ApiError(502, "The assistant model returned no message");
+      const message = (Array.isArray(d) ? d[0] : d)?.choices?.[0]?.message;
+      if (!message) {
+        last = `${step.provider}:${step.model} returned no message`;
+        continue;
+      }
+      lastModel = `${step.provider}:${step.model}`;
       return message;
     } catch (e) {
-      if (e instanceof ApiError) throw e;
-      last = `${model}: ${(e as Error).message}`;
+      last = `${step.provider}:${step.model}: ${(e as Error).message}`;
+      console.warn(`[assistant] ${last}`);
     }
   }
   throw new ApiError(503, `The assistant is busy right now (${last}). Try again in a minute.`);
@@ -198,6 +268,63 @@ async function readAsUser(app: Express, caller: Caller, path: string) {
   return text.length > TOOL_RESULT_CHARS ? text.slice(0, TOOL_RESULT_CHARS) + "…(truncated)" : text;
 }
 
+// ---------------------------------------------------------------------------
+// The Stockroom wiki (Karpathy's LLM Wiki pattern): short markdown pages, one
+// per area, compiled from the code and kept honest by a lint test. The model
+// gets the index in its prompt and reads a page only when it needs one, which
+// keeps every turn's prompt small — that is where the speed is.
+// ---------------------------------------------------------------------------
+
+// src/ when run with tsx, dist/src/ in production; the wiki sits at backend/wiki.
+export const WIKI_DIR =
+  [path.resolve(__dirname, "..", "wiki"), path.resolve(__dirname, "..", "..", "wiki")].find((d) =>
+    fs.existsSync(path.join(d, "index.md"))
+  ) ?? path.resolve(__dirname, "..", "wiki");
+
+export function wikiPages(): string[] {
+  try {
+    return fs.readdirSync(WIKI_DIR).filter((f) => f.endsWith(".md") && f !== "index.md").map((f) => f.slice(0, -3)).sort();
+  } catch {
+    return [];
+  }
+}
+
+function wikiIndex() {
+  try {
+    return fs.readFileSync(path.join(WIKI_DIR, "index.md"), "utf8").split("\n").filter((l) => l.startsWith("- ")).join("\n");
+  } catch {
+    return "(the wiki is missing on this server)";
+  }
+}
+
+function readWiki(page: string) {
+  const slug = page.trim().toLowerCase().replace(/\.md$/, "").replace(/^\[\[|\]\]$/g, "");
+  if (!wikiPages().includes(slug)) return { error: `No wiki page "${page}". Pages: ${wikiPages().join(", ")}` };
+  return fs.readFileSync(path.join(WIKI_DIR, `${slug}.md`), "utf8");
+}
+
+/**
+ * Search, then read the best match's detail in the same tool call. Every
+ * delivery and most questions start with "find X, then open it" — two model
+ * round-trips (~5 s each) collapsed into one.
+ */
+async function lookup(app: Express, caller: Caller, query: string) {
+  if (!query) return { error: "Say what to look up" };
+  const raw = await readAsUser(app, caller, `/dashboard/search?q=${encodeURIComponent(query)}`);
+  if (typeof raw !== "string") return raw;
+  let results: { kind: string; label: string; to: string }[] = [];
+  try {
+    results = JSON.parse(raw).results ?? [];
+  } catch {
+    return { error: "Search returned something unreadable" };
+  }
+  if (results.length === 0) return { results: [], note: `Nothing matches "${query}"` };
+  const exact = results.find((r) => r.label.toLowerCase() === query.toLowerCase()) ?? results[0];
+  const detailPath = /^\/(purchase-orders|sales-orders|products)\/\d+$/.test(exact.to) ? exact.to : null;
+  const detail = detailPath ? await readAsUser(app, caller, detailPath) : null;
+  return { results: results.slice(0, 8), detailOf: detailPath ? exact.label : null, detail };
+}
+
 /** Models add markdown even when told not to; the panel renders plain text. */
 function plain(text: string) {
   return text
@@ -241,7 +368,7 @@ export async function chat(
     throw badRequest("The photo must be a JPEG, PNG or WebP data URL");
   }
 
-  const llm = llmOverride ?? geminiLlm;
+  const llm = llmOverride ?? chainLlm;
   const history = input.messages.slice(-20);
   const messages: LlmMessage[] = [
     { role: "system", content: systemPrompt(input.route) },
@@ -264,13 +391,13 @@ export async function chat(
   const looked: string[] = [];
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const reply = await llm(messages, TOOLS);
+    const reply = await llm(messages, ASSISTANT_TOOLS);
     // Kept verbatim: Gemini attaches a thought signature to tool calls that
     // must be echoed back on the next request or it rejects the conversation.
     messages.push(reply);
     const calls = (reply.tool_calls as { id: string; function: { name: string; arguments: string } }[] | undefined) ?? [];
     if (calls.length === 0) {
-      return { reply: plain(String(reply.content ?? "")) || "Done.", proposals, looked };
+      return { reply: plain(String(reply.content ?? "")) || "Done.", proposals, looked, model: lastModel };
     }
     for (const call of calls) {
       let args: Record<string, unknown> = {};
@@ -284,6 +411,14 @@ export async function chat(
         const path = String(args.path ?? "");
         looked.push(path.split("?")[0]);
         result = await readAsUser(app, caller, path);
+      } else if (call.function.name === "read_wiki") {
+        const page = String(args.page ?? "");
+        looked.push(`wiki ${page}`);
+        result = readWiki(page);
+      } else if (call.function.name === "lookup") {
+        const q = String(args.query ?? "").trim();
+        looked.push(`lookup ${q}`);
+        result = await lookup(app, caller, q);
       } else if (call.function.name === "propose_action") {
         const checked = checkProposal(args);
         if ("error" in checked) result = checked;

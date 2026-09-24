@@ -98,6 +98,19 @@ export function AssistantPanel() {
   const [input, setInput] = useState('');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  // A photo turn takes ~15 s. Naming the stage it is probably in makes that
+  // feel like progress instead of a hang; the stages follow the measured
+  // shape of a delivery turn (read the slip → look up the PO → prepare).
+  const [stage, setStage] = useState(0);
+  const [stagesFor, setStagesFor] = useState<string[]>([]);
+  useEffect(() => {
+    if (!isLoading) {
+      setStage(0);
+      return;
+    }
+    const t = setInterval(() => setStage((n) => n + 1), 4000);
+    return () => clearInterval(t);
+  }, [isLoading]);
   const [proposalStates, setProposalStates] = useState<Record<string, ProposalState>>({});
 
   const isMobile = useMediaQuery('(max-width: 48em)');
@@ -142,6 +155,11 @@ export function AssistantPanel() {
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setAttachedImage(null);
+    setStagesFor(
+      imageToSend
+        ? ['Reading the photo…', 'Looking up the order…', 'Comparing with what was ordered…', 'Preparing it for you to approve…']
+        : ['Thinking…', 'Checking the app…', 'Almost there…']
+    );
     setIsLoading(true);
 
     try {
@@ -392,7 +410,9 @@ export function AssistantPanel() {
                 <Paper p="xs" radius="md" style={{ backgroundColor: 'var(--mantine-color-default-hover)' }}>
                   <Group gap="xs">
                     <Loader size="xs" />
-                    <Text size="sm" c="dimmed">Working…</Text>
+                    <Text size="sm" c="dimmed">
+                      {(stagesFor.length ? stagesFor : ['Thinking…'])[Math.min(stage, Math.max(stagesFor.length - 1, 0))]}
+                    </Text>
                   </Group>
                 </Paper>
               </Group>
