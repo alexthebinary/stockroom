@@ -33,6 +33,7 @@ describe("assistant", () => {
   it("answers 503 when no model is configured", async () => {
     delete process.env.ASSISTANT_KEY;
     delete process.env.ZENMUX_KEY;
+    delete process.env.XAI_API_KEY;
     const res = await as(app, token).post("/api/assistant/chat").send({ messages: [{ role: "user", content: "hi" }] });
     expect(res.status).toBe(503);
     expect((await as(app, token).get("/api/assistant/status")).body.configured).toBe(false);
@@ -360,5 +361,45 @@ describe("Jev picks the data", () => {
     expect((await firstCallFor("../../auth/users")).pre).toBeNull();
     process.env.ASSISTANT_JEV_DATA = "0";
     expect((await firstCallFor("bills")).pre).toBeNull();
+  });
+});
+
+describe("promised but not prepared", () => {
+  it("a reply that mentions approval without a proposal is asked once to make it", async () => {
+    let calls = 0;
+    setAssistantLlmForTests(async () => {
+      calls += 1;
+      if (calls === 1) return { role: "assistant", content: "Approve the proposal below to pack it." };
+      return {
+        role: "assistant",
+        content: null,
+        tool_calls: [call("p", "propose_action", { title: "Pack SO-1", summary: "Packs it.", path: "/sales-orders/1/pack", body: {} })],
+      };
+    });
+    const res = await as(app, token).post("/api/assistant/chat").send({
+      messages: [{ role: "user", content: "pack it" }], route: "/", fastOk: false,
+    });
+    expect(res.body.proposals).toHaveLength(1);
+    expect(calls).toBe(2);
+  });
+
+  it("asks only once, and leaves an ordinary answer alone", async () => {
+    let calls = 0;
+    setAssistantLlmForTests(async () => {
+      calls += 1;
+      return { role: "assistant", content: calls === 1 ? "Approve it below." : "I cannot prepare that." };
+    });
+    const res = await as(app, token).post("/api/assistant/chat").send({
+      messages: [{ role: "user", content: "pack it" }], route: "/", fastOk: false,
+    });
+    expect(calls).toBe(2);
+    expect(res.body.reply).toBe("I cannot prepare that.");
+    calls = 0;
+    setAssistantLlmForTests(async () => {
+      calls += 1;
+      return { role: "assistant", content: "You have 429 units." };
+    });
+    await as(app, token).post("/api/assistant/chat").send({ messages: [{ role: "user", content: "how many" }], route: "/", fastOk: false });
+    expect(calls).toBe(1);
   });
 });

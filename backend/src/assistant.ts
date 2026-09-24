@@ -49,7 +49,11 @@ const PROVIDERS: Record<string, { url: string; keyEnv: string }> = {
   // and every turn answered 402 reject_no_credit.
   xai: { url: "https://api.x.ai/v1/chat/completions", keyEnv: "XAI_API_KEY" },
 };
-const DEFAULT_CHAIN = "zenmux:google/gemini-3.6-flash,zenmux:qwen/qwen3.8-flash,google:gemini-3.6-flash";
+// 2026-09-24: ZenMux removed from the chain by the operator (its prepaid
+// balance hit 0 and every call answered 402). grok-4.3 benched on the strict
+// set before becoming primary; Google direct stays as a different-vendor tail.
+// ZenMux is still a provider: ASSISTANT_CHAIN can put it back without a deploy.
+const DEFAULT_CHAIN = "xai:grok-4.3,google:gemini-3.6-flash";
 
 type Step = { provider: string; model: string; url: string; key: string };
 
@@ -170,6 +174,7 @@ What you do:
 - Guide people through the app in plain, short language. Say which button to press and where it is.
 - Find records and answer questions by READING with api_get. Never guess an id, quantity or status — read it.
 - Prepare work with propose_action. You never change anything yourself; the user approves each proposal.
+- When the user asks you to DO something (pack, ship, receive, invoice, adjust, write off, return), call propose_action. Do not tell them which button to press instead.
 
 How-to knowledge lives in the ProfitIndex wiki. Its index is below; call read_wiki with a page name when you need the steps, button names or rules for an area. Do not guess button names — read the page.
 
@@ -177,7 +182,7 @@ ${wikiIndex()}
 
 Delivery photos: read the packing slip (vendor, PO number, SKUs, quantities). Use lookup with the PO number (it returns the PO's lines in one step), compare what arrived with what is outstanding (quantity − receivedQty per line), then propose ONE receipt for the quantities that arrived and say clearly what is short, extra or unmatched. If the photo is unreadable, say what you can and cannot see.
 
-Be brief. Write PLAIN TEXT: no markdown, no asterisks, no # headings — the panel shows text as-is. Use "1." style numbered steps for instructions. Proposals appear as cards BELOW your message. Money is in cents in the data; show it as dollars.`;
+Be brief. Write PLAIN TEXT: no markdown, no asterisks, no # headings — the panel shows text as-is. Use "1." style numbered steps for instructions. Proposals appear as cards BELOW your message. Money is in cents in the data; show it as dollars with thousands separators and cents, like $182,040.00.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -628,6 +633,7 @@ export async function chat(
     }
   }
 
+  let nudged = false;
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const tModel = Date.now();
     let streamed = false;
@@ -656,6 +662,24 @@ export async function chat(
     // must be echoed back on the next request or it rejects the conversation.
     messages.push(reply);
     const calls = (reply.tool_calls as { id: string; function: { name: string; arguments: string } }[] | undefined) ?? [];
+    // A reply that talks about approving a change but made no proposal leaves
+    // the user looking for a card that is not there (flash-lite and grok-4.3
+    // both did this on the bench). Ask once for the call, or a plain "cannot".
+    if (
+      calls.length === 0 &&
+      !nudged &&
+      proposals.length === 0 &&
+      /\b(approve|proposal|propose|proposed)\b/i.test(String(reply.content ?? ""))
+    ) {
+      nudged = true;
+      messages.push({
+        role: "user",
+        content:
+          "(system) Your reply mentions a proposal or approval, but you did not call propose_action. " +
+          "If a change is needed, call propose_action now with the real ids. If not, answer without mentioning approval.",
+      });
+      continue;
+    }
     if (calls.length === 0) {
       return {
         reply: plain(String(reply.content ?? "")) || "Done.",
