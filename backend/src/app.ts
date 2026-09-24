@@ -114,6 +114,21 @@ export function createApp() {
   servingUiFlag = servingUi;
 
   if (servingUi && distDir) {
+    // Vite names every asset by its content hash, so a given URL never changes:
+    // cache it for a year. index.html is the one file that must always be
+    // fresh, because it names the current hashes.
+    app.use(
+      "/assets",
+      express.static(path.join(distDir, "assets"), { index: false, immutable: true, maxAge: "365d", fallthrough: true })
+    );
+    // A hashed asset that does not exist is a 404, NEVER the SPA shell. During a
+    // deploy (or from a tab opened before one) the old names are gone; answering
+    // them with index.html as 200 let the browser cache HTML as the app's
+    // script and show a blank page until the cache was cleared.
+    app.use("/assets", (_req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.status(404).type("text/plain").send("Not found");
+    });
     app.use(express.static(distDir, { index: false }));
   }
 
@@ -122,7 +137,10 @@ export function createApp() {
   if (servingUi && indexHtml) {
     // Any non-API path is a client-side route, so hand back the SPA shell and
     // let the router decide. Registered last so it cannot shadow the API.
-    app.get("*", (_req, res) => res.sendFile(indexHtml));
+    app.get("*", (_req, res) => {
+      res.setHeader("Cache-Control", "no-cache");
+      res.sendFile(indexHtml);
+    });
   } else {
     app.use((_req, res) =>
       res.status(404).json({

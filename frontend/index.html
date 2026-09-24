@@ -4,6 +4,30 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ProfitIndex</title>
+    <script>
+      // A tab opened before a deploy asks for asset names the new build no
+      // longer has. Reload once to pick up the current index; never loop.
+      window.addEventListener(
+        "error",
+        function (e) {
+          var t = e.target;
+          if (!t || (t.tagName !== "SCRIPT" && t.tagName !== "LINK")) return;
+          try {
+            if (sessionStorage.getItem("asset-reload")) return;
+            sessionStorage.setItem("asset-reload", "1");
+          } catch (_) {
+            return;
+          }
+          location.reload();
+        },
+        true
+      );
+      window.addEventListener("load", function () {
+        setTimeout(function () {
+          try { sessionStorage.removeItem("asset-reload"); } catch (_) {}
+        }, 10000);
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>
