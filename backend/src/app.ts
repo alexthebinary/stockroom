@@ -56,6 +56,16 @@ export function createApp() {
   // Everything below this line is gated when BASIC_AUTH_* are set.
   app.use(basicAuthGate());
 
+  // Beta, 2026-09-24: the site may run with no password at all (the operator
+  // removed the Basic gate so testers land straight in the app as admin). An
+  // open admin app must at least not be FOUND by accident, so every response
+  // asks search engines not to index it, and robots.txt says the same.
+  app.use((_req, res, next) => {
+    res.setHeader("X-Robots-Tag", "noindex, nofollow");
+    next();
+  });
+  app.get("/robots.txt", (_req, res) => res.type("text/plain").send("User-agent: *\nDisallow: /\n"));
+
   app.get("/api/health", (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
   // Identify the caller before any router runs. Never rejects — each route

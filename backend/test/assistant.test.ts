@@ -126,3 +126,22 @@ describe("request body errors", () => {
     expect(res.body.error).toMatch(/too large/);
   });
 });
+
+describe("open beta guards", () => {
+  it("asks search engines not to index anything", async () => {
+    const res = await as(app, token).get("/api/health");
+    expect(res.headers["x-robots-tag"]).toMatch(/noindex/);
+    const robots = await as(app, token).get("/robots.txt");
+    expect(robots.text).toContain("Disallow: /");
+  });
+
+  it("caps assistant turns per client", async () => {
+    const { assistantRateLimitHit } = await import("../src/routes/assistant");
+    const t0 = 1_000_000;
+    let hit = false;
+    for (let i = 0; i < 60; i++) hit = assistantRateLimitHit("test-client", t0 + i);
+    expect(hit).toBe(false);
+    expect(assistantRateLimitHit("test-client", t0 + 61)).toBe(true);
+    expect(assistantRateLimitHit("test-client", t0 + 11 * 60_000)).toBe(false); // window rolled over
+  });
+});

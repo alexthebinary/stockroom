@@ -2,10 +2,32 @@ import { Router } from "express";
 import type { Express } from "express";
 import { z } from "zod";
 import { asyncHandler, parseBody } from "../http";
+import { ApiError } from "../errors";
 import { SESSION_HEADER } from "../auth";
 import { assistantConfigured, chat } from "../assistant";
 
 export const assistantRouter = Router();
+
+/**
+ * A cap on assistant turns per client, because every turn spends prepaid model
+ * credit and the beta runs with no site password. Generous for a person (a
+ * turn takes 5–15 s), useless for a script. In memory: resets on deploy, and
+ * that is fine for a guard whose job is to bound the damage, not to bill.
+ */
+const WINDOW_MS = 10 * 60_000;
+const MAX_TURNS = Number(process.env.ASSISTANT_MAX_TURNS_PER_10MIN ?? 60);
+const turns = new Map<string, number[]>();
+
+export function assistantRateLimitHit(client: string, now = Date.now()) {
+  const recent = (turns.get(client) ?? []).filter((t) => now - t < WINDOW_MS);
+  if (recent.length >= MAX_TURNS) {
+    turns.set(client, recent);
+    return true;
+  }
+  recent.push(now);
+  turns.set(client, recent);
+  return false;
+}
 
 const chatSchema = z.object({
   messages: z
@@ -31,6 +53,9 @@ assistantRouter.get(
 assistantRouter.post(
   "/assistant/chat",
   asyncHandler(async (req, res) => {
+    if (assistantRateLimitHit(req.ip ?? "unknown")) {
+      throw new ApiError(429, "The assistant has had a lot of questions from here in the last few minutes — try again shortly");
+    }
     const body = parseBody(chatSchema, req.body);
     const result = await chat(
       req.app as Express,
