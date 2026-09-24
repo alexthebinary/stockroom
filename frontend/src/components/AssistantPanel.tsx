@@ -18,7 +18,7 @@ import { useMediaQuery } from '@mantine/hooks';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { IconSparkles, IconCamera, IconSend, IconX } from '@tabler/icons-react';
-import { api } from '../api';
+import { api, streamPost } from '../api';
 import { toastOk, toastErr } from './ui';
 
 interface Proposal {
@@ -116,6 +116,11 @@ export function AssistantPanel() {
     const t = setInterval(() => setStage((n) => n + 1), 4000);
     return () => clearInterval(t);
   }, [isLoading]);
+  // What the assistant is doing right now, and the reply as it is written.
+  // Both come from the stream; the timed stages above are only the fallback
+  // until the first real status arrives.
+  const [liveStatus, setLiveStatus] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
   const [proposalStates, setProposalStates] = useState<Record<string, ProposalState>>({});
 
   const isMobile = useMediaQuery('(max-width: 48em)');
@@ -187,16 +192,19 @@ export function AssistantPanel() {
       };
       if (imageToSend) payload.image = imageToSend;
 
-      const res = await api.post<{
+      setLiveStatus(null);
+      setDraft('');
+      const res = await streamPost<{
         reply: string;
         proposals: Proposal[];
         looked: string[];
         fast?: boolean;
         navigate?: { to: string; label: string };
-      }>(
-        '/assistant/chat',
-        payload
-      );
+      }>('/assistant/chat/stream', payload, (e) => {
+        if (e.type === 'status' && e.text) setLiveStatus(e.text);
+        else if (e.type === 'text' && e.text) setDraft((d) => d + e.text);
+        else if (e.type === 'reset') setDraft('');
+      });
 
       const assistantMsg: AssistantDisplayMessage = {
         id: generateId(),
@@ -232,6 +240,8 @@ export function AssistantPanel() {
       }
     } finally {
       setIsLoading(false);
+      setLiveStatus(null);
+      setDraft('');
     }
   }
 
@@ -451,13 +461,21 @@ export function AssistantPanel() {
               );
             })}
 
-            {isLoading && (
+            {isLoading && draft && (
+              <Text size="sm" mb="xs" style={{ whiteSpace: 'pre-wrap' }} aria-live="polite">
+                {/* The server strips markdown from the final reply; do the same while it streams. */}
+                {draft.replace(/\*\*/g, '').replace(/^#{1,6}\s*/gm, '')}
+              </Text>
+            )}
+
+            {isLoading && !draft && (
               <Group gap="xs" mb="xs">
                 <Paper p="xs" radius="md" style={{ backgroundColor: 'var(--mantine-color-default-hover)' }}>
                   <Group gap="xs">
                     <Loader size="xs" />
                     <Text size="sm" c="dimmed">
-                      {(stagesFor.length ? stagesFor : ['Thinking…'])[Math.min(stage, Math.max(stagesFor.length - 1, 0))]}
+                      {liveStatus ??
+                        (stagesFor.length ? stagesFor : ['Thinking…'])[Math.min(stage, Math.max(stagesFor.length - 1, 0))]}
                     </Text>
                   </Group>
                 </Paper>

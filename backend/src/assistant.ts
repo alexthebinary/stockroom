@@ -181,7 +181,14 @@ Be brief. Write PLAIN TEXT: no markdown, no asterisks, no # headings — the pan
 // ---------------------------------------------------------------------------
 
 type LlmMessage = Record<string, unknown>;
-export type Llm = (messages: LlmMessage[], tools: unknown[]) => Promise<LlmMessage>;
+/** `onText`, when given, receives the reply's text as it is generated. */
+export type Llm = (messages: LlmMessage[], tools: unknown[], onText?: (text: string) => void) => Promise<LlmMessage>;
+
+/** What a streamed turn tells the client while it works. */
+export type AssistantEvent =
+  | { type: "status"; text: string }
+  | { type: "text"; text: string }
+  | { type: "reset" };
 
 let llmOverride: Llm | null = null;
 export function setAssistantLlmForTests(fn: Llm | null) {
@@ -197,7 +204,64 @@ let lastModel = "";
 /** Tokens each model reply cost, keyed by the reply object so concurrent turns cannot mix. */
 const usageOf = new WeakMap<object, { input: number; output: number }>();
 
-const chainLlm: Llm = async (messages, tools) => {
+/**
+ * Assemble one streamed OpenAI-compatible completion into the same message
+ * shape the non-streaming call returns. Gemini's thought signature arrives as
+ * `reasoning_details` deltas and MUST be echoed back with the tool calls, or
+ * the next round is rejected — so they are kept, not dropped.
+ */
+async function readStream(res: Response, onText: (t: string) => void) {
+  const message: Record<string, unknown> = { role: "assistant", content: "" };
+  const calls: { id?: string; type: string; function: { name: string; arguments: string } }[] = [];
+  const details: unknown[] = [];
+  let usage: { prompt_tokens?: number; completion_tokens?: number } = {};
+  let content = "";
+  const decoder = new TextDecoder();
+  let buf = "";
+  const body = res.body;
+  if (!body) throw new Error("empty stream");
+  for await (const chunk of body as unknown as AsyncIterable<Uint8Array>) {
+    buf += decoder.decode(chunk, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line.startsWith("data:")) continue;
+      const data = line.slice(5).trim();
+      if (data === "[DONE]") continue;
+      let d: {
+        usage?: typeof usage;
+        choices?: { delta?: { content?: string; reasoning_details?: unknown[]; tool_calls?: { index: number; id?: string; type?: string; function?: { name?: string; arguments?: string } }[] } }[];
+      };
+      try {
+        d = JSON.parse(data);
+      } catch {
+        continue;
+      }
+      if (d.usage) usage = d.usage;
+      const delta = d.choices?.[0]?.delta;
+      if (!delta) continue;
+      if (delta.content) {
+        content += delta.content;
+        onText(delta.content);
+      }
+      if (delta.reasoning_details) details.push(...delta.reasoning_details);
+      for (const tc of delta.tool_calls ?? []) {
+        const c = (calls[tc.index] ??= { type: "function", function: { name: "", arguments: "" } });
+        if (tc.id) c.id = tc.id;
+        if (tc.type) c.type = tc.type;
+        if (tc.function?.name) c.function.name += tc.function.name;
+        if (tc.function?.arguments) c.function.arguments += tc.function.arguments;
+      }
+    }
+  }
+  message.content = content;
+  if (calls.length) message.tool_calls = calls.filter(Boolean);
+  if (details.length) message.reasoning_details = details;
+  return { message, usage };
+}
+
+const chainLlm: Llm = async (messages, tools, onText) => {
   const steps = chain();
   let last = "no model configured";
   for (const step of steps) {
@@ -216,6 +280,7 @@ const chainLlm: Llm = async (messages, tools) => {
           // "none" is the fastest Gemini setting; benched against "low" on the
           // full case set before becoming a default (see ASSISTANT_REASONING).
           ...(google ? { reasoning_effort: process.env.ASSISTANT_REASONING || "low" } : {}),
+          ...(onText ? { stream: true, stream_options: { include_usage: true } } : {}),
         }),
         signal: AbortSignal.timeout(40_000),
       });
@@ -223,6 +288,14 @@ const chainLlm: Llm = async (messages, tools) => {
         last = `${step.provider}:${step.model} answered ${res.status}`;
         console.warn(`[assistant] ${last}; trying the next model`);
         continue;
+      }
+      if (onText && res.ok) {
+        // Past this point text may already be on the user's screen, so a
+        // failure is NOT retried on the next model: two answers would mix.
+        const { message, usage } = await readStream(res, onText);
+        lastModel = `${step.provider}:${step.model}`;
+        usageOf.set(message, { input: Number(usage.prompt_tokens ?? 0), output: Number(usage.completion_tokens ?? 0) });
+        return message;
       }
       const text = await res.text();
       if (!res.ok) {
@@ -364,6 +437,24 @@ async function prefetch(app: Express, caller: Caller, text: string) {
   return found.filter((f) => !("results" in f.result && Array.isArray(f.result.results) && f.result.results.length === 0));
 }
 
+/** What the assistant is doing, in words, for the panel while it works. */
+function describeCall(name: string, args: Record<string, unknown>) {
+  if (name === "lookup") return `Looking up ${String(args.query ?? "").slice(0, 60)}…`;
+  if (name === "read_wiki") return `Reading the ${String(args.page ?? "").replace(/-/g, " ")} guide…`;
+  if (name === "propose_action") return `Preparing: ${String(args.title ?? "a change").slice(0, 80)}…`;
+  if (name === "api_get") {
+    const p = String(args.path ?? "");
+    const areas: [RegExp, string][] = [
+      [/^\/dashboard\/attention/, "what needs attention"], [/^\/dashboard\/search/, "search"],
+      [/^\/inventory/, "stock levels"], [/^\/purchase-orders/, "purchase orders"], [/^\/sales-orders/, "sales orders"],
+      [/^\/reports/, "reports"], [/^\/close/, "the month-end checks"], [/^\/trial-balance/, "the ledger"],
+      [/^\/products/, "products"], [/^\/warehouses/, "warehouses"],
+    ];
+    return `Reading ${areas.find(([re]) => re.test(p))?.[1] ?? "the app"}…`;
+  }
+  return "Working…";
+}
+
 /** Models add markdown even when told not to; the panel renders plain text. */
 function plain(text: string) {
   return text
@@ -403,7 +494,8 @@ export async function chat(
     full?: boolean;
     /** The client says the conversation is fresh or its last answer was a fast one. */
     fastOk?: boolean;
-  }
+  },
+  emit?: (e: AssistantEvent) => void
 ) {
   if (!assistantConfigured()) {
     throw new ApiError(503, "The assistant is not configured on this server (ASSISTANT_KEY is not set)");
@@ -479,6 +571,8 @@ export async function chat(
   const looked: string[] = [];
 
   if (process.env.ASSISTANT_PREFETCH !== "0" && latestText) {
+    const refs = referencedRecords(latestText);
+    if (refs.length) emit?.({ type: "status", text: `Looking up ${refs.join(" and ")}…` });
     const tPre = Date.now();
     const pre = await prefetch(app, caller, latestText);
     timing.toolMs += Date.now() - tPre;
@@ -495,7 +589,17 @@ export async function chat(
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const tModel = Date.now();
-    const reply = await llm(messages, ASSISTANT_TOOLS);
+    let streamed = false;
+    const reply = await llm(
+      messages,
+      ASSISTANT_TOOLS,
+      emit
+        ? (t) => {
+            streamed = true;
+            emit({ type: "text", text: t });
+          }
+        : undefined
+    );
     timing.modelMs.push(Date.now() - tModel);
     const u = usageOf.get(reply);
     turnUsage.calls += 1;
@@ -515,6 +619,8 @@ export async function chat(
         timing,
       };
     }
+    // Text said on the way to a tool call ("let me check…") is not the answer.
+    if (streamed) emit?.({ type: "reset" });
     const tTools = Date.now();
     for (const call of calls) {
       let args: Record<string, unknown> = {};
@@ -523,6 +629,7 @@ export async function chat(
       } catch {
         /* the result below tells the model its arguments were unreadable */
       }
+      emit?.({ type: "status", text: describeCall(call.function.name, args) });
       let result: unknown;
       if (call.function.name === "api_get") {
         const path = String(args.path ?? "");

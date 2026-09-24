@@ -646,6 +646,59 @@ export async function openPdf(path: string) {
   }
 }
 
+/**
+ * POST a request whose answer streams back as NDJSON lines. Each line goes to
+ * `onEvent`; the `done` line's `result` is returned, an `error` line throws.
+ * Failures before the stream opens (401, 429, validation) arrive as ordinary
+ * JSON errors and are thrown exactly as `request` throws them.
+ */
+export async function streamPost<T>(
+  path: string,
+  body: unknown,
+  onEvent: (e: { type: string; text?: string }) => void
+): Promise<T> {
+  const sentToken = authToken();
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(sentToken ? { "X-Stockroom-Session": sentToken } : {}),
+      ...(actingRole() ? { "X-Act-As-Role": actingRole()! } : {}),
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+  if (!res.ok || !res.body) {
+    const text = await res.text();
+    let parsed: { error?: string; details?: unknown } | null = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      /* not JSON */
+    }
+    if (res.status === 401 && sentToken) abandonSession();
+    throw new ApiError(res.status, parsed?.error ?? res.statusText, parsed?.details);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (value) buf += decoder.decode(value, { stream: !done });
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      const e = JSON.parse(line);
+      if (e.type === "done") return e.result as T;
+      if (e.type === "error") throw new ApiError(e.status ?? 500, e.error ?? "Request failed");
+      onEvent(e);
+    }
+    if (done) break;
+  }
+  throw new ApiError(502, "The answer was cut off. Try again.");
+}
+
 /** Drops empty/undefined params so the URL stays readable. */
 export function qs(params: Record<string, unknown>): string {
   const search = new URLSearchParams();

@@ -67,3 +67,40 @@ assistantRouter.post(
     res.json(result);
   })
 );
+
+/**
+ * POST /api/assistant/chat/stream — the same turn, streamed as NDJSON: status
+ * lines while it reads, the reply's text as it is written, then one `done`
+ * line carrying exactly what /assistant/chat would have returned. Errors
+ * before the stream opens are ordinary JSON responses; after, an `error` line.
+ */
+assistantRouter.post(
+  "/assistant/chat/stream",
+  asyncHandler(async (req, res) => {
+    if (assistantRateLimitHit(req.ip ?? "unknown")) {
+      throw new ApiError(429, "The assistant has had a lot of questions from here in the last few minutes — try again shortly");
+    }
+    const body = parseBody(chatSchema, req.body);
+    res.status(200);
+    res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+    const line = (o: unknown) => res.write(JSON.stringify(o) + "\n");
+    try {
+      const result = await chat(
+        req.app as Express,
+        { session: req.header(SESSION_HEADER) ?? undefined, actAs: req.header("X-Act-As-Role") ?? undefined },
+        { ...body, route: body.route ?? "/" },
+        line
+      );
+      line({ type: "done", result });
+    } catch (e) {
+      const err = e as { status?: number; message?: string };
+      // ApiError messages are written for people; anything else stays in the log.
+      if (!err.status) console.error("[assistant stream]", e);
+      line({ type: "error", status: err.status ?? 500, error: err.status ? err.message : "The assistant failed. Try again." });
+    }
+    res.end();
+  })
+);

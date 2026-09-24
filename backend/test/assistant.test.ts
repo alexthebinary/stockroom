@@ -248,3 +248,60 @@ describe("fewer model rounds", () => {
     expect(res.body.reply).toMatch(/approve/);
   });
 });
+
+describe("streamed turns", () => {
+  const events = (text: string) => text.trim().split("\n").map((l) => JSON.parse(l));
+
+  it("streams status, text as written, then the same result /chat returns", async () => {
+    let round = 0;
+    setAssistantLlmForTests(async (_m, _t, onText) => {
+      round += 1;
+      if (round === 1) {
+        onText?.("let me check");
+        return { role: "assistant", content: "let me check", tool_calls: [call("a", "api_get", { path: "/dashboard/attention" })] };
+      }
+      onText?.("Two things ");
+      onText?.("need doing.");
+      return { role: "assistant", content: "Two things need doing." };
+    });
+    const res = await as(app, token)
+      .post("/api/assistant/chat/stream")
+      .send({ messages: [{ role: "user", content: "what needs doing?" }], route: "/", fastOk: false })
+      .buffer(true)
+      .parse((r, cb) => {
+        let data = "";
+        r.on("data", (c: Buffer) => (data += c.toString()));
+        r.on("end", () => cb(null, data));
+      });
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/ndjson/);
+    const ev = events(res.body as string);
+    expect(ev.map((e) => e.type)).toEqual(["text", "reset", "status", "text", "text", "done"]);
+    expect(ev[2].text).toBe("Reading what needs attention…");
+    expect(ev[ev.length - 1].result.reply).toBe("Two things need doing.");
+    expect(ev[ev.length - 1].result.looked).toEqual(["/dashboard/attention"]);
+  });
+
+  it("a failure after the stream opens is an error line, not a hung response", async () => {
+    setAssistantLlmForTests(async () => {
+      throw new Error("upstream exploded with secret detail");
+    });
+    const res = await as(app, token)
+      .post("/api/assistant/chat/stream")
+      .send({ messages: [{ role: "user", content: "anything" }], route: "/", fastOk: false })
+      .buffer(true)
+      .parse((r, cb) => {
+        let data = "";
+        r.on("data", (c: Buffer) => (data += c.toString()));
+        r.on("end", () => cb(null, data));
+      });
+    const ev = events(res.body as string);
+    expect(ev[ev.length - 1]).toMatchObject({ type: "error", status: 500 });
+    expect(JSON.stringify(ev)).not.toContain("secret detail");
+  });
+
+  it("validation still fails as plain JSON before any stream", async () => {
+    const res = await as(app, token).post("/api/assistant/chat/stream").send({ messages: [] });
+    expect(res.status).toBe(400);
+  });
+});
