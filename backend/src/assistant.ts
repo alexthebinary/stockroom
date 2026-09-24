@@ -98,6 +98,7 @@ export const ASSISTANT_TOOLS = [
         "/purchase-orders/<id> (lines with quantity and receivedQty), /sales-orders/<id>, " +
         "/inventory?search=<sku> (stock by warehouse), /warehouses, /close/<YYYY-MM> (month-end checks), " +
         "/reports/inventory-valuation (total stock value: assetValueCents, reconciled with the ledger; per-SKU rows), " +
+        "/purchase-orders/bills (vendor bills: what we owe suppliers), /sales-orders/invoices (customer invoices: what customers owe us), " +
         "/receiving/capabilities.",
       parameters: {
         type: "object",
@@ -446,6 +447,7 @@ function describeCall(name: string, args: Record<string, unknown>) {
     const p = String(args.path ?? "");
     const areas: [RegExp, string][] = [
       [/^\/dashboard\/attention/, "what needs attention"], [/^\/dashboard\/search/, "search"],
+      [/^\/purchase-orders\/bills/, "vendor bills"], [/^\/sales-orders\/invoices/, "invoices"],
       [/^\/inventory/, "stock levels"], [/^\/purchase-orders/, "purchase orders"], [/^\/sales-orders/, "sales orders"],
       [/^\/reports/, "reports"], [/^\/close/, "the month-end checks"], [/^\/trial-balance/, "the ledger"],
       [/^\/products/, "products"], [/^\/warehouses/, "warehouses"],
