@@ -128,3 +128,25 @@ describe("goods issue and cost on invoice (sheet 3.1 B, 3.3)", () => {
     expect((await api.get("/api/trial-balance")).body.sound).toBe(true);
   });
 });
+
+describe("found by the 2026-09-24 reviews", () => {
+  it("a product created in the app keeps its cost and price", async () => {
+    const res = await as(app, token).post("/api/products").send({
+      sku: "REV-COST-1", name: "Priced", defaultCostCents: 1234, defaultPriceCents: 5678,
+    });
+    expect(res.status).toBe(201);
+    const row = await prisma.product.findUniqueOrThrow({ where: { sku: "REV-COST-1" } });
+    expect([row.defaultCostCents, row.defaultPriceCents]).toEqual([1234, 5678]);
+  });
+
+  it("stock in transit between warehouses still reconciles with the ledger", async () => {
+    const api = as(app, token);
+    const other = (await prisma.warehouse.create({ data: { name: "COA WH2", code: "COAWH2" } })).id;
+    const productId = await stocked(5, 1_000, 2_000);
+    const t = await api.post("/api/stock-transfers").send({ productId, fromWarehouseId: warehouseId, toWarehouseId: other, quantity: 2 });
+    expect((await api.post(`/api/stock-transfers/${t.body.id}/start`)).status).toBe(200);
+    const v = await api.get("/api/reports/inventory-valuation");
+    expect(v.body.inTransitCents).toBeGreaterThan(0);
+    expect(v.body.varianceCents).toBe(0);
+  });
+});

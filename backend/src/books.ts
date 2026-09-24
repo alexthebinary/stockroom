@@ -199,11 +199,17 @@ export async function inventoryValuation() {
   const rows = [...byProduct.values()].sort((a, b) => b.valueCents - a.valueCents);
   const layerValueCents = rows.reduce((s, r) => s + r.valueCents, 0);
 
-  const inventoryAccount = await prisma.account.findUnique({ where: { code: ACCOUNT.INVENTORY } });
+  // The asset side below counts goods in transit, so the ledger side must count
+  // the account a transfer moves them into. Comparing against Inventory alone
+  // reported every open transfer as a variance and blocked the month-end close
+  // (found by the 2026-09-24 senior review, reproduced before fixing).
+  const accounts = await prisma.account.findMany({
+    where: { code: { in: [ACCOUNT.INVENTORY, ACCOUNT.INVENTORY_IN_TRANSIT] } },
+  });
   let ledgerValueCents = 0;
-  if (inventoryAccount) {
+  if (accounts.length > 0) {
     const lines = await prisma.journalLine.findMany({
-      where: { accountId: inventoryAccount.id, journalEntry: { status: "POSTED" } },
+      where: { accountId: { in: accounts.map((a) => a.id) }, journalEntry: { status: "POSTED" } },
     });
     ledgerValueCents = lines.reduce((s, l) => s + l.debitCents - l.creditCents, 0);
   }

@@ -29,6 +29,14 @@ const productSchema = z.object({
    * Found by a production test run, not by the tests.
    */
   trackingMode: z.enum(["NONE", "SERIAL"]).optional(),
+  /**
+   * Missing until 2026-09-24 — the same silent strip as trackingMode above. The
+   * product form sends both, and every product created in the app was stored
+   * at cost 0 / price 0. Price 0 is refused at invoicing, and cost 0 is the
+   * default unit cost offered on adjustments. Found by an agy review.
+   */
+  defaultCostCents: z.number().int().min(0).optional(),
+  defaultPriceCents: z.number().int().min(0).optional(),
 });
 
 /** Sums on-hand across warehouses so the list can show one stock number per SKU. */
