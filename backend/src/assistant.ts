@@ -183,7 +183,12 @@ Be brief. Write PLAIN TEXT: no markdown, no asterisks, no # headings — the pan
 
 type LlmMessage = Record<string, unknown>;
 /** `onText`, when given, receives the reply's text as it is generated. */
-export type Llm = (messages: LlmMessage[], tools: unknown[], onText?: (text: string) => void) => Promise<LlmMessage>;
+export type Llm = (
+  messages: LlmMessage[],
+  tools: unknown[],
+  onText?: (text: string) => void,
+  opts?: { effort?: string }
+) => Promise<LlmMessage>;
 
 /** What a streamed turn tells the client while it works. */
 export type AssistantEvent =
@@ -262,7 +267,7 @@ async function readStream(res: Response, onText: (t: string) => void) {
   return { message, usage };
 }
 
-const chainLlm: Llm = async (messages, tools, onText) => {
+const chainLlm: Llm = async (messages, tools, onText, opts) => {
   const steps = chain();
   let last = "no model configured";
   for (const step of steps) {
@@ -280,7 +285,7 @@ const chainLlm: Llm = async (messages, tools, onText) => {
           tools,
           // "none" is the fastest Gemini setting; benched against "low" on the
           // full case set before becoming a default (see ASSISTANT_REASONING).
-          ...(google ? { reasoning_effort: process.env.ASSISTANT_REASONING || "low" } : {}),
+          ...(google ? { reasoning_effort: opts?.effort ?? (process.env.ASSISTANT_REASONING || "low") } : {}),
           ...(onText ? { stream: true, stream_options: { include_usage: true } } : {}),
         }),
         signal: AbortSignal.timeout(40_000),
@@ -572,6 +577,7 @@ export async function chat(
   const proposals: Proposal[] = [];
   const looked: string[] = [];
 
+  let prefetched = false;
   if (process.env.ASSISTANT_PREFETCH !== "0" && latestText) {
     const refs = referencedRecords(latestText);
     if (refs.length) emit?.({ type: "status", text: `Looking up ${refs.join(" and ")}…` });
@@ -579,6 +585,7 @@ export async function chat(
     const pre = await prefetch(app, caller, latestText);
     timing.toolMs += Date.now() - tPre;
     if (pre.length > 0) {
+      prefetched = true;
       for (const f of pre) looked.push(`lookup ${f.q}`);
       messages.splice(1, 0, {
         role: "system",
@@ -600,7 +607,13 @@ export async function chat(
             streamed = true;
             emit({ type: "text", text: t });
           }
-        : undefined
+        : undefined,
+      // With the named record already in context there is little left to
+      // think about. Benched 2026-09-24 on 14 prefetched cases x3, strict
+      // grader: "minimal" 42/42, change requests 3.4 s -> 2.4 s (p90 4.6 ->
+      // 2.9 s), data unchanged at ~2.3 s. "low" stays for everything else,
+      // where "none" was measured slower and used more rounds.
+      prefetched ? { effort: process.env.ASSISTANT_PREFETCH_REASONING || "minimal" } : undefined
     );
     timing.modelMs.push(Date.now() - tModel);
     const u = usageOf.get(reply);

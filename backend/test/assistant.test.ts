@@ -305,3 +305,19 @@ describe("streamed turns", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("reasoning effort", () => {
+  it("a prefetched turn asks for minimal reasoning; any other turn leaves the default", async () => {
+    await prisma.product.upsert({ where: { sku: "PF-EFFORT-1" }, update: {}, create: { sku: "PF-EFFORT-1", name: "Effort probe" } });
+    const seen: (string | undefined)[] = [];
+    setAssistantLlmForTests(async (_m, _t, _o, opts) => {
+      seen.push(opts?.effort);
+      return { role: "assistant", content: "ok" };
+    });
+    const say = (content: string) =>
+      as(app, token).post("/api/assistant/chat").send({ messages: [{ role: "user", content }], route: "/", fastOk: false });
+    await say("how many PF-EFFORT-1 do we have?");
+    await say("what needs doing?");
+    expect(seen).toEqual(["minimal", undefined]);
+  });
+});
