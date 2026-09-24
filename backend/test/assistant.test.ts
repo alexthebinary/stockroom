@@ -321,3 +321,44 @@ describe("reasoning effort", () => {
     expect(seen).toEqual(["minimal", undefined]);
   });
 });
+
+describe("Jev picks the data", () => {
+  afterEach(async () => {
+    const { setJevForTests } = await import("../src/jev");
+    setJevForTests(undefined);
+    delete process.env.ASSISTANT_JEV_DATA;
+  });
+
+  async function firstCallFor(data: string | undefined) {
+    const { setJevForTests } = await import("../src/jev");
+    setJevForTests(async () => ({ kind: "assistant", data, ms: 5 }));
+    let first: Record<string, unknown>[] = [];
+    let opts: { effort?: string } | undefined;
+    setAssistantLlmForTests(async (messages, _t, _o, o) => {
+      if (first.length === 0) {
+        first = messages.map((m) => ({ ...m }));
+        opts = o;
+      }
+      return { role: "assistant", content: "ok" };
+    });
+    const res = await as(app, token).post("/api/assistant/chat").send({
+      messages: [{ role: "user", content: "how much do we owe suppliers?" }], route: "/",
+    });
+    const pre = first.find((m) => m.role === "system" && String(m.content).startsWith("Already looked up"));
+    return { res, pre: pre ? String(pre.content) : null, opts };
+  }
+
+  it("reads Jev's pick before the first model call, as the user", async () => {
+    const { res, pre, opts } = await firstCallFor("bills");
+    expect(pre).toContain('api_get("/purchase-orders/bills")');
+    expect(res.body.looked).toContain("/purchase-orders/bills");
+    expect(opts?.effort).toBe("minimal");
+  });
+
+  it("reads nothing for 'none', an unknown pick, or when switched off", async () => {
+    expect((await firstCallFor("none")).pre).toBeNull();
+    expect((await firstCallFor("../../auth/users")).pre).toBeNull();
+    process.env.ASSISTANT_JEV_DATA = "0";
+    expect((await firstCallFor("bills")).pre).toBeNull();
+  });
+});

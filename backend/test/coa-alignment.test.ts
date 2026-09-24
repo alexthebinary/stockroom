@@ -150,3 +150,22 @@ describe("found by the 2026-09-24 reviews", () => {
     expect(v.body.varianceCents).toBe(0);
   });
 });
+
+describe("journal examples", () => {
+  it("shows each rule's own count and latest real entry, never sample amounts", async () => {
+    const api = as(app, token);
+    const productId = await stocked(2, 700, 1_500);
+    const res = await api.get("/api/journal-examples");
+    expect(res.status).toBe(200);
+    const inc = res.body.data.find((r: { transactionType: string }) => r.transactionType === "ADJUSTMENT_INCREASE");
+    expect(inc.debit.code).toBe("1200");
+    expect(inc.postedCount).toBeGreaterThan(0);
+    // The latest opening-stock adjustment is the one just made: 2 × 700.
+    expect(inc.latest.lines.map((l: { code: string; debitCents: number; creditCents: number }) => [l.code, l.debitCents, l.creditCents]))
+      .toEqual([["1200", 1_400, 0], ["4100", 0, 1_400]]);
+    const unused = res.body.data.find((r: { transactionType: string }) => r.transactionType === "WARRANTY_REPLACEMENT");
+    expect(unused.postedCount).toBe(0);
+    expect(unused.latest).toBeNull();
+    void productId;
+  });
+});

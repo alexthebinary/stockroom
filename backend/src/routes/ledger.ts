@@ -9,6 +9,56 @@ import { trialBalance } from "../books";
 
 export const ledgerRouter = Router();
 
+/**
+ * GET /api/journal-examples — every posting rule with the app's OWN evidence:
+ * how many posted entries it has made and the latest one, lines and amounts.
+ * The Accounting page shows the chart and its transactions from this, so what
+ * it displays is this company's ledger, never sample figures.
+ */
+ledgerRouter.get(
+  "/journal-examples",
+  asyncHandler(async (_req, res) => {
+    const [templates, accounts, counts, latest] = await Promise.all([
+      prisma.journalTemplate.findMany({ orderBy: { transactionType: "asc" } }),
+      prisma.account.findMany(),
+      prisma.journalEntry.groupBy({ by: ["transactionType"], where: { status: "POSTED" }, _count: { _all: true } }),
+      prisma.journalEntry.findMany({
+        where: { status: "POSTED" },
+        distinct: ["transactionType"],
+        orderBy: [{ entryDate: "desc" }, { id: "desc" }],
+        include: { lines: { include: { account: true }, orderBy: { id: "asc" } } },
+      }),
+    ]);
+    const nameOf = (code: string) => accounts.find((a) => a.code === code)?.name ?? code;
+    res.json({
+      data: templates.map((t) => {
+        const e = latest.find((x) => x.transactionType === t.transactionType);
+        return {
+          transactionType: t.transactionType,
+          description: t.description,
+          debit: { code: t.debitAccountCode, name: nameOf(t.debitAccountCode) },
+          credit: { code: t.creditAccountCode, name: nameOf(t.creditAccountCode) },
+          postedCount: counts.find((c) => c.transactionType === t.transactionType)?._count._all ?? 0,
+          latest: e
+            ? {
+                id: e.id,
+                entryNumber: e.entryNumber,
+                entryDate: e.entryDate,
+                memo: e.memo,
+                lines: e.lines.map((l) => ({
+                  code: l.account.code,
+                  name: l.account.name,
+                  debitCents: l.debitCents,
+                  creditCents: l.creditCents,
+                })),
+              }
+            : null,
+        };
+      }),
+    });
+  })
+);
+
 /** GET /api/journal-entries?transactionType=&status=&from=&to= */
 ledgerRouter.get(
   "/journal-entries",

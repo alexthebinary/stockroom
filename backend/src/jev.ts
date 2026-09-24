@@ -22,6 +22,8 @@ export type JevRoute = {
   kind: "navigate" | "howto" | "assistant";
   screen?: string;
   page?: string;
+  /** Which data would answer it (a DATA_GLOSS key), for the server to read up front. */
+  data?: string;
   confidence?: number;
   ms: number;
 };
@@ -90,6 +92,24 @@ const WIKI_GLOSS: Record<string, string> = {
   settings: "categories, managers, users and roles",
 };
 
+/**
+ * The data that answers a question, so the server can read it BEFORE the first
+ * model call instead of the model spending a round deciding to. Read-only, as
+ * the user; a wrong pick costs one extra model round, never a wrong answer.
+ */
+export const DATA_GLOSS: Record<string, string> = {
+  attention: "what needs doing today: urgent receipts, shortages, low stock, bills to pay, orders to pack or ship",
+  bills: "vendor / supplier bills: what we owe suppliers, unpaid or paid bills",
+  invoices: "customer invoices: what customers owe us, unpaid or overdue invoices, receivables",
+  stock_value: "the total value of the stock on hand, inventory valuation",
+  stock_totals: "overall stock numbers: how many units or SKUs we hold, reserved, incoming, which products are low",
+  purchase_orders: "the list of purchase orders to suppliers and their status (open, waiting on goods, received)",
+  sales_orders: "the list of customer sales orders and their status (to pack, to ship, paid)",
+  month_close: "this month's month-end checks: whether the month passes, what blocks closing it",
+  balances: "account balances in the ledger: cash in the bank, revenue, cost of goods sold, trial balance",
+  none: "none of these: a specific record by number or SKU, a how-to question, navigation, or a request to change something",
+};
+
 const KIND_GLOSS = {
   navigate: "the person wants to GO TO or OPEN a screen / page / list in the app",
   howto: "the person asks HOW to do something or what a feature means, and wants instructions",
@@ -117,6 +137,7 @@ const liveJev: JevFn = async (message, route) => {
           kind: { type: "choice", instructions: "What kind of request is this message to an inventory app's assistant?", criteria: KIND_GLOSS },
           screen: { type: "choice", instructions: "Which screen of the app would this person need?", criteria: SCREEN_GLOSS },
           page: { type: "choice", instructions: "Which help page answers this?", criteria: WIKI_GLOSS },
+          data: { type: "choice", instructions: "Which data in the app would answer this message?", criteria: DATA_GLOSS },
         },
       }),
       signal: AbortSignal.timeout(3000),
@@ -133,6 +154,7 @@ const liveJev: JevFn = async (message, route) => {
       kind,
       screen: a.screen?.choice,
       page: a.page?.choice,
+      data: a.data?.choice,
       confidence: a.kind?.confidence,
       ms: Date.now() - t0,
     };
@@ -147,7 +169,7 @@ export async function routeWithJev(message: string, route: string): Promise<JevR
   const fn = jevOverride ?? liveJev;
   const r = await fn(message, route);
   // One line per decision, so the beta's real routing can be re-scored later.
-  if (r) console.log(JSON.stringify({ jev: r.kind, screen: r.screen, page: r.page, conf: r.confidence, ms: r.ms, route, msg: message.slice(0, 120) }));
+  if (r) console.log(JSON.stringify({ jev: r.kind, screen: r.screen, page: r.page, data: r.data, conf: r.confidence, ms: r.ms, route, msg: message.slice(0, 120) }));
   return r;
 }
 

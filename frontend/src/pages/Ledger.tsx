@@ -15,7 +15,7 @@ import { IconCheck, IconAlertTriangle } from "@tabler/icons-react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ChartOfAccounts, PostingRules } from "./AccountingReference";
+import { ChartOfAccounts, TransactionEntries } from "./AccountingReference";
 import { api, qs, type JournalEntry, type Paginated, type TrialBalance } from "../api";
 import {
   PageHeader,
@@ -57,7 +57,8 @@ export default function Ledger() {
   const queryClient = useQueryClient();
   // The tab lives in the URL so "the chart of accounts" is a link someone can send.
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") ?? "ledger";
+  // "rules" was this tab's first name; old links still land on it.
+  const tab = params.get("tab") === "rules" ? "entries" : (params.get("tab") ?? "ledger");
   const setTab = (t: string | null) => setParams(t && t !== "ledger" ? { tab: t } : {}, { replace: true });
 
   /**
@@ -138,13 +139,13 @@ export default function Ledger() {
         <Tabs.List>
           <Tabs.Tab value="ledger">Ledger</Tabs.Tab>
           <Tabs.Tab value="chart">Chart of accounts</Tabs.Tab>
-          <Tabs.Tab value="rules">Posting rules</Tabs.Tab>
+          <Tabs.Tab value="entries">Transaction entries</Tabs.Tab>
         </Tabs.List>
       </Tabs>
 
       {tab === "chart" && <ChartOfAccounts />}
-      {tab === "rules" && (
-        <PostingRules
+      {tab === "entries" && (
+        <TransactionEntries
           onShowEntries={(t) => {
             setTransactionType(t);
             setPage(1);

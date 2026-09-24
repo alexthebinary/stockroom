@@ -1,50 +1,44 @@
 /**
- * The client's own "Chart of Accounts & Transaction Journal Entries" sheet
- * (three pages, adopted 2026-09-24), rendered from the LIVE chart and posting
- * rules rather than copied as a picture: if a rule in the app ever drifts from
- * the sheet, this page shows the app's rule, not the sheet's wish.
- *
- * Text in SHEET_* is the sheet's own wording. Anything the app added beyond the
- * sheet is marked as such, with the reason, so an accountant can see at a
- * glance which parts are theirs.
+ * The chart of accounts and its transaction journal entries, in the layout of
+ * the client's reference sheet (2026-09-24) but filled with THIS company's
+ * ledger: every account and balance, and for every posting rule the entries it
+ * has actually made. Nothing here is sample data; a rule that has not posted
+ * yet says so instead of showing an illustrative amount.
  */
-import { Anchor, Badge, Card, Group, SimpleGrid, Stack, Table, Text, Title } from "@mantine/core";
+import { Anchor, Card, Group, SimpleGrid, Stack, Table, Text, Title } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { api, type TrialBalance } from "../api";
-import { QueryState, money } from "../components/ui";
+import { QueryState, formatDate, money } from "../components/ui";
 
 type Account = { code: string; name: string; accountType: string; normalSide: string; isActive: boolean };
-type Rule = {
+type Line = { code: string; name: string; debitCents: number; creditCents: number };
+type Example = {
   transactionType: string;
   description: string;
-  debitAccountCode: string;
-  creditAccountCode: string;
-  debitAccountName: string;
-  creditAccountName: string;
+  debit: { code: string; name: string };
+  credit: { code: string; name: string };
+  postedCount: number;
+  latest: { id: number; entryNumber: string; entryDate: string; memo: string | null; lines: Line[] } | null;
 };
 
-/** Sheet section 1, "Description / Notes", verbatim. */
-const SHEET_NOTES: Record<string, string> = {
-  "1000": "Cash and bank accounts used for payments and receipts.",
-  "1100": "Amounts owed by customers from sales on credit.",
-  "1200": "Stock of goods available for sale (on-hand inventory).",
-  "1210": "Temporary clearing account for goods received / purchase receipts pending put-away.",
-  "1220": "Temporary clearing account for goods issued / sales shipments pending relief of inventory.",
-  "2000": "Amounts owed to vendors for purchases on credit (bills).",
-  "3000": "Used to record opening balances (e.g., starting inventory) when books are first set up.",
-  "4000": "Revenue from sale of goods to customers.",
-  "4100": "Gain arising from positive inventory count adjustments (found stock / overage).",
-  "5000": "Cost of inventory sold to customers (matched to sales).",
-  "5100": "Loss from negative inventory count adjustments (shrinkage / shortage).",
-};
-
-/** Accounts the app needs that the sheet does not list, and why. */
-const APP_NOTES: Record<string, string> = {
-  "1230": "Stock moving between two of our warehouses: it has left one and not yet arrived at the other.",
-  "2100": "Payments taken at checkout (Shopify, Amazon, showroom) before the goods ship; applied to the invoice when they do.",
-  "5200": "Cent differences when a landed cost does not divide evenly across the units received.",
-  "5300": "Parts consumed from stock on a repair. Not used yet: no screen posts it.",
-  "5400": "Replacement units given under warranty. Not used yet: no screen posts it.",
+/** What each account holds in this app, in plain words. */
+const ACCOUNT_NOTES: Record<string, string> = {
+  "1000": "Cash and bank: customer payments in, supplier payments and refunds out.",
+  "1100": "What customers owe on invoices not yet paid.",
+  "1200": "Stock on the shelves at FIFO cost. Equals the stock valuation report.",
+  "1210": "Goods billed by a supplier but not yet received into stock.",
+  "1220": "Goods shipped whose cost is not yet matched to an invoice.",
+  "1230": "Stock moving between two warehouses: left one, not yet arrived at the other.",
+  "2000": "What we owe suppliers on bills not yet paid.",
+  "2100": "Checkout payments (Shopify, Amazon, showroom) for goods not yet shipped.",
+  "3000": "The other side of the opening stock position when the books were set up.",
+  "4000": "Sales at invoice value, less credit notes for returns.",
+  "4100": "Stock found on a count or adjustment, at cost.",
+  "5000": "The cost of the goods sold, matched to each invoice.",
+  "5100": "Stock written off as damaged, lost or short, at cost.",
+  "5200": "Cent differences when a landed cost does not divide evenly across units.",
+  "5300": "Parts used on repairs. No screen posts to it yet.",
+  "5400": "Replacement units given under warranty. No screen posts to it yet.",
 };
 
 const TYPE_LABEL: Record<string, string> = {
@@ -55,68 +49,58 @@ const TYPE_LABEL: Record<string, string> = {
   EXPENSE: "Expenses",
 };
 
-/** Sheet sections 2–4, in the sheet's order and wording. */
-const SHEET_RULES: { area: string; items: { ref: string; title: string; note: string; type: string }[] }[] = [
+/** The transactions in the order the business meets them, with plain titles. */
+const PROCESSES: { area: string; items: { type: string; title: string }[] }[] = [
   {
     area: "Purchasing",
     items: [
-      { ref: "2.1", title: "Bill (Vendor Invoice / Purchase on Credit)", type: "PURCHASE_BILL",
-        note: "Records a bill received from a supplier for inventory. Goods are not yet put into stock; they sit in the inbound clearing account." },
-      { ref: "2.2", title: "Bill Payment (Pay Vendor)", type: "PURCHASE_PAYMENT",
-        note: "Payment of the vendor bill from bank/cash. Clears the Accounts Payable balance." },
-      { ref: "2.3", title: "Goods Receipt (GR) – Inbound", type: "GOODS_RECEIPT",
-        note: "Moves value from the inbound clearing account into on-hand Inventory." },
+      { type: "PURCHASE_BILL", title: "Bill (vendor invoice)" },
+      { type: "PURCHASE_PAYMENT", title: "Bill payment" },
+      { type: "GOODS_RECEIPT", title: "Goods receipt (into stock)" },
     ],
   },
   {
     area: "Sales",
     items: [
-      { ref: "3.1 A", title: "Invoice – Revenue recognition", type: "SALES_INVOICE",
-        note: "Recognise revenue and the receivable." },
-      { ref: "3.1 B", title: "Invoice – Cost of goods sold", type: "INVOICE_COGS",
-        note: "Recognise cost of goods sold and relieve outbound clearing." },
-      { ref: "3.2", title: "Customer Payment (Receipt against AR)", type: "SALES_PAYMENT",
-        note: "Cash/bank receipt from the customer that settles the Accounts Receivable." },
-      { ref: "3.3", title: "Goods Issue (GI) – Outbound", type: "GOODS_ISSUE",
-        note: "Relieves on-hand Inventory and posts to the outbound clearing account (later cleared by the COGS entry on the invoice)." },
+      { type: "CUSTOMER_DEPOSIT", title: "Checkout payment (before shipping)" },
+      { type: "GOODS_ISSUE", title: "Goods issue (shipment leaves stock)" },
+      { type: "SALES_INVOICE", title: "Invoice – revenue" },
+      { type: "INVOICE_COGS", title: "Invoice – cost of goods sold" },
+      { type: "DEPOSIT_APPLIED", title: "Checkout payment applied to the invoice" },
+      { type: "SALES_PAYMENT", title: "Customer payment" },
+    ],
+  },
+  {
+    area: "Returns",
+    items: [
+      { type: "SALES_RETURN", title: "Return – credit note" },
+      { type: "RETURN_RESTOCK", title: "Return – back into stock" },
+      { type: "CUSTOMER_REFUND", title: "Refund" },
     ],
   },
   {
     area: "Inventory",
     items: [
-      { ref: "4.1", title: "Opening Balance – Inventory", type: "OPENING_BALANCE",
-        note: "Initial stock value when opening the books. Offset is Opening Balance Equity." },
-      { ref: "4.2", title: "Inventory Adjustment – Gain", type: "ADJUSTMENT_INCREASE",
-        note: "Overage / found stock on a physical count." },
-      { ref: "4.2", title: "Inventory Adjustment – Loss", type: "ADJUSTMENT_DECREASE",
-        note: "Shortage / shrinkage on a physical count." },
+      { type: "OPENING_BALANCE", title: "Opening balance" },
+      { type: "ADJUSTMENT_INCREASE", title: "Adjustment – stock found" },
+      { type: "ADJUSTMENT_DECREASE", title: "Adjustment – stock written off" },
+      { type: "INVENTORY_TRANSFER", title: "Transfer out (into transit)" },
+      { type: "INVENTORY_TRANSFER_IN", title: "Transfer in (out of transit)" },
     ],
   },
 ];
 
-/** Rules the app posts that the sheet does not cover. */
-const APP_RULES: { title: string; type: string; note?: string }[] = [
-  { title: "Checkout payment (customer deposit)", type: "CUSTOMER_DEPOSIT" },
-  { title: "Deposit applied to the invoice", type: "DEPOSIT_APPLIED" },
-  { title: "Customer return – credit", type: "SALES_RETURN" },
-  { title: "Customer return – restock", type: "RETURN_RESTOCK" },
-  { title: "Customer refund", type: "CUSTOMER_REFUND" },
-  { title: "Transfer out (into transit)", type: "INVENTORY_TRANSFER" },
-  { title: "Transfer in (out of transit)", type: "INVENTORY_TRANSFER_IN" },
-  { title: "Repair parts used", type: "REPAIR_PARTS_CONSUMPTION", note: "Not used yet: no screen posts it." },
-  { title: "Warranty replacement", type: "WARRANTY_REPLACEMENT", note: "Not used yet: no screen posts it." },
-];
-
-function useReference() {
-  const accounts = useQuery({ queryKey: ["accounts"], queryFn: () => api.get<{ data: Account[] }>("/accounts") });
-  const rules = useQuery({ queryKey: ["journal-templates"], queryFn: () => api.get<{ data: Rule[] }>("/journal-templates") });
-  const trial = useQuery({ queryKey: ["trial-balance"], queryFn: () => api.get<TrialBalance>("/trial-balance") });
-  return { accounts, rules, trial };
-}
+/** Rules nothing posts to today: shown only once they have entries. */
+const DORMANT_TITLE: Record<string, string> = {
+  REPAIR_PARTS_CONSUMPTION: "Repair parts used",
+  WARRANTY_REPLACEMENT: "Warranty replacement",
+  SALES_SHIPMENT_COGS: "Cost of goods sold on shipment (earlier method)",
+};
 
 export function ChartOfAccounts() {
-  const { accounts, trial } = useReference();
-  const balance = (code: string) => trial.data?.accounts.find((a) => a.code === code)?.balanceCents;
+  const accounts = useQuery({ queryKey: ["accounts"], queryFn: () => api.get<{ data: Account[] }>("/accounts") });
+  const trial = useQuery({ queryKey: ["trial-balance"], queryFn: () => api.get<TrialBalance>("/trial-balance") });
+  const balance = (code: string) => trial.data?.accounts.find((a) => a.code === code)?.balanceCents ?? 0;
   const groups = Object.keys(TYPE_LABEL)
     .map((type) => ({ type, rows: (accounts.data?.data ?? []).filter((a) => a.accountType === type) }))
     .filter((g) => g.rows.length > 0);
@@ -124,8 +108,7 @@ export function ChartOfAccounts() {
   return (
     <QueryState isLoading={accounts.isLoading} error={accounts.error} onRetry={accounts.refetch}>
       <Text size="sm" c="dimmed" mb="sm">
-        From the client's sheet "Chart of Accounts &amp; Transaction Journal Entries", section 1. Accounts marked{" "}
-        <Badge size="xs" variant="light" color="gray">added</Badge> are not on the sheet; the app needs them for the reason given.
+        Every account in the ledger, what it holds, and its balance today.
       </Text>
       <Card withBorder radius="md" p={0}>
         <Table.ScrollContainer minWidth={720}>
@@ -136,7 +119,7 @@ export function ChartOfAccounts() {
                 <Table.Th>Account</Table.Th>
                 <Table.Th w={150}>Type</Table.Th>
                 <Table.Th w={90}>Normal</Table.Th>
-                <Table.Th>Description / notes</Table.Th>
+                <Table.Th>What it holds</Table.Th>
                 <Table.Th ta="right" w={130}>Balance</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -152,15 +135,7 @@ export function ChartOfAccounts() {
   );
 }
 
-function GroupRows({
-  label,
-  rows,
-  balance,
-}: {
-  label: string;
-  rows: Account[];
-  balance: (code: string) => number | undefined;
-}) {
+function GroupRows({ label, rows, balance }: { label: string; rows: Account[]; balance: (code: string) => number }) {
   return (
     <>
       <Table.Tr>
@@ -168,137 +143,153 @@ function GroupRows({
           {label}
         </Table.Td>
       </Table.Tr>
-      {rows.map((a) => {
-        const sheet = SHEET_NOTES[a.code];
-        const b = balance(a.code);
-        return (
-          <Table.Tr key={a.code}>
-            <Table.Td fw={600}>{a.code}</Table.Td>
-            <Table.Td>
-              <Group gap={6} wrap="nowrap">
-                <Text size="sm" fw={500}>{a.name}</Text>
-                {!sheet && <Badge size="xs" variant="light" color="gray" style={{ flex: "none" }}>added</Badge>}
-              </Group>
-            </Table.Td>
-            <Table.Td>
-              <Text size="sm">{a.code === "5000" ? "Expenses (COGS)" : label}</Text>
-            </Table.Td>
-            <Table.Td>
-              <Text size="sm">{a.normalSide === "DEBIT" ? "Debit" : "Credit"}</Text>
-            </Table.Td>
-            <Table.Td>
-              <Text size="sm" c={sheet ? undefined : "dimmed"}>{sheet ?? APP_NOTES[a.code] ?? ""}</Text>
-            </Table.Td>
-            <Table.Td ta="right">{money(b ?? 0)}</Table.Td>
-          </Table.Tr>
-        );
-      })}
+      {rows.map((a) => (
+        <Table.Tr key={a.code}>
+          <Table.Td fw={600}>{a.code}</Table.Td>
+          <Table.Td>
+            <Text size="sm" fw={500}>{a.name}</Text>
+          </Table.Td>
+          <Table.Td>
+            <Text size="sm">{a.code === "5000" ? "Expenses (COGS)" : label}</Text>
+          </Table.Td>
+          <Table.Td>
+            <Text size="sm">{a.normalSide === "DEBIT" ? "Debit" : "Credit"}</Text>
+          </Table.Td>
+          <Table.Td>
+            <Text size="sm">{ACCOUNT_NOTES[a.code] ?? ""}</Text>
+          </Table.Td>
+          <Table.Td ta="right">{money(balance(a.code))}</Table.Td>
+        </Table.Tr>
+      ))}
     </>
   );
 }
 
-export function PostingRules({ onShowEntries }: { onShowEntries: (transactionType: string) => void }) {
-  const { rules } = useReference();
-  const byType = (t: string) => rules.data?.data.find((r) => r.transactionType === t);
+export function TransactionEntries({ onShowEntries }: { onShowEntries: (transactionType: string) => void }) {
+  const examples = useQuery({
+    queryKey: ["journal-examples"],
+    queryFn: () => api.get<{ data: Example[] }>("/journal-examples"),
+  });
+  const byType = (t: string) => examples.data?.data.find((r) => r.transactionType === t);
+  const dormant = (examples.data?.data ?? []).filter((e) => e.transactionType in DORMANT_TITLE && e.postedCount > 0);
 
   return (
-    <QueryState isLoading={rules.isLoading} error={rules.error} onRetry={rules.refetch}>
+    <QueryState isLoading={examples.isLoading} error={examples.error} onRetry={examples.refetch}>
       <Text size="sm" c="dimmed" mb="md">
-        From the client's sheet, sections 2–4, with the debit and credit the app actually posts. Every rule below is read
-        from the live ledger settings.
+        What each kind of transaction posts, with the latest real entry from this ledger. Nobody types these: they post
+        themselves when the work is done in the app.
       </Text>
       <Stack gap="xl">
-        {SHEET_RULES.map((section) => (
+        {PROCESSES.map((section) => (
           <div key={section.area}>
             <Title order={2} size="h4" mb="sm">
               {section.area}
             </Title>
             <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="md">
               {section.items.map((item) => (
-                <RuleCard key={item.type} refLabel={item.ref} title={item.title} note={item.note} rule={byType(item.type)} onShowEntries={onShowEntries} />
+                <EntryCard key={item.type} title={item.title} example={byType(item.type)} onShowEntries={onShowEntries} />
               ))}
             </SimpleGrid>
           </div>
         ))}
-        <div>
-          <Title order={2} size="h4" mb={4}>
-            Added by ProfitIndex
-          </Title>
-          <Text size="sm" c="dimmed" mb="sm">
-            Not on the sheet: checkout payments, returns and transfers between warehouses need their own entries.
-          </Text>
-          <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="md">
-            {APP_RULES.map((item) => (
-              <RuleCard key={item.type} title={item.title} note={item.note} rule={byType(item.type)} onShowEntries={onShowEntries} />
-            ))}
-          </SimpleGrid>
-        </div>
+        {dormant.length > 0 && (
+          <div>
+            <Title order={2} size="h4" mb="sm">
+              Other
+            </Title>
+            <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="md">
+              {dormant.map((e) => (
+                <EntryCard
+                  key={e.transactionType}
+                  title={DORMANT_TITLE[e.transactionType]}
+                  example={e}
+                  onShowEntries={onShowEntries}
+                />
+              ))}
+            </SimpleGrid>
+          </div>
+        )}
       </Stack>
     </QueryState>
   );
 }
 
-function RuleCard({
-  refLabel,
+function EntryCard({
   title,
-  note,
-  rule,
+  example,
   onShowEntries,
 }: {
-  refLabel?: string;
   title: string;
-  note?: string;
-  rule?: Rule;
+  example?: Example;
   onShowEntries: (transactionType: string) => void;
 }) {
+  if (!example) return null;
+  const e = example.latest;
+  // The latest entry's own lines when there is one (it may carry more than two,
+  // e.g. a rounding line); otherwise the rule's two sides, without amounts.
+  const rows: { side: "Dr" | "Cr"; code: string; name: string; cents?: number }[] = e
+    ? e.lines.map((l) => ({
+        side: l.debitCents > 0 ? "Dr" : "Cr",
+        code: l.code,
+        name: l.name,
+        cents: l.debitCents || l.creditCents,
+      }))
+    : [
+        { side: "Dr", ...example.debit },
+        { side: "Cr", ...example.credit },
+      ];
+
   return (
     <Card withBorder radius="md" p="md">
       <Group justify="space-between" align="flex-start" wrap="nowrap" mb={4}>
         <Text fw={600} size="sm">
           {title}
         </Text>
-        {refLabel && (
-          <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
-            Sheet {refLabel}
-          </Text>
-        )}
+        <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+          {example.postedCount === 0
+            ? "no entries yet"
+            : `${example.postedCount} ${example.postedCount === 1 ? "entry" : "entries"}`}
+        </Text>
       </Group>
       <Text size="sm" c="dimmed" mb="sm">
-        {note ?? rule?.description}
+        {example.description}
       </Text>
-      {rule ? (
-        <Table verticalSpacing={4} className="rule-table">
-          <Table.Tbody>
-            <Table.Tr>
-              <Table.Td w={36} fw={600}>Dr</Table.Td>
-              <Table.Td>
-                {rule.debitAccountCode} {rule.debitAccountName}
+      <Table verticalSpacing={4} className="rule-table">
+        <Table.Tbody>
+          {rows.map((r, i) => (
+            <Table.Tr key={i}>
+              <Table.Td w={36} fw={600}>
+                {r.side}
               </Table.Td>
-            </Table.Tr>
-            <Table.Tr>
-              <Table.Td w={36} fw={600}>Cr</Table.Td>
               <Table.Td>
-                {rule.creditAccountCode} {rule.creditAccountName}
+                {r.code} {r.name}
               </Table.Td>
+              {e && <Table.Td ta="right">{money(r.cents ?? 0)}</Table.Td>}
             </Table.Tr>
-          </Table.Tbody>
-        </Table>
+          ))}
+        </Table.Tbody>
+      </Table>
+      {e ? (
+        <>
+          <Text size="xs" c="dimmed" mt="xs">
+            Latest: {e.entryNumber} · {formatDate(e.entryDate)}
+            {e.memo ? ` · ${e.memo}` : ""}
+          </Text>
+          <Anchor
+            component="button"
+            type="button"
+            size="sm"
+            mt={6}
+            style={{ alignSelf: "flex-start" }}
+            onClick={() => onShowEntries(example.transactionType)}
+          >
+            {example.postedCount === 1 ? "Show this entry" : `Show all ${example.postedCount}`}
+          </Anchor>
+        </>
       ) : (
-        <Text size="sm" c="var(--warn-fg)">
-          This rule is missing from the ledger settings.
+        <Text size="xs" c="dimmed" mt="xs">
+          Posts automatically the first time this happens in the app.
         </Text>
-      )}
-      {rule && !note?.startsWith("Not used yet") && (
-        <Anchor
-          component="button"
-          type="button"
-          size="sm"
-          mt="xs"
-          style={{ alignSelf: "flex-start" }}
-          onClick={() => onShowEntries(rule.transactionType)}
-        >
-          Show these entries
-        </Anchor>
       )}
     </Card>
   );

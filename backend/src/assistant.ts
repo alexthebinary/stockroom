@@ -45,6 +45,9 @@ import { routeWithJev, SCREENS } from "./jev";
 const PROVIDERS: Record<string, { url: string; keyEnv: string }> = {
   zenmux: { url: "https://zenmux.ai/api/v1/chat/completions", keyEnv: "ZENMUX_KEY" },
   google: { url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", keyEnv: "ASSISTANT_KEY" },
+  // Prepaid, no auto-refill: added 2026-09-24 when the ZenMux balance hit 0
+  // and every turn answered 402 reject_no_credit.
+  xai: { url: "https://api.x.ai/v1/chat/completions", keyEnv: "XAI_API_KEY" },
 };
 const DEFAULT_CHAIN = "zenmux:google/gemini-3.6-flash,zenmux:qwen/qwen3.8-flash,google:gemini-3.6-flash";
 
@@ -437,6 +440,23 @@ export function referencedRecords(text: string): string[] {
   return [...new Set(found)].slice(0, 2);
 }
 
+/** Jev's data pick → the read that answers it. Every path is on READABLE. */
+function dataSourcePath(key: string | undefined): string | null {
+  const month = new Date().toISOString().slice(0, 7);
+  const paths: Record<string, string> = {
+    attention: "/dashboard/attention",
+    bills: "/purchase-orders/bills",
+    invoices: "/sales-orders/invoices",
+    stock_value: "/reports/inventory-valuation",
+    stock_totals: "/dashboard",
+    purchase_orders: "/purchase-orders",
+    sales_orders: "/sales-orders",
+    month_close: `/close/${month}`,
+    balances: "/trial-balance",
+  };
+  return key && paths[key] ? paths[key] : null;
+}
+
 async function prefetch(app: Express, caller: Caller, text: string) {
   const refs = referencedRecords(text);
   const found = await Promise.all(refs.map(async (q) => ({ q, result: await lookup(app, caller, q) })));
@@ -522,9 +542,11 @@ export async function chat(
   // Where the turn's time went, returned with the reply: the only honest basis
   // for a speed change is knowing which part is slow.
   const timing: { jevMs?: number; modelMs: number[]; toolMs: number } = { modelMs: [], toolMs: 0 };
+  let jevData: string | undefined;
   if (!input.image && !input.full && input.fastOk !== false && latestText) {
     const tJev = Date.now();
     const r = await routeWithJev(latestText, input.route);
+    jevData = r?.data;
     timing.jevMs = Date.now() - tJev;
     const none = { input: 0, output: 0, calls: 0 };
     if (r?.kind === "navigate" && r.screen && SCREENS[r.screen]) {
@@ -581,17 +603,27 @@ export async function chat(
   if (process.env.ASSISTANT_PREFETCH !== "0" && latestText) {
     const refs = referencedRecords(latestText);
     if (refs.length) emit?.({ type: "status", text: `Looking up ${refs.join(" and ")}…` });
+    const dataPath = process.env.ASSISTANT_JEV_DATA !== "0" ? dataSourcePath(jevData) : null;
+    if (dataPath && !refs.length) emit?.({ type: "status", text: describeCall("api_get", { path: dataPath }) });
     const tPre = Date.now();
-    const pre = await prefetch(app, caller, latestText);
+    const [pre, data] = await Promise.all([
+      prefetch(app, caller, latestText),
+      dataPath ? readAsUser(app, caller, dataPath) : Promise.resolve(null),
+    ]);
     timing.toolMs += Date.now() - tPre;
-    if (pre.length > 0) {
+    const lines = pre.map((f) => `lookup("${f.q}") → ${JSON.stringify(f.result).slice(0, TOOL_RESULT_CHARS)}`);
+    for (const f of pre) looked.push(`lookup ${f.q}`);
+    if (dataPath && typeof data === "string") {
+      lines.push(`api_get("${dataPath}") → ${data}`);
+      looked.push(dataPath);
+    }
+    if (lines.length > 0) {
       prefetched = true;
-      for (const f of pre) looked.push(`lookup ${f.q}`);
       messages.splice(1, 0, {
         role: "system",
         content:
-          "Already looked up for the user's latest message (fresh, read as the user; do not look these up again):\n" +
-          pre.map((f) => `lookup("${f.q}") → ${JSON.stringify(f.result).slice(0, TOOL_RESULT_CHARS)}`).join("\n"),
+          "Already looked up for the user's latest message (fresh, read as the user; do not look these up again, " +
+          "but read anything else you need):\n" + lines.join("\n"),
       });
     }
   }
