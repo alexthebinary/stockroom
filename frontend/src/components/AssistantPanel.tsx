@@ -150,7 +150,12 @@ export function AssistantPanel() {
     content: m.content || (m.role === 'user' && 'image' in m && m.image ? '(photo attached)' : ''),
   }));
 
+  const inFlight = useRef(false);
   async function sendMessage(text?: string, imageOverride?: string, full = false) {
+    // One turn at a time: a second send mid-answer interleaves two replies and
+    // gives the second turn the first one's reads (seen on the live app when a
+    // script bypassed the disabled composer).
+    if (inFlight.current) return;
     const content = (text ?? input).trim();
     const imageToSend = imageOverride ?? attachedImage;
 
@@ -172,6 +177,7 @@ export function AssistantPanel() {
         : ['Thinking…', 'Checking the app…', 'Almost there…']
     );
     setIsLoading(true);
+    inFlight.current = true;
 
     try {
       // A quick answer only makes sense at the start of a conversation or right
@@ -239,6 +245,7 @@ export function AssistantPanel() {
         ]);
       }
     } finally {
+      inFlight.current = false;
       setIsLoading(false);
       setLiveStatus(null);
       setDraft('');
