@@ -46,7 +46,7 @@ export async function unappliedDeposits(tx: Tx, salesOrderId: number) {
 export async function takeDeposit(
   tx: Tx,
   order: OrderForCash,
-  input: { amountCents?: number; method: string; actor: string }
+  input: { amountCents?: number; method: string; actor: string; paidAt?: Date }
 ) {
   if (order.readinessStatus === "CANCELED") throw conflict("This order is canceled");
   if (!order.customerId) {
@@ -75,6 +75,7 @@ export async function takeDeposit(
       direction: "RECEIPT",
       amountCents,
       method: input.method,
+      paidAt: input.paidAt ?? new Date(),
       status: "POSTED",
       salesOrderId: order.id,
       customerId: order.customerId,
@@ -83,6 +84,7 @@ export async function takeDeposit(
   const entry = await postSimple(tx, {
     transactionType: TRANSACTION_TYPE.CUSTOMER_DEPOSIT,
     amountCents,
+    entryDate: input.paidAt,
     memo: `Checkout payment ${payment.paymentNumber} on ${order.orderNumber} — paid ahead; revenue when it ships`,
     referenceType: "PAYMENT",
     referenceId: payment.id,

@@ -37,7 +37,7 @@ export function setJevForTests(fn: JevFn | null | undefined) {
 
 export const SCREENS: Record<string, string> = {
   "/": "Home",
-  "/showroom": "Showroom sale",
+  "/showroom": "Store",
   "/receive": "Receive",
   "/inventory": "Stock on hand",
   "/products": "Products",
@@ -61,7 +61,7 @@ export const SCREENS: Record<string, string> = {
 
 const SCREEN_GLOSS: Record<string, string> = {
   "/": "Home: what needs attention today",
-  "/showroom": "Showroom sale: selling to a walk-in client at the counter",
+  "/showroom": "Store: selling to a walk-in client at the showroom counter (showroom sale)",
   "/receive": "Receive: scanning boxes of an arriving delivery",
   "/inventory": "Stock on hand: stock levels per product and warehouse",
   "/products": "Products: the product catalogue",

@@ -22,7 +22,7 @@ type Row = {
 /** `also` holds the other words people type for the same job ("new sale" finds the counter). */
 const ACTIONS: { label: string; detail: string; to: string; needs?: "stock" | "money"; also?: string[] }[] = [
   { label: "Receive a delivery", detail: "Scan boxes in against a purchase order", to: "/receive", needs: "stock", also: ["delivery", "arrived", "scan"] },
-  { label: "Showroom sale", detail: "A walk-in client pays and takes the goods", to: "/showroom", needs: "money", also: ["new sale", "counter", "walk-in", "checkout", "pos"] },
+  { label: "Store", detail: "A walk-in client pays and takes the goods (showroom sale)", to: "/showroom", needs: "money", also: ["new sale", "counter", "walk-in", "checkout", "pos"] },
   { label: "New sales order", detail: "Sell to a customer", to: "/sales-orders", also: ["order", "wholesale"] },
   { label: "Record a return", detail: "Open the shipped order and press Return items", to: "/sales-orders", also: ["return", "refund", "rma"] },
   { label: "New purchase order", detail: "Buy from a vendor", to: "/purchase-orders" },

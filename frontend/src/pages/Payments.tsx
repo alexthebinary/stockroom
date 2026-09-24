@@ -11,6 +11,7 @@ import {
   Stack,
   Table,
   Text,
+  TextInput,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -191,6 +192,10 @@ function RegisterPayment({
   const [itemKey, setItemKey] = useState<string | null>(null);
   const [amount, setAmount] = useState<number | string>("");
   const [method, setMethod] = useState<string>(direction === "RECEIPT" ? "CARD" : "BANK");
+  // The day the money moved. Local today, not UTC: at 9 pm in Pennsylvania
+  // UTC is already tomorrow, and the server refuses a future date.
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+  const [paidAt, setPaidAt] = useState(today);
   const item = items.find((i) => `${i.kind}-${i.id}` === itemKey);
 
   // Choosing a document fills in what is left on it; a part payment is an edit.
@@ -202,12 +207,14 @@ function RegisterPayment({
   const tooMuch = item ? cents > item.outstandingCents : false;
 
   const save = useMutation({
-    mutationFn: () => api.post<{ payment: { paymentNumber: string } }>(item!.payPath, { amountCents: cents, method }),
+    mutationFn: () =>
+      api.post<{ payment: { paymentNumber: string } }>(item!.payPath, { amountCents: cents, method, paidAt }),
     onSuccess: (r) => {
       toastOk(`${r.payment.paymentNumber} recorded · ${money(cents)}`);
       queryClient.invalidateQueries();
       setItemKey(null);
       setAmount("");
+      setPaidAt(today);
       onClose();
     },
     onError: toastErr,
@@ -247,11 +254,20 @@ function RegisterPayment({
           />
           <Select label="Method" data={METHODS} value={method} onChange={(v) => setMethod(v ?? "BANK")} allowDeselect={false} />
         </Group>
+        <TextInput
+          type="date"
+          label="Date paid"
+          description="Backdate to the day the money moved. A closed month cannot take new entries."
+          value={paidAt}
+          max={today}
+          onChange={(e) => setPaidAt(e.currentTarget.value)}
+          error={paidAt > today ? "A payment cannot be in the future" : undefined}
+        />
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => save.mutate()} loading={save.isPending} disabled={!item || cents <= 0 || tooMuch}>
+          <Button onClick={() => save.mutate()} loading={save.isPending} disabled={!item || cents <= 0 || tooMuch || !paidAt || paidAt > today}>
             Record payment{cents > 0 ? ` · ${money(cents)}` : ""}
           </Button>
         </Group>

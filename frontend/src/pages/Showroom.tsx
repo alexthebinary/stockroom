@@ -237,7 +237,7 @@ export default function Showroom() {
   return (
     <>
       <PageHeader
-        title="Showroom sale"
+        title="Store"
         subtitle="The client pays at the counter and leaves with the goods and a paid invoice."
       />
       <Grid>

@@ -1,3 +1,4 @@
+import { IconExternalLink } from "@tabler/icons-react";
 import {
   Badge,
   Box,
@@ -39,6 +40,8 @@ export type SidebarSection = {
   label: string;
   icon: typeof IconPackage;
   to: string;
+  /** Opens outside the app, in a new tab (the Shopify storefront). */
+  external?: boolean;
   items?: SidebarItem[];
   attention?: (a: Attention) => { count: number; tone: "urgent" | "notice" } | null;
   /** Server capability this needs. Absent means everyone sees it. */
@@ -165,13 +168,19 @@ export function AppSidebar({
                     key={section.label}
                     component={Link}
                     to={section.to}
+                    // An absolute URL through Link is a normal page load; the
+                    // storefront opens beside the app, not instead of it.
+                    target={section.external ? "_blank" : undefined}
+                    rel={section.external ? "noopener noreferrer" : undefined}
                     label={collapsed ? undefined : section.label}
                     leftSection={
                       <span className="sidebar-icon" data-pending={collapsed && pending ? (pending as { tone: string }).tone : undefined}>
                         <section.icon size={17} stroke={1.7} />
                       </span>
                     }
-                    rightSection={collapsed ? undefined : badgeFor(section.attention)}
+                    rightSection={
+                      collapsed ? undefined : section.external ? <IconExternalLink size={13} stroke={1.8} aria-label="opens in a new tab" /> : badgeFor(section.attention)
+                    }
                     active={active}
                     className="sidebar-link"
                     // Expanded when you are inside it, so the structure is

@@ -2,7 +2,7 @@
 
 **Signing in.** During the beta the site password is the only thing to type; the app then signs you in as the administrator automatically.
 
-**The menu** (left on a desktop, a bottom bar and a drawer on a phone) is grouped by the work: Operations (Home, Showroom sale, Receive, Inventory), Sales, Purchases, Finance (Month-end close, Accounting, Reports), Settings. A number next to a menu item is work waiting there; orange means urgent.
+**The menu** (left on a desktop, a bottom bar and a drawer on a phone) is grouped by the work: Operations (Home, Store, Receive, Inventory), Sales, Purchases, Finance (Month-end close, Accounting, Reports), Settings. A number next to a menu item is work waiting there; orange means urgent.
 
 **Home (/)** opens on "Needs attention": the few things to do next, each with the button that does it — short purchase orders to receive, unpaid invoices, stock below its reorder point, shipments with no delivery confirmed.
 

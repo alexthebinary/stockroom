@@ -1,6 +1,6 @@
-# Showroom sale
+# Store (showroom sale)
 
-For a client standing in the showroom who pays and takes the goods now. Operations → **Showroom sale** (/showroom).
+For a client standing in the showroom who pays and takes the goods now. Operations → **Store** (/showroom).
 
 1. Pick the warehouse, search, and tap **+** on each product (it will not add more than is available).
 2. Client: Walk-in, New client (name, optional email/phone — they join the customer list), or Existing client.

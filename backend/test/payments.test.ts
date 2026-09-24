@@ -70,3 +70,45 @@ describe("payments register", () => {
     expect((await api.get("/api/payments?direction=SIDEWAYS")).status).toBe(400);
   });
 });
+
+describe("payment date", () => {
+  async function invoicedOrder(sku: string) {
+    const api = as(app, token);
+    const product = await prisma.product.create({ data: { sku, name: sku, defaultCostCents: 500, defaultPriceCents: 2_000 } });
+    await api.post("/api/stock-adjustments").send({
+      productId: product.id, warehouseId, adjustmentType: "INCREASE", quantity: 1, reason: "opening", unitCostCents: 500,
+    });
+    const o = await api.post("/api/sales-orders").send({ customerId, channel: "WHOLESALE", lines: [{ productId: product.id, warehouseId, quantity: 1 }] });
+    await api.post(`/api/sales-orders/${o.body.id}/pack`);
+    await api.post(`/api/sales-orders/${o.body.id}/ship`).send({});
+    return o.body.id as number;
+  }
+
+  it("a backdated payment carries its date into the ledger entry", async () => {
+    const api = as(app, token);
+    const id = await invoicedOrder("PAYDATE-1");
+    const day = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10);
+    const paid = await api.post(`/api/sales-orders/${id}/pay`).send({ paidAt: day });
+    expect(paid.status, JSON.stringify(paid.body)).toBe(201);
+    expect(String(paid.body.payment.paidAt).slice(0, 10)).toBe(day);
+    const entry = await prisma.journalEntry.findFirstOrThrow({ where: { referenceType: "PAYMENT", referenceId: paid.body.payment.id } });
+    expect(entry.entryDate.toISOString().slice(0, 10)).toBe(day);
+  });
+
+  it("refuses a future date, a malformed one, and a date in a locked month", async () => {
+    const api = as(app, token);
+    const id = await invoicedOrder("PAYDATE-2");
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    expect((await api.post(`/api/sales-orders/${id}/pay`).send({ paidAt: tomorrow })).status).toBe(400);
+    expect((await api.post(`/api/sales-orders/${id}/pay`).send({ paidAt: "24/09/2026" })).status).toBe(400);
+
+    const { setLockDate } = await import("../src/period");
+    await setLockDate("2020-12-31");
+    const locked = await api.post(`/api/sales-orders/${id}/pay`).send({ paidAt: "2020-06-15" });
+    expect(locked.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(locked.body)).toMatch(/lock|closed|period/i);
+    // Nothing was recorded by the refused attempts.
+    expect(await prisma.payment.count({ where: { invoice: { salesOrderId: id } } })).toBe(0);
+    await setLockDate(null);
+  });
+});

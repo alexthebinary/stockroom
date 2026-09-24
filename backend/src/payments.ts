@@ -8,6 +8,7 @@
  * logic only need one of them to be updated to become a bug, so the identical
  * parts live here once.
  */
+import { badRequest } from "./errors";
 import type { Prisma } from "@prisma/client";
 
 type Tx = Prisma.TransactionClient;
@@ -59,4 +60,22 @@ export async function lockDocumentForPayment(
   const url = process.env.DATABASE_URL ?? "";
   if (!url.startsWith("postgres")) return;
   await tx.$executeRawUnsafe(`SELECT id FROM "${table}" WHERE id = $1 FOR UPDATE`, id);
+}
+
+/**
+ * The date a payment happened, from the user's "YYYY-MM-DD". Today means now
+ * (keeps the time); an earlier day is booked at noon UTC so no timezone moves
+ * it to the day before. A future date is refused: a payment that has not
+ * happened is not a record. A date in a closed month is refused later, by the
+ * ledger's period lock, like any other entry.
+ */
+export function paymentDate(input?: string | null): Date {
+  if (!input) return new Date();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) throw badRequest("Payment date must be YYYY-MM-DD");
+  const today = new Date().toISOString().slice(0, 10);
+  if (input > today) throw badRequest("A payment date cannot be in the future");
+  if (input === today) return new Date();
+  const d = new Date(`${input}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) throw badRequest("Payment date is not a real date");
+  return d;
 }

@@ -9,6 +9,7 @@ import {
   IconStack2,
   IconTruckDelivery,
   IconTruckLoading,
+  IconWorld,
 } from "@tabler/icons-react";
 import type { SidebarGroup } from "./components/AppSidebar";
 
@@ -22,6 +23,9 @@ import type { SidebarGroup } from "./components/AppSidebar";
  * role regardless, so a warehouse picker was invited to a ledger they cannot
  * post to and learned the boundary from a 403.
  */
+/** The public Shopify storefront. */
+export const STORE_URL = "https://futurology.tech/";
+
 export const NAV: SidebarGroup[] = [
   {
     label: "Operations",
@@ -29,7 +33,7 @@ export const NAV: SidebarGroup[] = [
       { label: "Home", icon: IconLayoutDashboard, to: "/" },
       {
         // The counter: a client in the showroom pays and leaves with the goods.
-        label: "Showroom sale",
+        label: "Store",
         icon: IconBuildingStore,
         to: "/showroom",
         needs: "money",
@@ -119,6 +123,12 @@ export const NAV: SidebarGroup[] = [
         ],
       },
     ],
+  },
+  {
+    // The Shopify storefront. It lives outside the app: Shopify orders arrive
+    // here as sales orders on the SHOPIFY channel.
+    label: "E-commerce",
+    sections: [{ label: "Online store", icon: IconWorld, to: STORE_URL, external: true }],
   },
   {
     label: "Finance",

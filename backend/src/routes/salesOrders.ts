@@ -14,7 +14,7 @@ import { attachConsumptionsToMovement, consumeFifo } from "../costing";
 import { postSimple, reverseDocumentEntry } from "../ledger";
 import { TRANSACTION_TYPE } from "../accounts";
 import { assertReferencesUsable } from "../refs";
-import { lockDocumentForPayment, paidAgainst } from "../payments";
+import { lockDocumentForPayment, paidAgainst, paymentDate } from "../payments";
 import { CHANNELS, CHANNEL_CODES } from "../channels";
 import { raiseInvoice, recognizeCogs, syncDelivered, takeDeposit, unappliedDeposits } from "../order_to_cash";
 import { CREDIT_NOTE, postReturn } from "../returns";
@@ -48,6 +48,8 @@ const createSchema = z.object({
 });
 
 const paySchema = z.object({
+  /// "YYYY-MM-DD"; omitted means now. Checked by paymentDate().
+  paidAt: z.string().optional(),
   /// Omitted means "settle what is left", which is what every caller meant
   /// before this field existed.
   amountCents: z.number().int().optional(),
@@ -494,6 +496,7 @@ salesOrdersRouter.post(
     const actor = actorOf(req);
     const body = parseBody(paySchema, req.body ?? {});
     const method = body.method ?? "BANK";
+    const paidAt = paymentDate(body.paidAt);
 
     const result = await prisma.$transaction(async (tx) => {
       const current = await tx.salesOrder.findUnique({ where: { id }, include });
@@ -501,7 +504,7 @@ salesOrdersRouter.post(
       // Before shipment the money is a checkout deposit, not a payment against
       // revenue: nothing has been sold yet.
       if (current.paymentStatus === "AWAITING_PAYMENT") {
-        const deposit = await takeDeposit(tx, current, { amountCents: body.amountCents, method, actor });
+        const deposit = await takeDeposit(tx, current, { amountCents: body.amountCents, method, actor, paidAt });
         return { ...deposit, order: await tx.salesOrder.findUniqueOrThrow({ where: { id }, include }) };
       }
       if (current.paymentStatus === "PREPAID") throw conflict("This order was paid in full at checkout");
@@ -552,6 +555,7 @@ salesOrdersRouter.post(
           direction: "RECEIPT",
           amountCents,
           method,
+          paidAt,
           status: "POSTED",
           invoiceId: invoice.id,
           customerId: current.customerId,
@@ -559,6 +563,7 @@ salesOrdersRouter.post(
       });
 
       const entry = await postSimple(tx, {
+        entryDate: paidAt,
         transactionType: TRANSACTION_TYPE.SALES_PAYMENT,
         amountCents,
         memo: settles

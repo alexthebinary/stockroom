@@ -7,7 +7,7 @@ import { actorOf, asyncHandler, intParam, pagination, parseBody } from "../http"
 import { requireMoney, requireStock } from "../auth";
 import { applyBalanceDelta, recordMovement } from "../inventory";
 import { outstandingOf, receiveAgainstOrder } from "../goods_receipt";
-import { lockDocumentForPayment, paidAgainst } from "../payments";
+import { lockDocumentForPayment, paidAgainst, paymentDate } from "../payments";
 import { companyDetails, renderGoodsReceipt } from "../pdf";
 import { createEntry, postSimple, reverseDocumentEntry, type DraftLine } from "../ledger";
 import { ACCOUNT } from "../accounts";
@@ -62,6 +62,8 @@ const reversePaymentSchema = z.object({
 });
 
 const payBillSchema = z.object({
+  /// "YYYY-MM-DD"; omitted means now. Checked by paymentDate().
+  paidAt: z.string().optional(),
   /// Omitted means "settle what is left", which is what every caller meant
   /// before this field existed.
   amountCents: z.number().int().optional(),
@@ -455,6 +457,7 @@ purchaseOrdersRouter.post(
     const actor = actorOf(req);
     const body = parseBody(payBillSchema, req.body ?? {});
     const method = body.method ?? "BANK";
+    const paidAt = paymentDate(body.paidAt);
 
     const result = await prisma.$transaction(async (tx) => {
       const current = await tx.purchaseOrder.findUnique({ where: { id }, include });
@@ -501,6 +504,7 @@ purchaseOrdersRouter.post(
           direction: "DISBURSEMENT",
           amountCents,
           method,
+          paidAt,
           status: "POSTED",
           billId: bill.id,
           vendorId: current.vendorId,
@@ -508,6 +512,7 @@ purchaseOrdersRouter.post(
       });
 
       const entry = await postSimple(tx, {
+        entryDate: paidAt,
         transactionType: TRANSACTION_TYPE.PURCHASE_PAYMENT,
         amountCents,
         memo: settles

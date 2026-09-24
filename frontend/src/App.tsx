@@ -63,6 +63,7 @@ type Section = {
   label: string;
   icon: typeof IconPackage;
   to: string;
+  external?: boolean;
   items?: { to: string; label: string }[];
 };
 
@@ -87,12 +88,12 @@ const SECTIONS: (Section & { needs?: "stock" | "money" | "users" })[] = NAV.flat
  * so the section cannot be inferred from the URL prefix alone.
  */
 function sectionFor(pathname: string): Section | undefined {
-  if (pathname === "/") return SECTIONS[0];
+  if (pathname === "/") return SECTIONS.find((s) => s.to === "/");
   const withItems = SECTIONS.filter((s) => s.items).find((s) =>
     s.items!.some((i) => pathname === i.to || pathname.startsWith(`${i.to}/`))
   );
   if (withItems) return withItems;
-  return SECTIONS.filter((s) => s.to !== "/").find(
+  return SECTIONS.filter((s) => s.to !== "/" && !s.external).find(
     (s) => pathname === s.to || pathname.startsWith(`${s.to}/`)
   );
 }
@@ -378,6 +379,8 @@ export default function App() {
                 <UnstyledButton
                   component={NavLink}
                   to={s.to}
+                  target={s.external ? "_blank" : undefined}
+                  rel={s.external ? "noopener noreferrer" : undefined}
                   className="drawer-link"
                   data-section
                   data-active={s === section || undefined}

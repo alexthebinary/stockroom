@@ -124,6 +124,7 @@ export async function postSimple(
     productId?: number;
     debitWarehouseId?: number;
     creditWarehouseId?: number;
+    entryDate?: Date;
   }
 ) {
   const template = JOURNAL_TEMPLATES.find((t) => t.transactionType === input.transactionType);
@@ -138,6 +139,7 @@ export async function postSimple(
 
   return createEntry(tx, {
     transactionType: input.transactionType,
+    entryDate: input.entryDate,
     memo: input.memo ?? template.description,
     referenceType: input.referenceType,
     referenceId: input.referenceId,
