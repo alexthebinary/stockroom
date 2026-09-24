@@ -585,7 +585,13 @@ purchaseOrdersRouter.post(
         if (claimed.count === 0) throw conflict("This purchase order was already changed");
       }
 
-      await tx.payment.update({ where: { id: payment.id }, data: { status: "VOID" } });
+      // Atomic claim, same as the sales side: two concurrent reversals must not
+      // both post (Postgres does not serialise them the way SQLite does).
+      const voided = await tx.payment.updateMany({
+        where: { id: payment.id, status: { not: "VOID" } },
+        data: { status: "VOID" },
+      });
+      if (voided.count === 0) throw conflict(`Payment ${payment.paymentNumber} was already reversed`);
 
       const reversal = await reverseDocumentEntry(tx, "PAYMENT", payment.id, {
         actor,

@@ -764,7 +764,15 @@ salesOrdersRouter.post(
       // Void the payment BEFORE reversing its entry: unpostEntry now refuses an
       // entry whose document still reads posted, and reverseDocumentEntry runs
       // through the same document check.
-      await tx.payment.update({ where: { id: payment.id }, data: { status: "VOID" } });
+      // Claim the void atomically. A plain update let two concurrent reversals of
+      // the same payment both pass the lookup above and both post a reversal —
+      // the bank credited twice. SQLite serialises writes so no test could see it;
+      // Postgres (production) does not. Found by an agy review, 2026-09-23.
+      const voided = await tx.payment.updateMany({
+        where: { id: payment.id, status: { not: "VOID" } },
+        data: { status: "VOID" },
+      });
+      if (voided.count === 0) throw conflict(`Payment ${payment.paymentNumber} was already reversed`);
 
       const reversal = await reverseDocumentEntry(tx, "PAYMENT", payment.id, {
         actor,
