@@ -75,6 +75,41 @@ function formatPeriod(period: string): string {
   return new Date(Date.UTC(y, m - 1, 15)).toLocaleString(undefined, { month: "long", year: "numeric" });
 }
 
+/** Revenue, cost, stock and cash at month end — what the close certifies. */
+function CloseFigures({ periodEnd }: { periodEnd?: string }) {
+  const asOf = periodEnd?.slice(0, 10);
+  const tb = useQuery({
+    queryKey: ["trial-balance", asOf],
+    queryFn: () =>
+      api.get<{ accounts: { code: string; balanceCents: number }[] }>(`/trial-balance?asOf=${asOf}`),
+    enabled: Boolean(asOf),
+  });
+  const bal = (code: string) => tb.data?.accounts.find((a) => a.code === code)?.balanceCents ?? 0;
+  const rows: [string, number][] = [
+    ["Sales revenue (to date)", bal("4000")],
+    ["Cost of goods sold (to date)", bal("5000")],
+    ["Stock value (Inventory)", bal("1200")],
+    ["Cash (Bank)", bal("1000")],
+  ];
+  if (!asOf) return null;
+  return (
+    <Card withBorder radius="md" p="sm">
+      <Stack gap={4}>
+        {rows.map(([label, cents]) => (
+          <Group key={label} justify="space-between">
+            <Text size="sm" c="dimmed">
+              {label}
+            </Text>
+            <Text size="sm" fw={600} style={{ fontVariantNumeric: "tabular-nums" }}>
+              {tb.isLoading ? "…" : money(cents)}
+            </Text>
+          </Group>
+        ))}
+      </Stack>
+    </Card>
+  );
+}
+
 export default function Close() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -82,6 +117,8 @@ export default function Close() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  // The figures being certified, as of the month's last day, shown in the
+  // confirmation: closing a month without seeing its numbers is signing blind.
   const { data: report, isLoading: rLoading, error: rError, refetch } = useQuery({
     queryKey: ["close", period],
     queryFn: () => api.get<CloseReport>(`/close/${period}`),
@@ -210,7 +247,7 @@ export default function Close() {
                               <Text>{check.title}</Text>
                               {/* Red only when it is actually stopping the close. */}
                               {check.blocking && (
-                                <Badge variant="light" color={check.passed ? "gray" : "red"} size="sm">
+                                <Badge variant="light" color={check.passed ? "gray" : "red"} size="md">
                                   {check.passed ? "required" : "blocks close"}
                                 </Badge>
                               )}
@@ -315,7 +352,14 @@ export default function Close() {
       <Modal opened={confirmOpen} onClose={() => setConfirmOpen(false)} title="Close books">
         <Stack>
           <Text size="sm">
-            Locks the books through {report && endDay(report.periodEnd)}. Nothing dated on or before it can be posted, changed or deleted afterwards; corrections post in the next open month. {report?.warningsFailed ?? 0} warnings will be carried forward and listed in the close report.
+            Locks the books through {report && endDay(report.periodEnd)}. Nothing dated on or before it can be posted,
+            changed or deleted afterwards; corrections post in the next open month.
+          </Text>
+          <CloseFigures periodEnd={report?.periodEnd} />
+          <Text size="sm" c="dimmed">
+            {(report?.warningsFailed ?? 0) === 0
+              ? "Nothing to carry forward."
+              : `${report?.warningsFailed} ${report?.warningsFailed === 1 ? "item" : "items"} will be carried forward and listed in the close report.`}
           </Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setConfirmOpen(false)}>Cancel</Button>

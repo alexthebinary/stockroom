@@ -44,16 +44,6 @@ export default function Dashboard() {
       <PageHeader
         title="Today"
         subtitle="What needs doing, and the position behind it."
-        action={
-          <NumberInput
-            label="Low-stock threshold"
-            value={threshold}
-            onChange={(v) => setThreshold(Number(v) || 0)}
-            min={0}
-            w={170}
-            size="xs"
-          />
-        }
       />
 
       {/* The work first. Position is context for it, not the headline. */}
@@ -100,11 +90,20 @@ export default function Dashboard() {
             <Grid>
               <Grid.Col span={{ base: 12, lg: 6 }}>
                 <Card withBorder radius="md" p="md" h="100%">
-                  <Group justify="space-between" mb="sm">
-                    <Title order={5}>Low stock</Title>
-                    <Text size="xs" c="dimmed">
-                      on hand below {data.lowStockThreshold}
-                    </Text>
+                  {/* The threshold is a setting of THIS list, so it lives here — at the
+                      top of Home it was the first thing on a phone, above the work. */}
+                  <Group justify="space-between" mb="sm" align="flex-end">
+                    <Title order={2} size="h5">Low stock</Title>
+                    <NumberInput
+                      aria-label="Low-stock threshold"
+                      leftSection={<Text size="xs" c="dimmed">below</Text>}
+                      leftSectionWidth={44}
+                      value={threshold}
+                      onChange={(v) => setThreshold(Number(v) || 0)}
+                      min={0}
+                      w={100}
+                      size="xs"
+                    />
                   </Group>
                   <QueryState
                     isLoading={false}
@@ -145,7 +144,7 @@ export default function Dashboard() {
 
               <Grid.Col span={{ base: 12, lg: 6 }}>
                 <Card withBorder radius="md" p="md" h="100%">
-                  <Title order={5} mb="sm">
+                  <Title order={2} size="h5" mb="sm">
                     Recent stock movements
                   </Title>
                   <QueryState

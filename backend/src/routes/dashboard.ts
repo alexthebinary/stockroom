@@ -326,10 +326,16 @@ dashboardRouter.get(
     if (q.length < 2) return res.json({ results: [] });
 
     const take = 5;
-    const [products, serials, salesOrders, purchaseOrders, invoices, bills, customers, vendors] =
+    const [products, serials, salesOrders, purchaseOrders, invoices, bills, customers, vendors, returns] =
       await Promise.all([
+        // Every word must match somewhere, so "XAG battery" finds the XAG
+        // battery rather than nothing (the whole phrase appears in no field).
         prisma.product.findMany({
-          where: { OR: [{ sku: contains(q) }, { name: contains(q) }] },
+          where: {
+            AND: q.split(/\s+/).filter(Boolean).map((w) => ({
+              OR: [{ sku: contains(w) }, { name: contains(w) }, { brand: contains(w) }],
+            })),
+          },
           take,
           select: { id: true, sku: true, name: true },
         }),
@@ -368,6 +374,11 @@ dashboardRouter.get(
           take,
           select: { id: true, name: true },
         }),
+        prisma.salesReturn.findMany({
+          where: { OR: [{ returnNumber: contains(q) }, { reason: contains(q) }] },
+          take,
+          select: { id: true, returnNumber: true, reason: true, creditCents: true, salesOrderId: true },
+        }),
       ]);
 
     const results = [
@@ -402,6 +413,10 @@ dashboardRouter.get(
       })),
       ...vendors.map((v) => ({
         kind: "Vendor", label: v.name, detail: "", to: "/catalogs/vendors",
+      })),
+      ...returns.map((r) => ({
+        kind: "Return", label: r.returnNumber, detail: r.reason,
+        to: `/sales-orders/${r.salesOrderId}`, amountCents: r.creditCents,
       })),
     ];
 

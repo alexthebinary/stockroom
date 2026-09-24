@@ -22,6 +22,12 @@ import {
 import { Link, useLocation } from "react-router-dom";
 import type { Attention } from "../api";
 
+/** ⌘K on a Mac, Ctrl K everywhere else — the hint must match the key that works. */
+const SHORTCUT =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+    ? "⌘K"
+    : "Ctrl K";
+
 export type SidebarItem = {
   to: string;
   label: string;
@@ -105,7 +111,7 @@ export function AppSidebar({
       <div className="sidebar-head">
         {!collapsed && (
           <Text span className="sidebar-wordmark">
-            Stockroom
+            ProfitIndex
           </Text>
         )}
         <Tooltip label={collapsed ? "Expand (⌘B)" : "Collapse (⌘B)"} position="right" withArrow>
@@ -120,13 +126,13 @@ export function AppSidebar({
       </div>
 
       {/* Top slot, where a tool people live in puts search. */}
-      <Tooltip label="Search  ⌘K" position="right" withArrow disabled={!collapsed}>
+      <Tooltip label={`Search  ${SHORTCUT}`} position="right" withArrow disabled={!collapsed}>
         <UnstyledButton className="sidebar-search" onClick={onSearch} aria-label="Search">
           <IconSearch size={15} stroke={1.9} />
           {!collapsed && (
             <>
               <span className="sidebar-search-label">Search</span>
-              <kbd className="sidebar-kbd">⌘K</kbd>
+              <kbd className="sidebar-kbd">{SHORTCUT}</kbd>
             </>
           )}
         </UnstyledButton>

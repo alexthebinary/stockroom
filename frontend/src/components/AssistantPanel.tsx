@@ -319,7 +319,7 @@ export function AssistantPanel() {
         style={{
           position: 'fixed',
           right: 16,
-          bottom: 'calc(16px + var(--bottom-bar-h, 0px))',
+          bottom: 'calc(16px + var(--bottom-bar-h, 0px) + var(--dock-h, 0px))',
           zIndex: 210,
         }}
         size="xl"
@@ -420,15 +420,14 @@ export function AssistantPanel() {
                   )}
 
                   {msg.role === 'assistant' && (msg as AssistantDisplayMessage).fast && (
-                    <Text
-                      size="xs"
-                      c="dimmed"
-                      td="underline"
-                      style={{ cursor: 'pointer' }}
+                    <Button
+                      variant="subtle"
+                      size="compact-xs"
+                      color="gray"
                       onClick={() => sendMessage((msg as AssistantDisplayMessage).question ?? '', undefined, true)}
                     >
                       Not what you meant? Ask the assistant instead
-                    </Text>
+                    </Button>
                   )}
 
                   {msg.looked && msg.looked.length > 0 && (

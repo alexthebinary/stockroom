@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Grid, TextInput, Select, SegmentedControl, Button, Card, Group, Text, 
-  Stack, ActionIcon, Badge, NumberInput
+  Stack, ActionIcon, Badge
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconPlus, IconMinus, IconX, IconCircleCheck, IconSearch } from '@tabler/icons-react';
@@ -51,7 +51,14 @@ export default function Showroom() {
   const [existingClientId, setExistingClientId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'CARD' | 'CASH' | 'BANK'>('CARD');
   // Sales tax is collected at the counter; same default as the order form.
-  const [taxPercent, setTaxPercent] = useState<number | ''>(8);
+  // Counter tax is the showroom's rate (PA 6%, pa.gov), read from the channel
+  // policy and shown, not typed: a wrong rate at the counter lands on every sale.
+  const channels = useQuery({
+    queryKey: ['sales-channels'],
+    queryFn: () => api.get<{ channels: { code: string; defaultTaxPct: number }[] }>('/sales-orders/channels'),
+    staleTime: Infinity,
+  });
+  const taxPercent = channels.data?.channels.find((c) => c.code === 'SHOWROOM')?.defaultTaxPct ?? 6;
   const [success, setSuccess] = useState<SuccessState | null>(null);
 
   const { data: warehousesData } = useQuery({
@@ -66,7 +73,15 @@ export default function Showroom() {
     if (warehouseId === undefined && activeWarehouses.length > 0) {
       // The counter sells from the showroom's own stock: prefer the warehouse
       // named as the showroom, then MAIN, and only then whatever sorts first.
+      // Remembered per device: the counter is always the same place.
+      let remembered: number | null = null;
+      try {
+        remembered = Number(localStorage.getItem('showroom-warehouse')) || null;
+      } catch {
+        /* storage blocked */
+      }
       const showroom =
+        activeWarehouses.find((w) => w.id === remembered) ??
         activeWarehouses.find((w) => /showroom/i.test(w.name)) ??
         activeWarehouses.find((w) => w.code === "MAIN") ??
         activeWarehouses[0];
@@ -111,6 +126,11 @@ export default function Showroom() {
       setSuccess(null);
     }
     setWarehouseId(newId);
+    try {
+      if (newId) localStorage.setItem('showroom-warehouse', String(newId));
+    } catch {
+      /* storage blocked */
+    }
   };
 
   const addToCart = (balance: Balance) => {
@@ -207,7 +227,6 @@ export default function Showroom() {
     setNewClient({ name: '', email: '', phone: '' });
     setExistingClientId(null);
     setPaymentMethod('CARD');
-    setTaxPercent(8);
   };
 
   const inventoryItems = inventoryData?.data ?? [];
@@ -247,8 +266,8 @@ export default function Showroom() {
                   return (
                     <Group key={balance.id} justify="space-between" wrap="nowrap">
                       <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
-                        <Text size="sm" fw={500} truncate>{balance.product!.sku}</Text>
-                        <Text size="xs" c="dimmed" truncate>{balance.product!.name}</Text>
+                        <Text size="sm" fw={500} truncate title={balance.product!.sku}>{balance.product!.sku}</Text>
+                        <Text size="xs" c="dimmed" truncate title={balance.product!.name}>{balance.product!.name}</Text>
                       </Stack>
                       <Badge variant="light">{balance.availableQty}</Badge>
                       <Text size="sm" fw={500}>{money(balance.product!.defaultPriceCents)}</Text>
@@ -297,7 +316,7 @@ export default function Showroom() {
                   <Stack gap="xs">
                     {cart.map((line, index) => (
                       <Group key={line.productId} justify="space-between" wrap="nowrap">
-                        <Text size="sm" style={{ flex: 1, minWidth: 0 }} truncate>{line.name}</Text>
+                        <Text size="sm" style={{ flex: 1, minWidth: 0 }} truncate title={line.name}>{line.name}</Text>
                         <Group gap="xs">
                           <ActionIcon size="sm" onClick={() => decrementQty(index)} disabled={line.quantity <= 1}>
                             <IconMinus size={14} />
@@ -387,17 +406,8 @@ export default function Showroom() {
                   <Text>Subtotal</Text>
                   <Text>{money(subtotalCents)}</Text>
                 </Group>
-                <Group justify="space-between" align="center">
-                  <NumberInput
-                    label="Sales tax %"
-                    size="xs"
-                    w={110}
-                    min={0}
-                    max={30}
-                    decimalScale={3}
-                    value={taxPercent}
-                    onChange={(v) => setTaxPercent(v === '' ? '' : Number(v))}
-                  />
+                <Group justify="space-between">
+                  <Text>Sales tax ({taxPercent}% PA)</Text>
                   <Text>{money(taxCents)}</Text>
                 </Group>
                 <Group justify="space-between">
@@ -412,7 +422,7 @@ export default function Showroom() {
                   disabled={!canTakePayment || saleMutation.isPending}
                   loading={saleMutation.isPending}
                 >
-                  Take payment · {money(totalCents)}
+                  Record payment · {money(totalCents)}
                 </Button>
               </Stack>
             )}

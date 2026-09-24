@@ -478,7 +478,7 @@ h3,
   align-items: center;
   gap: 2px;
   padding: 8px 4px 7px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-muted);
   transition: color 140ms var(--ease-out);
@@ -551,7 +551,7 @@ h3,
   background: var(--surface-sunken);
   border-bottom: 1px solid var(--surface-border);
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -982,7 +982,7 @@ h3,
 
 .menubar-dropdown .mantine-Menu-label {
   padding: 4px 10px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 
@@ -1107,7 +1107,7 @@ h3,
   background: var(--surface);
   box-shadow: inset 0 0 0 1px var(--hairline);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-faint);
 }
 
@@ -1129,7 +1129,7 @@ h3,
 
 .sidebar-group-label {
   padding: 0 8px 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -1260,7 +1260,7 @@ h3,
 }
 
 .sidebar-account-role {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-faint);
 }
 
@@ -1338,7 +1338,7 @@ h3,
 
 .palette-group {
   padding: 10px 10px 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -1418,7 +1418,7 @@ h3,
   padding: 8px 14px;
   box-shadow: inset 0 1px 0 var(--hairline);
   background: var(--surface-sunken);
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-faint);
 }
 
@@ -1520,9 +1520,72 @@ h3,
 
 .dash-section {
   margin-bottom: 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--text-faint);
+}
+
+/* ---- Receive: order lines are radios ------------------------------------- */
+.receive-line {
+  display: block;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--hairline);
+  background: var(--mantine-color-body);
+}
+.receive-line:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}
+.receive-line[data-picked] {
+  border: 2px solid var(--mantine-primary-color-filled);
+  background: var(--mantine-primary-color-light);
+  padding: 9px 11px;
+}
+.receive-line:disabled {
+  opacity: 0.55;
+}
+.receive-line-dot {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--hairline);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mantine-color-white);
+}
+.receive-line[data-picked] .receive-line-dot {
+  border-color: var(--mantine-primary-color-filled);
+  background: var(--mantine-primary-color-filled);
+}
+
+/* ---- Phone: attention rows and the assistant button --------------------- */
+@media (max-width: 47.99em) {
+  /* The row's action was a 26px compact button cut to "Receiv" / "Pay vendo".
+     On a phone the action drops under the text at full width and 44px tall. */
+  .attention-row {
+    flex-wrap: wrap;
+  }
+  .attention-row .attention-action {
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+}
+
+/* The Receive dock is 80px of fixed controls; the assistant button rides above
+   it instead of sitting on the scan button (critique 2026-09-24). */
+body:has(.receive-dock) {
+  --dock-h: 80px;
+}
+
+/* Room at the end of every page for the floating assistant button, so it never
+   covers the last row or column of a table. */
+.app-main {
+  padding-bottom: 88px;
 }

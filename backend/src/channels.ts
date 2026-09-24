@@ -20,15 +20,25 @@ export type ChannelPolicy = {
   payment: "PREPAID" | "TERMS";
   /** Days from invoice to due date. 0 for prepaid channels. */
   termsDays: number;
+  /**
+   * Default sales tax on this channel's orders, in percent. Pennsylvania's
+   * rate is 6% (pa.gov, Sales, Use and Hotel Occupancy Tax, read 2026-09-24);
+   * Allegheny County adds 1% and Philadelphia 2% for sales delivered there
+   * (Act 21 of 2026) — the order form lets a clerk change it for those.
+   * Amazon 0: it collects and remits as the marketplace facilitator
+   * (UNVERIFIED against pa.gov — confirm before the first PA return).
+   * Wholesale 0: buyers purchase for resale on an exemption certificate.
+   */
+  defaultTaxPct: number;
 };
 
 export const CHANNELS: ChannelPolicy[] = [
-  { code: "SHOPIFY", label: "Shopify store", payment: "PREPAID", termsDays: 0 },
-  { code: "AMAZON", label: "Amazon", payment: "PREPAID", termsDays: 0 },
+  { code: "SHOPIFY", label: "Shopify store", payment: "PREPAID", termsDays: 0, defaultTaxPct: 6 },
+  { code: "AMAZON", label: "Amazon", payment: "PREPAID", termsDays: 0, defaultTaxPct: 0 },
   /// A client in the showroom: pays at the counter and leaves with the goods.
-  { code: "SHOWROOM", label: "Showroom / in store", payment: "PREPAID", termsDays: 0 },
-  { code: "WHOLESALE", label: "Wholesale (net 30)", payment: "TERMS", termsDays: 30 },
-  { code: "DIRECT", label: "Direct / phone order", payment: "TERMS", termsDays: 30 },
+  { code: "SHOWROOM", label: "Showroom / in store", payment: "PREPAID", termsDays: 0, defaultTaxPct: 6 },
+  { code: "WHOLESALE", label: "Wholesale (net 30)", payment: "TERMS", termsDays: 30, defaultTaxPct: 0 },
+  { code: "DIRECT", label: "Direct / phone order", payment: "TERMS", termsDays: 30, defaultTaxPct: 6 },
 ];
 
 export const CHANNEL_CODES = CHANNELS.map((c) => c.code) as [string, ...string[]];

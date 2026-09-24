@@ -155,7 +155,10 @@ export function PageHeader({
   return (
     <Group justify="space-between" align="flex-end" mb="md" wrap="wrap">
       <Stack gap={2}>
-        <Title order={2}>{title}</Title>
+        {/* The page's one h1, styled at the h2 size it always had. */}
+        <Title order={1} size="h2">
+          {title}
+        </Title>
         {subtitle && (
           <Text c="dimmed" size="sm">
             {subtitle}
@@ -182,10 +185,11 @@ export function Stat({
       <Text size="xs" c="dimmed" tt="uppercase" fw={600}>
         {label}
       </Text>
+      {/* A figure, not a heading: stat values were h3s and broke the outline. */}
       {typeof value === "string" || typeof value === "number" ? (
-        <Title order={3} mt={4}>
+        <Text fz="h3" fw={700} lh={1.3} mt={4}>
           {typeof value === "number" ? value.toLocaleString() : value}
-        </Title>
+        </Text>
       ) : (
         <Group mt={8}>{value}</Group>
       )}

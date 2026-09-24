@@ -1,5 +1,6 @@
 import {
   Anchor,
+  Menu,
   Autocomplete,
   Badge,
   Button,
@@ -15,9 +16,10 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import { IconChevronDown } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type SalesOrder, type ShipmentOnOrder, openPdf } from "../api";
 import { GatedButton } from "../components/GatedButton";
 import { ReturnItemsModal } from "../components/ReturnItemsModal";
@@ -85,6 +87,19 @@ function ShipmentTracking({
   const dirty =
     carrier.trim() !== (shipment.carrier ?? "") ||
     trackingNumber.trim() !== (shipment.trackingNumber ?? "");
+
+  // A showroom sale is collected over the counter: offering tracking and a
+  // "customer confirmed delivery" toggle for it asked a question with no answer.
+  if (shipment.carrier === "Collected in store") {
+    return (
+      <Card withBorder radius="md" p="md">
+        <Text fw={600}>{shipment.shipmentNumber}</Text>
+        <Text size="sm" c="dimmed">
+          Collected in store · {formatDate(shipment.shippedAt)}
+        </Text>
+      </Card>
+    );
+  }
 
   return (
     <Card withBorder radius="md" p="md">
@@ -165,9 +180,79 @@ function ShipmentTracking({
         checked={Boolean(shipment.deliveredAt)}
         onChange={(event) => save.mutate({ delivered: event.currentTarget.checked })}
         label="Customer has confirmed delivery"
-        description="Stockroom cannot see a delivery. Ticking this records that somebody told us."
+        description="ProfitIndex cannot see a delivery. Ticking this records that somebody told us."
       />
     </Card>
+  );
+}
+
+type OrderAction = {
+  key: string;
+  label: string;
+  run: () => void;
+  /** Why it cannot be used right now; unset means available. */
+  reason?: string;
+  loading?: boolean;
+  /** Undoing or destructive: never a headline button, always behind More. */
+  secondary?: boolean;
+  color?: string;
+};
+
+/**
+ * The order's actions, shown by what is possible NOW.
+ *
+ * The toolbar used to show all six actions whatever the state, so a delivered,
+ * paid order offered Pack, Invoice, Take payment, Ship and Cancel greyed or
+ * half-greyed around the one thing you could do, and wrapped to three rows on
+ * a phone. Now: what is available is a button (the first one filled); what is
+ * undoing or unavailable waits under More, with its reason written out — a
+ * hover-only tooltip never reached a tablet (critique 2026-09-24).
+ */
+function OrderActions({ actions }: { actions: OrderAction[] }) {
+  const live = actions.filter((a) => !a.reason && !a.secondary);
+  const more = actions.filter((a) => a.reason || a.secondary);
+  return (
+    <Group gap="xs" wrap="wrap">
+      {live.map((a, i) => (
+        <Button
+          key={a.key}
+          variant={i === 0 ? "filled" : "light"}
+          color={a.color}
+          loading={a.loading}
+          onClick={a.run}
+        >
+          {a.label}
+        </Button>
+      ))}
+      {more.length > 0 && (
+        <Menu position="bottom-end" withArrow shadow="md" width={280}>
+          <Menu.Target>
+            <Button variant="default" rightSection={<IconChevronDown size={14} />}>
+              More
+            </Button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            {more.map((a) => (
+              <Menu.Item
+                key={a.key}
+                disabled={Boolean(a.reason)}
+                color={!a.reason && a.color ? a.color : undefined}
+                onClick={a.reason ? undefined : a.run}
+              >
+                <Text size="sm" fw={500}>
+                  {a.label}
+                </Text>
+                {a.reason && (
+                  <Text size="xs" c="dimmed">
+                    {a.reason}
+                  </Text>
+                )}
+              </Menu.Item>
+            ))}
+          </Menu.Dropdown>
+        </Menu>
+      )}
+    </Group>
   );
 }
 
@@ -182,6 +267,10 @@ export default function SalesOrderDetail() {
     queryFn: () => api.get<SalesOrder>(`/sales-orders/${orderId}`),
     enabled: Number.isFinite(orderId),
   });
+
+  useEffect(() => {
+    if (data?.orderNumber) document.title = `${data.orderNumber} · ProfitIndex`;
+  }, [data?.orderNumber]);
 
   const action = useMutation({
     mutationFn: (verb: Verb) => api.post<unknown>(`/sales-orders/${orderId}/${verb}`),
@@ -201,122 +290,106 @@ export default function SalesOrderDetail() {
   const payment = data?.paymentStatus;
   const busy = (verb: Verb) => action.isPending && action.variables === verb;
 
+  const orderActions = (order: SalesOrder): OrderAction[] => {
+    const shipped = readiness === "SHIPPED" || readiness === "DELIVERED";
+    return [
+      {
+        key: "pack",
+        label: "Pack (reserve stock)",
+        run: () => action.mutate("pack"),
+        loading: busy("pack"),
+        reason: readiness !== "NOT_PACKED" ? `Already ${formatStatus(readiness!).toLowerCase()}` : undefined,
+      },
+      {
+        key: "pay",
+        // It RECORDS money received; nothing here charges a card.
+        label: payment === "AWAITING_PAYMENT" ? "Record checkout payment" : "Record payment",
+        run: () => action.mutate("pay"),
+        loading: busy("pay"),
+        reason:
+          readiness === "CANCELED"
+            ? "This order is canceled"
+            : payment === "PREPAID"
+              ? "Paid in full at checkout — shipping will invoice and settle it"
+              : payment === "PAID"
+                ? "This order is paid"
+                : payment === "VOIDED"
+                  ? "This order's payment was voided"
+                  : !order.customerId
+                    ? "Needs a customer from the catalog"
+                    : undefined,
+      },
+      {
+        key: "ship",
+        label: "Ship",
+        color: "teal.9",
+        run: () => action.mutate("ship"),
+        loading: busy("ship"),
+        reason: readiness !== "PACKED" ? (shipped ? "Already shipped" : "Pack it first") : undefined,
+      },
+      {
+        key: "return",
+        label: "Return items",
+        color: "orange",
+        run: () => setReturnOpen(true),
+        reason: !shipped
+          ? "Only shipped goods can be returned"
+          : !order.invoices?.some((i) => i.status === "POSTED")
+            ? "Invoice this order first — a return credits its invoice"
+            : order.lines.every((l) => (l.returnedQty ?? 0) >= l.quantity)
+              ? "Everything on this order has already been returned"
+              : undefined,
+      },
+      {
+        key: "invoice",
+        label: "Invoice before shipping",
+        secondary: true,
+        run: () => action.mutate("invoice"),
+        loading: busy("invoice"),
+        reason:
+          payment !== "AWAITING_PAYMENT" && payment !== "PREPAID"
+            ? `Already ${formatStatus(payment!).toLowerCase()}`
+            : !order.customerId
+              ? "Needs a customer from the catalog"
+              : undefined,
+      },
+      {
+        key: "void",
+        label: "Void invoice",
+        secondary: true,
+        color: "red",
+        run: () => action.mutate("void-invoice"),
+        loading: busy("void-invoice"),
+        reason: payment !== "INVOICED" ? "Only an invoiced, unpaid order's invoice can be voided" : undefined,
+      },
+      {
+        key: "cancel",
+        label: "Cancel order",
+        secondary: true,
+        color: "red",
+        run: () => action.mutate("cancel"),
+        loading: busy("cancel"),
+        reason: shipped
+          ? "A shipped order cannot be canceled — use Return items"
+          : payment === "PREPAID" || (order.deposits?.length ?? 0) > 0
+            ? "It holds a checkout payment — reverse (refund) that first"
+            : readiness === "CANCELED"
+              ? "Already canceled"
+              : payment === "PAID"
+                ? "It is paid — reverse the payment first"
+                : payment === "INVOICED"
+                  ? "It is invoiced — void the invoice first"
+                  : undefined,
+      },
+    ];
+  };
+
   return (
     <>
       <PageHeader
         title={data ? data.orderNumber : "Sales order"}
         subtitle={data ? `${data.customerName} · ${data.channel}` : undefined}
-        action={
-          data && (
-            <Group gap="xs">
-              <GatedButton
-                onClick={() => action.mutate("pack")}
-                loading={busy("pack")}
-                reason={
-                  readiness !== "NOT_PACKED"
-                    ? `Only an unpacked order can be packed — this one is ${formatStatus(readiness!).toLowerCase()}`
-                    : undefined
-                }
-              >
-                Pack (reserve)
-              </GatedButton>
-              <GatedButton
-                variant="light"
-                onClick={() => action.mutate("invoice")}
-                loading={busy("invoice")}
-                reason={
-                  payment !== "AWAITING_PAYMENT" && payment !== "PREPAID"
-                    ? `This order is already ${formatStatus(payment!).toLowerCase()}`
-                    : !data.customerId
-                      ? "An invoice needs a customer from the catalog"
-                      : undefined
-                }
-              >
-                {/* Shipping invoices the order by itself; this is billing ahead of it. */}
-                Invoice before shipping
-              </GatedButton>
-              <GatedButton
-                variant="light"
-                onClick={() => action.mutate("pay")}
-                loading={busy("pay")}
-                reason={
-                  readiness === "CANCELED"
-                    ? "This order is canceled"
-                    : payment === "PREPAID"
-                      ? "Paid in full at checkout — shipping will invoice and settle it"
-                      : payment === "PAID"
-                        ? "This order is paid"
-                        : payment === "VOIDED"
-                          ? "This order's payment was voided"
-                          : !data.customerId
-                            ? "Taking payment needs a customer from the catalog"
-                            : undefined
-                }
-              >
-                {/* Before shipment the money is held as a customer deposit. */}
-                {payment === "AWAITING_PAYMENT" ? "Take payment" : "Record payment"}
-              </GatedButton>
-              <GatedButton
-                color="teal.9"
-                onClick={() => action.mutate("ship")}
-                loading={busy("ship")}
-                reason={
-                  readiness !== "PACKED"
-                    ? `Only a packed order can ship — this one is ${formatStatus(readiness!).toLowerCase()}`
-                    : undefined
-                }
-              >
-                Ship
-              </GatedButton>
-              {(readiness === "SHIPPED" || readiness === "DELIVERED") && (
-                <GatedButton
-                  variant="light"
-                  color="orange"
-                  onClick={() => setReturnOpen(true)}
-                  reason={
-                    !data.invoices?.some((i) => i.status === "POSTED")
-                      ? "Invoice this order first — a return credits its invoice"
-                      : data.lines.every((l) => (l.returnedQty ?? 0) >= l.quantity)
-                        ? "Everything on this order has already been returned"
-                        : undefined
-                  }
-                >
-                  Return items
-                </GatedButton>
-              )}
-              {payment === "INVOICED" && (
-                <GatedButton
-                  variant="light"
-                  color="orange"
-                  onClick={() => action.mutate("void-invoice")}
-                  loading={busy("void-invoice")}
-                >
-                  Void invoice
-                </GatedButton>
-              )}
-              <GatedButton
-                variant="default"
-                onClick={() => action.mutate("cancel")}
-                loading={busy("cancel")}
-                reason={
-                  readiness === "SHIPPED" || readiness === "DELIVERED"
-                    ? "A shipped order cannot be canceled"
-                    : payment === "PREPAID" || (data.deposits?.length ?? 0) > 0
-                      ? "This order holds a checkout payment — reverse it (refund) first"
-                    : readiness === "CANCELED"
-                      ? "This order is already canceled"
-                      : payment === "PAID"
-                        ? "This order is paid — refund and void the payment first"
-                        : payment === "INVOICED"
-                          ? "This order is invoiced — void the invoice first so its revenue is reversed"
-                          : undefined
-                }
-              >
-                Cancel
-              </GatedButton>
-            </Group>
-          )
-        }
+        action={data && <OrderActions actions={orderActions(data)} />}
       />
 
       <QueryState isLoading={isLoading} error={error} onRetry={refetch}>
@@ -346,6 +419,9 @@ export default function SalesOrderDetail() {
                   <Title order={5} mb="sm">
                     Line items
                   </Title>
+                  {/* Scrolls sideways on a phone instead of clipping: the card was
+                      overflow-hidden at 340px and hid Line total and Status. */}
+                  <Table.ScrollContainer minWidth={560}>
                   <Table className="data-grid" verticalSpacing={6}>
                     <Table.Thead>
                       <Table.Tr>
@@ -380,6 +456,7 @@ export default function SalesOrderDetail() {
                       ))}
                     </Table.Tbody>
                   </Table>
+                  </Table.ScrollContainer>
 
                   <Divider my="sm" />
                   <Group justify="flex-end" gap="xl">

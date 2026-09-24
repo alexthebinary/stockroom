@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Badge, Box, Button, Card, Group, Loader, Progress, Select, Stack, Text, Title,
+  Badge, Box, Button, Card, Group, Loader, Progress, Select, Stack, Text, TextInput, Title, UnstyledButton,
 } from "@mantine/core";
 import { IconCamera, IconCheck, IconAlertTriangle, IconRefresh } from "@tabler/icons-react";
 import { api } from "../api";
@@ -39,7 +39,23 @@ type ScanResult = {
 
 export default function Receive() {
   const qc = useQueryClient();
-  const [warehouseId, setWarehouseId] = useState<string | null>(null);
+  // Remembered per device: a clerk's phone lives at one dock.
+  const [warehouseId, setWarehouseIdState] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem("receive-warehouse");
+    } catch {
+      return null;
+    }
+  });
+  const setWarehouseId = (v: string | null) => {
+    setWarehouseIdState(v);
+    try {
+      if (v) localStorage.setItem("receive-warehouse", v);
+      else localStorage.removeItem("receive-warehouse");
+    } catch {
+      /* storage blocked */
+    }
+  };
   const [activeLine, setActiveLine] = useState<number | null>(null);
   const [log, setLog] = useState<ScanResult[]>([]);
   const [attempt, setAttempt] = useState(1);
@@ -68,13 +84,25 @@ export default function Receive() {
     refetchInterval: 30_000,
   });
 
+  // One line still to come is the common case at a small dock: select it
+  // instead of asking the clerk to find and tap the only possible answer.
+  useEffect(() => {
+    const open = rows(expected.data).flatMap((po: any) => po.lines ?? []).filter((l: any) => l.outstanding > 0);
+    if (!activeLine && open.length === 1) setActiveLine(open[0].id);
+  }, [expected.data, activeLine]);
+
+  const [typed, setTyped] = useState("");
+
   const scan = useMutation({
-    mutationFn: (payload: { image: string; barcode?: string }) =>
+    mutationFn: (payload: { image?: string; barcode?: string; typed?: string }) =>
       api.post<ScanResult>("/receiving/scan", {
         purchaseOrderLineId: activeLine,
         image: payload.image,
         barcode: payload.barcode,
-        readers: [],
+        // A serial typed by hand (torn label, gloves) is one reading from one
+        // source: the server books it and flags it for a second look, exactly
+        // as it treats a single unconfirmed camera read.
+        readers: payload.typed ? [{ family: "typed", text: payload.typed, confidence: null }] : [],
         attempt,
       }),
     onSuccess: (result) => {
@@ -137,29 +165,41 @@ export default function Receive() {
                   {po.received} of {po.ordered} received · {po.outstanding} still to come
                 </Text>
 
-                <Stack gap={6}>
-                  {po.lines.map((l: any) => (
-                    <Group
-                      key={l.id}
-                      justify="space-between"
-                      onClick={() => setActiveLine(l.id)}
-                      style={{
-                        cursor: "pointer", padding: "10px 12px", borderRadius: 8,
-                        background: activeLine === l.id ? "rgba(0,128,128,0.10)" : undefined,
-                        minHeight: 56,
-                      }}
-                    >
-                      <Box>
-                        <Text fw={500}>{l.name}</Text>
-                        <Text size="xs" c="dimmed">
-                          {l.sku}{l.serialized ? " · serial-tracked" : ""}
-                        </Text>
-                      </Box>
-                      <Badge color={l.outstanding === 0 ? "teal" : "gray"} variant="light">
-                        {l.receivedQty}/{l.quantity}
-                      </Badge>
-                    </Group>
-                  ))}
+                {/* Each line is a radio: it must look pickable, be reachable by
+                    keyboard and say it is picked — "Pick a line first" pointed
+                    at rows that looked like plain text (critique 2026-09-24). */}
+                <Stack gap={6} role="radiogroup" aria-label={`Lines on ${po.poNumber ?? "this order"}`}>
+                  {po.lines.map((l: any) => {
+                    const picked = activeLine === l.id;
+                    return (
+                      <UnstyledButton
+                        key={l.id}
+                        role="radio"
+                        aria-checked={picked}
+                        disabled={l.outstanding === 0}
+                        onClick={() => setActiveLine(l.id)}
+                        className="receive-line"
+                        data-picked={picked || undefined}
+                      >
+                        <Group justify="space-between" wrap="nowrap" gap="sm">
+                          <Group gap="sm" wrap="nowrap">
+                            <span className="receive-line-dot" aria-hidden>
+                              {picked && <IconCheck size={14} stroke={3} />}
+                            </span>
+                            <Box>
+                              <Text fw={500}>{l.name}</Text>
+                              <Text size="xs" c="dimmed">
+                                {l.sku}{l.serialized ? " · serial-tracked" : ""}
+                              </Text>
+                            </Box>
+                          </Group>
+                          <Badge color={l.outstanding === 0 ? "teal" : "gray"} variant="light" style={{ flex: "none" }}>
+                            {l.receivedQty}/{l.quantity}
+                          </Badge>
+                        </Group>
+                      </UnstyledButton>
+                    );
+                  })}
                 </Stack>
               </Card>
             ))}
@@ -200,9 +240,33 @@ export default function Receive() {
           disabled={!activeLine || scan.isPending}
           onClick={() => { setStatus(null); setCameraOpen(true); }}
         >
-          {activeLine ? "Open scanner" : "Pick a line first"}
+          {activeLine ? "Open scanner" : "Tap a line above to start"}
         </Button>
       </Box>
+
+      {activeLine && (
+        <Group gap="xs" align="flex-end" wrap="nowrap">
+          <TextInput
+            label="Label torn or unreadable? Type the serial"
+            placeholder="e.g. UT1234567"
+            value={typed}
+            onChange={(e) => setTyped(e.currentTarget.value.toUpperCase())}
+            style={{ flex: 1 }}
+            size="md"
+          />
+          <Button
+            size="md"
+            variant="light"
+            disabled={!typed.trim() || scan.isPending}
+            onClick={() => {
+              scan.mutate({ typed: typed.trim() });
+              setTyped("");
+            }}
+          >
+            Book it
+          </Button>
+        </Group>
+      )}
 
       <LabelScanner
         open={cameraOpen}

@@ -144,14 +144,14 @@ export function MenuBar({
             onMouseEnter={followPointer("__app")}
             aria-haspopup="menu"
           >
-            Stockroom
+            ProfitIndex
           </UnstyledButton>
         </Menu.Target>
         <Menu.Dropdown>
           <Menu.Label>
             {user.name} · {String(user.actualRole ?? user.role).toLowerCase()}
           </Menu.Label>
-          <Menu.Item onClick={() => navigate("/about")}>About Stockroom</Menu.Item>
+          <Menu.Item onClick={() => navigate("/about")}>About ProfitIndex</Menu.Item>
           <Menu.Item onClick={() => navigate("/catalogs/posting")}>Posting rules</Menu.Item>
           {user.actualCan?.users && (
             <>

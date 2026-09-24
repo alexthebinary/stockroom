@@ -1,4 +1,4 @@
-# Stockroom wiki — index
+# ProfitIndex wiki — index
 
 The assistant reads these pages to guide people. One page per area of the app. Keep each page short and true to the screens; the lint test fails if a menu destination has no page.
 

@@ -65,76 +65,21 @@ type Section = {
   items?: { to: string; label: string }[];
 };
 
-const SECTIONS: Section[] = [
-  { label: "Home", icon: IconLayoutDashboard, to: "/" },
-  {
-    // Invoices and Deliveries are cross-order views of documents that already
-    // existed only INSIDE an order. "Which invoices are unpaid" and "what is in
-    // transit" were answerable one order at a time and are now answerable.
-    label: "Sales",
-    icon: IconReceipt,
-    to: "/sales-orders",
-    items: [
-      { to: "/sales-orders", label: "Orders" },
-      { to: "/invoices", label: "Invoices" },
-      { to: "/deliveries", label: "Deliveries" },
-      { to: "/catalogs/customers", label: "Customers" },
-    ],
-  },
-  {
-    // Mirrors Sales: the documents an order produces are reachable across all
-    // orders, not only from inside the one that made them.
-    label: "Purchases",
-    icon: IconTruckDelivery,
-    to: "/purchase-orders",
-    items: [
-      { to: "/purchase-orders", label: "Orders" },
-      { to: "/bills", label: "Bills" },
-      { to: "/receipts", label: "Receipts" },
-      { to: "/catalogs/vendors", label: "Vendors" },
-    ],
-  },
-  {
-    label: "Inventory",
-    icon: IconStack2,
-    to: "/inventory",
-    items: [
-      { to: "/receive", label: "Receive" },
-      { to: "/inventory", label: "Stock on hand" },
-      { to: "/products", label: "Products" },
-      { to: "/warehouses", label: "Warehouses" },
-      { to: "/transfers", label: "Transfers" },
-      { to: "/adjustments", label: "Adjustments" },
-    ],
-  },
-  { label: "Accounting", icon: IconBook2, to: "/ledger" },
-  {
-    label: "Reports",
-    icon: IconChartBar,
-    to: "/reports",
-    items: [
-      { to: "/reports/sales", label: "Sales" },
-      { to: "/reports/purchases", label: "Purchases" },
-      { to: "/reports/stock", label: "Stock on hand" },
-      { to: "/reports/valuation", label: "Valuation" },
-    ],
-  },
-  {
-    // Customers and Vendors deliberately live under Sales and Purchases rather
-    // than here: maintaining master data is rare, looking it up mid-task is
-    // constant, and the frequent path is the one to optimise for. What is left
-    // is genuinely configuration.
-    label: "Settings",
-    icon: IconSettings,
-    to: "/catalogs/categories",
-    items: [
-      { to: "/catalogs/categories", label: "Categories" },
-      { to: "/catalogs/employees", label: "Managers" },
-      { to: "/catalogs/posting", label: "Posting rules" },
-      { to: "/about", label: "About" },
-    ],
-  },
-];
+/**
+ * The phone drawer, the bottom bar and the page title all read the SAME map
+ * the desktop sidebar renders (nav.tsx). This used to be a second, older list
+ * that had no Showroom sale or Month-end close and ignored who could use what
+ * (critique 2026-09-24: two menus is how a destination goes missing on one).
+ */
+const SECTIONS: (Section & { needs?: "stock" | "money" | "users" })[] = NAV.flatMap((g) =>
+  g.sections.map((sec) => ({
+    label: sec.label,
+    icon: sec.icon as Section["icon"],
+    to: sec.to,
+    items: sec.items?.map((i) => ({ to: i.to, label: i.label })),
+    needs: sec.needs,
+  }))
+);
 
 /**
  * Inventory's pages live at unrelated top-level paths (/products, /transfers),
@@ -220,7 +165,7 @@ const PHONE_EXTRA: Section[] = [{ label: "Receive", icon: IconTruckLoading, to: 
 
 function BottomBar({ current, pathname, hidden }: { current?: Section; pathname: string; hidden: boolean }) {
   const onReceive = pathname === "/receive" || pathname.startsWith("/receive/");
-  const items = [...SECTIONS, ...PHONE_EXTRA]
+  const items = [...SECTIONS, ...PHONE_EXTRA.filter((x) => !SECTIONS.some((s) => s.to === x.to))]
     .filter((s) => PHONE_SECTIONS.includes(s.label))
     .sort((a, b) => PHONE_SECTIONS.indexOf(a.label) - PHONE_SECTIONS.indexOf(b.label));
 
@@ -316,6 +261,12 @@ export default function App() {
       (i) => location.pathname === i.to || location.pathname.startsWith(`${i.to}/`)
     )?.label ?? section?.label;
 
+  // Every tab was titled the same, so a dozen open orders could not be told
+  // apart. Section pages name themselves here; record pages refine it.
+  useEffect(() => {
+    document.title = activePage ? `${activePage} · ProfitIndex` : "ProfitIndex";
+  }, [activePage]);
+
   // A route change from inside the drawer must close it, or the next page
   // renders underneath an open overlay.
   useEffect(close, [location.pathname, close]);
@@ -360,7 +311,7 @@ export default function App() {
                 aria-label="Navigation"
               />
               <Text fw={680} size="sm" className="wordmark">
-                {activePage ?? "Stockroom"}
+                {activePage ?? "ProfitIndex"}
               </Text>
             </Group>
 
@@ -417,11 +368,11 @@ export default function App() {
           />
         </Box>
 
-        {/* Phone: the drawer keeps its own simpler list. */}
+        {/* Phone: the same map as the desktop sidebar, filtered by role. */}
         <Box hiddenFrom="sm" p="sm">
         <ScrollArea>
           <Stack gap={2}>
-            {SECTIONS.map((s) => (
+            {SECTIONS.filter((s) => !s.needs || user.can[s.needs]).map((s) => (
               <Box key={s.label}>
                 <UnstyledButton
                   component={NavLink}

@@ -39,7 +39,7 @@ export default function SalesOrders() {
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [channel, setChannel] = useState<string | null>("DIRECT");
-  const [taxPercent, setTaxPercent] = useState<number | "">(8);
+  const [taxPercent, setTaxPercent] = useState<number | "">(6);
   const [lines, setLines] = useState<DraftLine[]>([emptyLine]);
   const [debouncedSearch] = useDebouncedValue(search, 250);
 
@@ -56,7 +56,7 @@ export default function SalesOrders() {
   const channels = useQuery({
     queryKey: ["sales-channels"],
     queryFn: () =>
-      api.get<{ channels: { code: string; label: string; payment: "PREPAID" | "TERMS"; termsDays: number }[] }>(
+      api.get<{ channels: { code: string; label: string; payment: "PREPAID" | "TERMS"; termsDays: number; defaultTaxPct: number }[] }>(
         "/sales-orders/channels"
       ),
     staleTime: Infinity,
@@ -263,7 +263,12 @@ export default function SalesOrders() {
               label="Channel"
               data={(channels.data?.channels ?? []).map((c) => ({ value: c.code, label: c.label }))}
               value={channel}
-              onChange={setChannel}
+              onChange={(code) => {
+                setChannel(code);
+                // Tax follows the channel (PA 6%; Amazon collects its own; wholesale is resale).
+                const c = channels.data?.channels.find((x) => x.code === code);
+                if (c) setTaxPercent(c.defaultTaxPct);
+              }}
               allowDeselect={false}
               description={(() => {
                 const c = channels.data?.channels.find((x) => x.code === channel);

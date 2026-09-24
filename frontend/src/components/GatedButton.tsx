@@ -26,9 +26,19 @@ export function GatedButton({
     );
   }
 
+  // Unavailable must LOOK unavailable: a `light` button kept its coloured text
+  // under data-disabled and read as live (critique 2026-09-24). And the reason
+  // must reach touch screens, where there is no hover — a tap shows it.
   return (
-    <Tooltip label={reason} events={{ hover: true, focus: true, touch: false }} withArrow>
-      <Button {...props} data-disabled onClick={(event) => event.preventDefault()}>
+    <Tooltip label={reason} events={{ hover: true, focus: true, touch: true }} withArrow multiline maw={260}>
+      <Button
+        {...props}
+        variant="default"
+        color="gray"
+        c="dimmed"
+        data-disabled
+        onClick={(event) => event.preventDefault()}
+      >
         {children}
       </Button>
     </Tooltip>

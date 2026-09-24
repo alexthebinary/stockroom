@@ -14,7 +14,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api, type PurchaseOrder } from "../api";
@@ -43,6 +43,10 @@ export default function PurchaseOrderDetail() {
     queryFn: () => api.get<PurchaseOrder>(`/purchase-orders/${orderId}`),
     enabled: Number.isFinite(orderId),
   });
+
+  useEffect(() => {
+    if (data?.poNumber) document.title = `${data.poNumber} · ProfitIndex`;
+  }, [data?.poNumber]);
 
   const action = useMutation({
     mutationFn: (verb: Verb) => api.post<unknown>(`/purchase-orders/${orderId}/${verb}`),

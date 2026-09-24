@@ -19,9 +19,12 @@ type Row = {
 };
 
 /** Things you can start from anywhere, not places you can go. */
-const ACTIONS: { label: string; detail: string; to: string; needs?: "stock" | "money" }[] = [
-  { label: "Receive a delivery", detail: "Check a pallet in against a purchase order", to: "/purchase-orders", needs: "stock" },
-  { label: "New sales order", detail: "Sell to a customer", to: "/sales-orders" },
+/** `also` holds the other words people type for the same job ("new sale" finds the counter). */
+const ACTIONS: { label: string; detail: string; to: string; needs?: "stock" | "money"; also?: string[] }[] = [
+  { label: "Receive a delivery", detail: "Scan boxes in against a purchase order", to: "/receive", needs: "stock", also: ["delivery", "arrived", "scan"] },
+  { label: "Showroom sale", detail: "A walk-in client pays and takes the goods", to: "/showroom", needs: "money", also: ["new sale", "counter", "walk-in", "checkout", "pos"] },
+  { label: "New sales order", detail: "Sell to a customer", to: "/sales-orders", also: ["order", "wholesale"] },
+  { label: "Record a return", detail: "Open the shipped order and press Return items", to: "/sales-orders", also: ["return", "refund", "rma"] },
   { label: "New purchase order", detail: "Buy from a vendor", to: "/purchase-orders" },
   { label: "Move stock between warehouses", detail: "Start a transfer", to: "/transfers", needs: "stock" },
   { label: "Correct a count", detail: "Record a stock adjustment", to: "/adjustments", needs: "stock" },
@@ -115,7 +118,9 @@ export function CommandPalette({
     ).map((d) => ({ key: `go-${d.to}-${d.label}`, group: "Go to", label: d.label, detail: d.group, to: d.to }));
 
     const actions = ACTIONS.filter(
-      (a) => (!a.needs || can[a.needs]) && a.label.toLowerCase().includes(q)
+      (a) =>
+        (!a.needs || can[a.needs]) &&
+        (a.label.toLowerCase().includes(q) || (a.also ?? []).some((w) => w.includes(q) || q.includes(w)))
     ).map((a) => ({ key: `act-${a.label}`, group: "Start", label: a.label, detail: a.detail, to: a.to }));
 
     const records = (search.data?.results ?? []).map((r, i) => ({

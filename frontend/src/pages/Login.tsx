@@ -62,7 +62,7 @@ export default function Login() {
         <form onSubmit={submit}>
           <Stack>
             <Stack gap={2}>
-              <Title order={3}>Stockroom</Title>
+              <Title order={3}>ProfitIndex</Title>
               <Text size="sm" c="dimmed">
                 Sign in to continue.
               </Text>

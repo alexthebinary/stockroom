@@ -55,7 +55,7 @@ export function NeedsAttention({ jobs }: { jobs: AttentionJob[] }) {
                 {job.title}
               </Text>
               {job.severity === "urgent" && (
-                <Badge size="xs" variant="light" color="orange" className="attention-now">
+                <Badge size="md" variant="light" color="orange" className="attention-now">
                   now
                 </Badge>
               )}

@@ -53,7 +53,7 @@ export default function Deliveries() {
     <>
       <PageHeader
         title="Deliveries"
-        subtitle="Every shipment that has left a warehouse. Delivery is asserted by a person — Stockroom records carriers and numbers, it does not call them."
+        subtitle="Every shipment that has left a warehouse. Delivery is asserted by a person — ProfitIndex records carriers and numbers, it does not call them."
       />
 
       <Group grow mb="lg" align="stretch">
