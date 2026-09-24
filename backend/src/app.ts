@@ -18,6 +18,7 @@ import { stockTransfersRouter } from "./routes/stockTransfers";
 import { warehousesRouter } from "./routes/warehouses";
 import { receivingRouter } from "./routes/receiving";
 import { closeRouter } from "./routes/close";
+import { assistantRouter } from "./routes/assistant";
 import { errorMiddleware } from "./http";
 import { basicAuthGate } from "./auth-gate";
 import { attachUser, ensureBootstrapAdmin, requireSession } from "./auth";
@@ -46,7 +47,11 @@ export function createApp() {
   app.set("trust proxy", true);
 
   app.use(cors());
-  app.use(express.json());
+  // Photos travel as base64 JSON: a camera receiving scan is a full video frame
+  // (1280x720 and up, 150-600 KB encoded) and the assistant takes delivery
+  // photos. Express's default 100 KB limit rejected every real scan with 413
+  // before it reached the route — found 2026-09-24 while adding the assistant.
+  app.use(express.json({ limit: "8mb" }));
 
   // Everything below this line is gated when BASIC_AUTH_* are set.
   app.use(basicAuthGate());
@@ -78,6 +83,7 @@ export function createApp() {
   app.use("/api", inventoryRouter);
   app.use("/api", receivingRouter);
   app.use("/api", closeRouter);
+  app.use("/api", assistantRouter);
 
   /**
    * Single-process mode.

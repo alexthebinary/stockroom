@@ -78,6 +78,14 @@ export function errorMiddleware(
     res.status(err.status).json({ error: err.message, details: err.details ?? null });
     return;
   }
+  // body-parser's own errors (a body over the size limit, malformed JSON) carry
+  // their HTTP status and are safe to show. Without this they fell through to a
+  // 500, so an oversized photo read as "the server crashed".
+  const httpish = err as { status?: number; expose?: boolean; message?: string };
+  if (httpish && httpish.expose && typeof httpish.status === "number" && httpish.status < 500) {
+    res.status(httpish.status).json({ error: httpish.message ?? "Bad request", details: null });
+    return;
+  }
   // Map Prisma's known error codes explicitly. Matching on the message text
   // is fragile and lets everything else surface as a raw 500.
   if (err instanceof Prisma.PrismaClientKnownRequestError) {

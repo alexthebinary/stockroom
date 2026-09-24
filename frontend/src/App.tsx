@@ -26,6 +26,7 @@ import Adjustments from "./pages/Adjustments";
 import Bills from "./pages/Bills";
 import Catalogs from "./pages/Catalogs";
 import Close from "./pages/Close";
+import { AssistantPanel } from "./components/AssistantPanel";
 import Showroom from "./pages/Showroom";
 import Dashboard from "./pages/Dashboard";
 import Deliveries from "./pages/Deliveries";
@@ -497,6 +498,7 @@ export default function App() {
 
       <BottomBar current={section} pathname={location.pathname} hidden={opened} />
 
+      <AssistantPanel />
       <CommandPalette
         opened={searchOpen}
         onClose={() => setSearchOpen(false)}

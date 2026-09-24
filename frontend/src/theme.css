@@ -494,6 +494,11 @@ h3,
   .has-bottom-bar {
     padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px)) !important;
   }
+  /* Read by anything else that floats at the bottom (the assistant button), so
+     it clears the bar instead of sitting under it. */
+  :root {
+    --bottom-bar-h: calc(62px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* ---- Mobile drawer ----------------------------------------------------- */
