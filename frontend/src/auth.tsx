@@ -33,6 +33,7 @@ export type DemoUser = {
 type AuthValue = {
   user: DemoUser | null;
   login: (email: string, password: string) => Promise<void>;
+  autoLogin: () => Promise<boolean>;
   logout: () => void;
   /** Administrators only: work as a lesser role, or null to stop. */
   actAs: (role: string | null) => Promise<void>;
@@ -75,6 +76,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear();
   }, [queryClient]);
 
+  /** Beta: ask the server for an admin session. False when AUTO_LOGIN is off. */
+  const autoLogin = useCallback(async () => {
+    try {
+      const res = await api.post<{ token: string; user: DemoUser }>("/auth/auto");
+      localStorage.setItem(AUTH_TOKEN_KEY, res.token);
+      localStorage.setItem(DEMO_USER_KEY, JSON.stringify(res.user));
+      setUser(res.user);
+      queryClient.clear();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [queryClient]);
+
   // The API layer clears storage the moment a token is rejected; this is what
   // turns that into a render, so the sign-in form actually appears instead of
   // a shell full of failed panels.
@@ -111,7 +126,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user);
   }, []);
 
-  const value = useMemo(() => ({ user, login, logout, actAs }), [user, login, logout, actAs]);
+  const value = useMemo(
+    () => ({ user, login, autoLogin, logout, actAs }),
+    [user, login, autoLogin, logout, actAs]
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

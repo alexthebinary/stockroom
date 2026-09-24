@@ -9,6 +9,8 @@ export const MOVEMENT_TYPES = [
   /// it posts to Repair Parts Expense rather than COGS — no revenue is matched
   /// against it, so folding it into COGS would understate gross margin.
   "REPAIR_CONSUMPTION",
+  /// A customer sent goods back and they were restocked.
+  "RETURN_IN",
 ] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 

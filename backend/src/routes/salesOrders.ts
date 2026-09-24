@@ -17,6 +17,7 @@ import { assertReferencesUsable } from "../refs";
 import { lockDocumentForPayment, paidAgainst } from "../payments";
 import { CHANNELS, CHANNEL_CODES } from "../channels";
 import { raiseInvoice, syncDelivered, takeDeposit, unappliedDeposits } from "../order_to_cash";
+import { CREDIT_NOTE, postReturn } from "../returns";
 import {
   nextInvoiceNumber,
   nextPaymentNumber,
@@ -68,6 +69,7 @@ const include = {
   invoices: true,
   shipments: true,
   deposits: { where: { status: { not: "VOID" } } },
+  returns: { include: { lines: true }, orderBy: { id: "asc" as const } },
 };
 
 type LoadedOrder = Prisma.SalesOrderGetPayload<{ include: typeof include }>;
@@ -726,7 +728,13 @@ salesOrdersRouter.post(
       const invoiceIds = current.invoices.map((i) => i.id);
       // A payment belongs to the order either through its invoice or, when it
       // was taken at checkout, directly as a deposit.
-      const belongs = { OR: [{ invoiceId: { in: invoiceIds } }, { salesOrderId: id }] };
+      // Credit notes and refunds are part of a RETURN, not payments to undo
+      // one at a time; reversing one alone would unbalance the return.
+      const belongs = {
+        OR: [{ invoiceId: { in: invoiceIds } }, { salesOrderId: id }],
+        method: { not: CREDIT_NOTE },
+        amountCents: { gt: 0 },
+      };
       const payment = body.paymentId
         ? await tx.payment.findFirst({
             where: { id: body.paymentId, ...belongs, status: { not: "VOID" } },
@@ -1039,6 +1047,41 @@ salesOrdersRouter.post(
       return { order, invoice, shipment, payment };
     });
 
+    res.status(201).json(result);
+  })
+);
+
+const returnSchema = z.object({
+  reason: z.string().trim().min(1, "Say why it came back — it is the first question anyone asks later"),
+  refundMethod: z.enum(["CARD", "CASH", "BANK"]).optional(),
+  lines: z
+    .array(
+      z.object({
+        lineId: z.number().int().positive(),
+        quantity: z.number().int().positive(),
+        disposition: z.enum(["RESTOCK", "WRITE_OFF"]),
+        warehouseId: z.number().int().positive().optional(),
+      })
+    )
+    .min(1, "Return at least one line"),
+});
+
+/**
+ * POST /api/sales-orders/:id/returns — goods back, credit note, refund. See
+ * returns.ts. Needs both capabilities: it moves stock and it moves money.
+ */
+salesOrdersRouter.post(
+  "/:id/returns",
+  requireStock,
+  requireMoney,
+  asyncHandler(async (req, res) => {
+    const id = intParam(req.params.id, "id");
+    const body = parseBody(returnSchema, req.body);
+    const actor = actorOf(req);
+    const result = await prisma.$transaction(async (tx) => {
+      const posted = await postReturn(tx, id, body, actor);
+      return { ...posted, order: await tx.salesOrder.findUniqueOrThrow({ where: { id }, include }) };
+    });
     res.status(201).json(result);
   })
 );

@@ -12,6 +12,47 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+function sessionFor(user: { id: number; email: string; name: string; role: string }) {
+  return {
+    token: issueToken(user),
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      actualRole: user.role,
+      can: CAN[user.role as keyof typeof CAN] ?? CAN.VIEWER,
+      actualCan: CAN[user.role as keyof typeof CAN] ?? CAN.VIEWER,
+    },
+  };
+}
+
+/**
+ * Beta convenience: sign in as the administrator without a second password.
+ *
+ * Operator, 2026-09-24: during the beta the site password (HTTP Basic, in front
+ * of everything) is the only credential anyone should have to type. So when
+ * AUTO_LOGIN=1 this issues an admin session to whoever got past that gate.
+ * Anyone holding the site password is therefore an administrator — acceptable
+ * for a two-or-three-person beta, and exactly what this switch is for. Unset
+ * the variable and the route answers 404 and the sign-in form comes back.
+ * Every action is still attributed to the admin account in the audit trail.
+ */
+authRouter.post(
+  "/auto",
+  asyncHandler(async (_req, res) => {
+    if (process.env.AUTO_LOGIN !== "1") throw notFound("Automatic sign-in is off");
+    const preferred = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+    const user =
+      (preferred &&
+        (await prisma.user.findFirst({ where: { email: preferred, isActive: true, role: "ADMIN" } }))) ||
+      (await prisma.user.findFirst({ where: { isActive: true, role: "ADMIN" }, orderBy: { id: "asc" } }));
+    if (!user) throw notFound("No active administrator to sign in as");
+    await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+    res.json(sessionFor(user));
+  })
+);
+
 authRouter.post(
   "/login",
   asyncHandler(async (req, res) => {
@@ -25,18 +66,7 @@ authRouter.post(
     if (!ok) throw new ApiError(401, "That email and password do not match an active account");
 
     await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
-    res.json({
-      token: issueToken(user),
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        actualRole: user.role,
-        can: CAN[user.role as keyof typeof CAN] ?? CAN.VIEWER,
-        actualCan: CAN[user.role as keyof typeof CAN] ?? CAN.VIEWER,
-      },
-    });
+    res.json(sessionFor(user));
   })
 );
 

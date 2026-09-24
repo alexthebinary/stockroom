@@ -1,5 +1,5 @@
-import { Alert, Button, Card, Center, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
-import { useState } from "react";
+import { Alert, Button, Card, Center, Loader, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
+import { useEffect, useState } from "react";
 import { useAuth } from "../auth";
 import { errorMessage } from "../components/ui";
 
@@ -14,7 +14,19 @@ import { errorMessage } from "../components/ui";
  * reviewers in one session. A hint that is wrong is worse than no hint.
  */
 export default function Login() {
-  const { login } = useAuth();
+  const { login, autoLogin } = useAuth();
+  // Beta: try the server's automatic admin sign-in first. The form only
+  // appears if that is switched off (AUTO_LOGIN unset) or fails.
+  const [trying, setTrying] = useState(true);
+  useEffect(() => {
+    let live = true;
+    autoLogin().then((ok) => {
+      if (live && !ok) setTrying(false);
+    });
+    return () => {
+      live = false;
+    };
+  }, [autoLogin]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +48,14 @@ export default function Login() {
   // `w={380}` was a fixed width, so at 390px the card sat 5px from each edge
   // with no gutter. A max-width plus page padding keeps the card its intended
   // size on a desktop and lets it shrink on a phone.
+  if (trying) {
+    return (
+      <Center mih="100vh" bg="var(--surface-sunken)">
+        <Loader aria-label="Signing in" />
+      </Center>
+    );
+  }
+
   return (
     <Center mih="100vh" p="md" bg="var(--surface-sunken)">
       <Card withBorder shadow="sm" radius="md" p="xl" w="100%" maw={380}>

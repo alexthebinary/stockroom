@@ -38,6 +38,7 @@ const COUNTERS = {
   GOODS_RECEIPT: ["GRN", 1, 6],
   JOURNAL_ENTRY: ["JE", 1, 6],
   STOCK_COUNT: ["CNT", 1, 6],
+  SALES_RETURN: ["RET", 1, 6],
 } as const;
 
 async function nextNumber(tx: Tx, kind: CounterKind) {
@@ -83,6 +84,7 @@ export async function ensureDocumentCounters() {
     GOODS_RECEIPT: top((await prisma.goodsReceipt.findMany({ select: { grnNumber: true } })).map((r) => r.grnNumber), 1),
     JOURNAL_ENTRY: top((await prisma.journalEntry.findMany({ select: { entryNumber: true } })).map((r) => r.entryNumber), 1),
     STOCK_COUNT: top((await prisma.stockCount.findMany({ select: { countNumber: true } })).map((r) => r.countNumber), 1),
+    SALES_RETURN: top((await prisma.salesReturn.findMany({ select: { returnNumber: true } })).map((r) => r.returnNumber), 1),
   };
 
   const existing = new Set(
@@ -107,3 +109,4 @@ export const nextGrnNumber = (tx: Tx) => nextNumber(tx, "GOODS_RECEIPT");
 export const nextJournalEntryNumber = (tx: Tx) => nextNumber(tx, "JOURNAL_ENTRY");
 
 export const nextStockCountNumber = (tx: Tx) => nextNumber(tx, "STOCK_COUNT");
+export const nextReturnNumber = (tx: Tx) => nextNumber(tx, "SALES_RETURN");

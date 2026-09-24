@@ -282,6 +282,8 @@ export type OrderLine = {
   receivedQty?: number;
   /** Sales lines only: how much has actually left. */
   shippedQty?: number;
+  /** Sales lines only: units the customer has sent back on posted returns. */
+  returnedQty?: number;
   unitPriceCents?: number;
   unitCostCents?: number;
   lineTotalCents?: number;
@@ -314,7 +316,18 @@ export type SalesOrder = {
   totalQuantity?: number;
   lineCount?: number;
   /** Checkout payments taken before shipment (live ones only). */
-  deposits?: { id: number; paymentNumber: string; amountCents: number; invoiceId: number | null }[];
+  deposits?: { id: number; paymentNumber: string; amountCents: number; invoiceId: number | null; method?: string }[];
+  /** Customer returns posted against this order, oldest first. */
+  returns?: {
+    id: number;
+    returnNumber: string;
+    reason: string;
+    creditCents: number;
+    refundCents: number;
+    refundMethod: string | null;
+    createdAt: string;
+    lines: { id: number; salesOrderLineId: number; quantity: number; disposition: "RESTOCK" | "WRITE_OFF" }[];
+  }[];
 };
 
 /**

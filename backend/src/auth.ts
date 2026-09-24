@@ -182,7 +182,7 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
  * On a hosted instance HTTP Basic sits in front, but "another layer happens to
  * cover it" is not the same as the app having an authorisation model.
  */
-const OPEN_PATHS = new Set(["/health", "/auth/login"]);
+const OPEN_PATHS = new Set(["/health", "/auth/login", "/auth/auto"]);
 
 export function requireSession(req: Request, _res: Response, next: NextFunction) {
   if (OPEN_PATHS.has(req.path)) return next();

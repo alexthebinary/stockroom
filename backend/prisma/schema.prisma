@@ -52,7 +52,7 @@ model Product {
 
   serialUnits        SerialUnit[]
   vendorAliases      VendorProductAlias[]
-  productCategory    ProductCategory?    @relation(fields: [categoryId], references: [id])
+  productCategory    ProductCategory?     @relation(fields: [categoryId], references: [id])
   lots               InventoryLot[]
   balances           InventoryBalance[]
   movements          InventoryMovement[]
@@ -60,11 +60,11 @@ model Product {
   purchaseOrderLines PurchaseOrderLine[]
   adjustments        StockAdjustment[]
   transfers          StockTransfer[]
+  stockCountLines    StockCountLine[]
+  repairPartLines    RepairPartLine[]
+  shopifyLink        ShopifyLink?
 
   @@index([name])
-  stockCountLines StockCountLine[]
-  repairPartLines RepairPartLine[]
-  shopifyLink ShopifyLink?
 }
 
 model Warehouse {
@@ -89,10 +89,10 @@ model Warehouse {
   lots               InventoryLot[]
   shipments          Shipment[]
   goodsReceipts      GoodsReceipt[]
-  stockCounts     StockCount[]
-  serialUnits SerialUnit[]
-  repairPartLines RepairPartLine[]
-  shopifyLocation ShopifyLocation?
+  stockCounts        StockCount[]
+  serialUnits        SerialUnit[]
+  repairPartLines    RepairPartLine[]
+  shopifyLocation    ShopifyLocation?
 }
 
 /// Current stock for a [product, warehouse] pair.
@@ -174,13 +174,17 @@ model SalesOrder {
   invoices  Invoice[]
   shipments Shipment[]
   deposits  Payment[]
+  returns   SalesReturn[]
 }
 
 /// status: PENDING | RESERVED | SHIPPED | CANCELED
 model SalesOrderLine {
   /// How much of this line has actually left. Partial shipment and backorder
   /// are ordinary; an order is not a single all-or-nothing event.
-  shippedQty      Int      @default(0)
+  shippedQty     Int    @default(0)
+  /// Units the customer has sent back on posted returns. Never more than what
+  /// shipped; a line can be returned in several parts.
+  returnedQty    Int    @default(0)
   id             Int    @id @default(autoincrement())
   salesOrderId   Int
   productId      Int
@@ -190,9 +194,10 @@ model SalesOrderLine {
   lineTotalCents Int    @default(0)
   status         String @default("PENDING")
 
-  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
-  product    Product    @relation(fields: [productId], references: [id])
-  warehouse  Warehouse  @relation(fields: [warehouseId], references: [id])
+  salesOrder  SalesOrder        @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  product     Product           @relation(fields: [productId], references: [id])
+  warehouse   Warehouse         @relation(fields: [warehouseId], references: [id])
+  returnLines SalesReturnLine[]
 }
 
 /// status: DRAFT | ORDERED | RECEIVED | CANCELED
@@ -202,7 +207,7 @@ model SalesOrderLine {
 model PurchaseOrder {
   /// Single currency today. Recorded per document anyway, so adding a second
   /// one later is an addition rather than a rewrite of every money path.
-  currency        String   @default("USD")
+  currency      String   @default("USD")
   id            Int      @id @default(autoincrement())
   poNumber      String   @unique
   vendorId      Int?
@@ -228,7 +233,7 @@ model PurchaseOrder {
 model PurchaseOrderLine {
   /// How much of this line has actually arrived. Suppliers under-ship; a system
   /// that cannot record it makes staff lie to it.
-  receivedQty     Int      @default(0)
+  receivedQty     Int    @default(0)
   id              Int    @id @default(autoincrement())
   purchaseOrderId Int
   productId       Int
@@ -252,17 +257,17 @@ model PurchaseOrderLine {
 /// a journal entry per SKU, and gives no answer to "what did we find on the
 /// 30th".
 model StockCount {
-  id          Int      @id @default(autoincrement())
-  countNumber String   @unique
+  id          Int       @id @default(autoincrement())
+  countNumber String    @unique
   warehouseId Int
   /// DRAFT while lines are being counted, POSTED once the variance is booked,
   /// CANCELED if abandoned. A posted count is immutable.
-  status      String   @default("DRAFT")
+  status      String    @default("DRAFT")
   notes       String?
-  countedAt   DateTime @default(now())
+  countedAt   DateTime  @default(now())
   postedAt    DateTime?
-  actor       String   @default("system")
-  createdAt   DateTime @default(now())
+  actor       String    @default("system")
+  createdAt   DateTime  @default(now())
 
   warehouse Warehouse        @relation(fields: [warehouseId], references: [id])
   lines     StockCountLine[]
@@ -353,9 +358,9 @@ model Customer {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  salesOrders SalesOrder[]
-  invoices    Invoice[]
-  payments    Payment[]
+  salesOrders  SalesOrder[]
+  invoices     Invoice[]
+  payments     Payment[]
   repairOrders RepairOrder[]
 }
 
@@ -418,14 +423,14 @@ model DocumentCounter {
 /// people who MOVE STOCK and the people who POST MONEY, and a finer grid would
 /// be configuration nobody maintains. ADMIN additionally manages users.
 model User {
-  id           Int      @id @default(autoincrement())
-  email        String   @unique
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
   name         String
   /// scrypt, salted per user. Format: scrypt$N$r$p$salt$hash, all base64.
   passwordHash String
-  role         String   @default("VIEWER")
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  role         String    @default("VIEWER")
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
   lastLoginAt  DateTime?
 }
 
@@ -562,21 +567,21 @@ model LotConsumption {
 model Invoice {
   /// Single currency today. Recorded per document anyway, so adding a second
   /// one later is an addition rather than a rewrite of every money path.
-  currency        String   @default("USD")
-  id            Int      @id @default(autoincrement())
-  invoiceNumber String   @unique
+  currency      String    @default("USD")
+  id            Int       @id @default(autoincrement())
+  invoiceNumber String    @unique
   salesOrderId  Int?
   customerId    Int
-  issueDate     DateTime @default(now())
+  issueDate     DateTime  @default(now())
   /// When the customer owes it: issue date plus the channel's terms. Null on
   /// invoices raised before channels carried terms.
   dueDate       DateTime?
-  subtotalCents Int      @default(0)
-  taxCents      Int      @default(0)
-  shippingCents Int      @default(0)
-  totalCents    Int      @default(0)
-  status        String   @default("SAVED")
-  createdAt     DateTime @default(now())
+  subtotalCents Int       @default(0)
+  taxCents      Int       @default(0)
+  shippingCents Int       @default(0)
+  totalCents    Int       @default(0)
+  status        String    @default("SAVED")
+  createdAt     DateTime  @default(now())
 
   salesOrder SalesOrder? @relation(fields: [salesOrderId], references: [id])
   customer   Customer    @relation(fields: [customerId], references: [id])
@@ -610,7 +615,7 @@ model Bill {
 model Payment {
   /// Single currency today. Recorded per document anyway, so adding a second
   /// one later is an addition rather than a rewrite of every money path.
-  currency        String   @default("USD")
+  currency      String   @default("USD")
   id            Int      @id @default(autoincrement())
   paymentNumber String   @unique
   direction     String
@@ -630,20 +635,20 @@ model Payment {
 
   invoice    Invoice?    @relation(fields: [invoiceId], references: [id])
   salesOrder SalesOrder? @relation(fields: [salesOrderId], references: [id])
-  bill     Bill?     @relation(fields: [billId], references: [id])
-  customer Customer? @relation(fields: [customerId], references: [id])
-  vendor   Vendor?   @relation(fields: [vendorId], references: [id])
+  bill       Bill?       @relation(fields: [billId], references: [id])
+  customer   Customer?   @relation(fields: [customerId], references: [id])
+  vendor     Vendor?     @relation(fields: [vendorId], references: [id])
 }
 
 /// The outbound document. Posting it is what consumes FIFO layers and books COGS.
 model Shipment {
-  id             Int      @id @default(autoincrement())
-  shipmentNumber String   @unique
+  id             Int       @id @default(autoincrement())
+  shipmentNumber String    @unique
   salesOrderId   Int
   /// Null when the order ships from more than one warehouse — the lines are
   /// the authority on where each item came from.
   warehouseId    Int?
-  shippedAt      DateTime @default(now())
+  shippedAt      DateTime  @default(now())
   /// Who carried it and the number the customer quotes. RECORDED, never
   /// fetched: Stockroom does not call a carrier API, buy labels or shop rates.
   /// Knowing which parcel left and how it can be found is warehouse record
@@ -653,9 +658,9 @@ model Shipment {
   /// Set when delivery is confirmed. Null means in transit as far as this
   /// system knows — which is all it can honestly claim without an integration.
   deliveredAt    DateTime?
-  status         String   @default("SAVED")
-  cogsCents      Int      @default(0)
-  createdAt      DateTime @default(now())
+  status         String    @default("SAVED")
+  cogsCents      Int       @default(0)
+  createdAt      DateTime  @default(now())
 
   salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id])
   warehouse  Warehouse? @relation(fields: [warehouseId], references: [id])
@@ -691,33 +696,33 @@ model GoodsReceipt {
 /// `lotId` is nullable ON PURPOSE: a unit under repair for a customer is NOT
 /// owned stock and must not sit in a cost layer. See `status`.
 model SerialUnit {
-  id           Int      @id @default(autoincrement())
-  productId    Int
+  id              Int       @id @default(autoincrement())
+  productId       Int
   /// As scanned. Unitree prints this on the carton AND on the chassis; the
   /// chassis marking is the durable one because boxes get thrown away and the
   /// unit comes back for RMA years later.
-  serialNumber String
+  serialNumber    String
   /// Scanned off the carton at receiving, when it differs from the hardware
   /// serial. A mismatch is a finding to surface, never something to silently
   /// reconcile.
-  boxSerial    String?
+  boxSerial       String?
   /// Set when a lot exists: owned, valued stock. NULL while the unit is in
   /// custody for repair — a customer's broken printer on our shelf is not our
   /// asset, and booking it as inventory would debit Inventory for something we
   /// do not own.
-  lotId        Int?     @unique
+  lotId           Int?      @unique
   /// IN_STOCK | SOLD | RECEIVED_FOR_REPAIR | IN_REPAIR | RETURNED_TO_CUSTOMER
   /// | REPLACED | SENT_TO_VENDOR | SCRAPPED
-  status       String   @default("IN_STOCK")
+  status          String    @default("IN_STOCK")
   /// Where the unit physically is. For custody states this is a location, not a
   /// stock balance.
-  warehouseId  Int?
+  warehouseId     Int?
   /// Warranty is DERIVED from this plus the policy's duration — never stored as
   /// a computed boolean or a fixed end date, for the same reason `availableQty`
   /// is always derived and `amountPaidCents` is recomputed: a stored answer
   /// drifts the moment terms change or time simply passes.
   warrantyStartAt DateTime?
-  notes        String?
+  notes           String?
 
   /// HOW this serial got here. Everything auto-commits; provenance is what makes
   /// that safe to review later rather than something to gate on up front.
@@ -734,13 +739,14 @@ model SerialUnit {
   needsReview   Boolean @default(false)
   reviewReason  String?
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  corrections SerialCorrection[]
-  product   Product       @relation(fields: [productId], references: [id])
-  lot       InventoryLot? @relation(fields: [lotId], references: [id])
-  warehouse Warehouse?    @relation(fields: [warehouseId], references: [id])
+  corrections  SerialCorrection[]
+  product      Product            @relation(fields: [productId], references: [id])
+  lot          InventoryLot?      @relation(fields: [lotId], references: [id])
+  warehouse    Warehouse?         @relation(fields: [warehouseId], references: [id])
+  repairOrders RepairOrder[]
 
   /// Serial numbers are only guaranteed unique WITHIN a manufacturer's range,
   /// so the key is (product, serial). `serialNumber` is indexed on its own
@@ -750,7 +756,6 @@ model SerialUnit {
   @@unique([productId, serialNumber])
   @@index([serialNumber])
   @@index([status, warehouseId])
-  repairOrders RepairOrder[]
 }
 
 /// Warranty duration by brand or product. Terms only — NOT an adjudication
@@ -802,26 +807,26 @@ model VendorProductAlias {
 /// (Dr Warranty Expense). Both credit Inventory, neither touches COGS, because
 /// there is no revenue matched against them.
 model RepairOrder {
-  id            Int      @id @default(autoincrement())
-  repairNumber  String   @unique
+  id            Int       @id @default(autoincrement())
+  repairNumber  String    @unique
   serialUnitId  Int
   customerId    Int?
   /// OPEN | IN_PROGRESS | AWAITING_PARTS | COMPLETED | RETURNED | REPLACED | SCRAPPED
-  status        String   @default("OPEN")
+  status        String    @default("OPEN")
   /// Whether the customer is charged. Derived warranty state INFORMS this, it
   /// does not decide it — coverage is a human judgement recorded here, not a
   /// rule the system evaluates.
-  billable      Boolean  @default(true)
+  billable      Boolean   @default(true)
   /// Why it was judged in or out of warranty, in the words of whoever judged it.
   coverageNote  String?
   faultReported String?
   workDone      String?
-  openedAt      DateTime @default(now())
+  openedAt      DateTime  @default(now())
   closedAt      DateTime?
   actor         String
 
-  serialUnit SerialUnit        @relation(fields: [serialUnitId], references: [id])
-  customer   Customer?         @relation(fields: [customerId], references: [id])
+  serialUnit SerialUnit       @relation(fields: [serialUnitId], references: [id])
+  customer   Customer?        @relation(fields: [customerId], references: [id])
   parts      RepairPartLine[]
 
   @@index([status])
@@ -832,16 +837,16 @@ model RepairOrder {
 /// consumeFifo or consumeSerials, recordMovement, postSimple — it just posts to
 /// Repair Parts Expense rather than COGS.
 model RepairPartLine {
-  id            Int      @id @default(autoincrement())
-  repairOrderId Int
-  productId     Int
-  warehouseId   Int
-  quantity      Int
+  id             Int      @id @default(autoincrement())
+  repairOrderId  Int
+  productId      Int
+  warehouseId    Int
+  quantity       Int
   /// FIFO cost of the layers actually consumed, filled in at consumption time.
-  totalCostCents Int     @default(0)
+  totalCostCents Int      @default(0)
   /// Named units, when the part is itself serial-tracked.
-  serialNumbers String?
-  createdAt     DateTime @default(now())
+  serialNumbers  String?
+  createdAt      DateTime @default(now())
 
   repairOrder RepairOrder @relation(fields: [repairOrderId], references: [id])
   product     Product     @relation(fields: [productId], references: [id])
@@ -878,26 +883,67 @@ model SerialCorrection {
 /// each time because a push runs per product per warehouse and the mapping
 /// almost never changes.
 model ShopifyLink {
-  id              Int      @id @default(autoincrement())
-  productId       Int      @unique
+  id              Int       @id @default(autoincrement())
+  productId       Int       @unique
   variantId       String
   inventoryItemId String
   /// What we last told Shopify. This is the `compareQuantity` for the next
   /// push, which is how compare-and-set detects that someone sold in between.
   lastPushedQty   Int?
   lastPushedAt    DateTime?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
 
   product Product @relation(fields: [productId], references: [id])
 }
 
 /// Maps one of our warehouses to a Shopify location.
 model ShopifyLocation {
-  id          Int    @id @default(autoincrement())
-  warehouseId Int    @unique
+  id          Int      @id @default(autoincrement())
+  warehouseId Int      @unique
   locationId  String
   createdAt   DateTime @default(now())
 
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
 }
 
+/// A customer return against a shipped order. Posting it does three things in
+/// one transaction: brings RESTOCK lines back onto the shelf at the cost they
+/// left at, reverses the revenue with a credit note, and refunds whatever the
+/// customer has paid beyond what they now owe.
+model SalesReturn {
+  id               Int      @id @default(autoincrement())
+  returnNumber     String   @unique
+  salesOrderId     Int
+  invoiceId        Int
+  reason           String
+  /// Value credited to the customer: returned lines at their sold price plus
+  /// their share of the order's tax. Shipping is not refunded by default.
+  creditCents      Int      @default(0)
+  /// Cash sent back, if they had paid more than they now owe.
+  refundCents      Int      @default(0)
+  /// FIFO cost of the RESTOCK units put back on the shelf.
+  restockCostCents Int      @default(0)
+  refundMethod     String?
+  actor            String   @default("system")
+  createdAt        DateTime @default(now())
+
+  salesOrder SalesOrder        @relation(fields: [salesOrderId], references: [id])
+  lines      SalesReturnLine[]
+}
+
+/// disposition: RESTOCK (sellable, back to a warehouse) | WRITE_OFF (damaged,
+/// its cost stays in cost of goods sold)
+model SalesReturnLine {
+  id               Int    @id @default(autoincrement())
+  salesReturnId    Int
+  salesOrderLineId Int
+  productId        Int
+  quantity         Int
+  disposition      String
+  warehouseId      Int?
+  unitPriceCents   Int    @default(0)
+  unitCostCents    Int    @default(0)
+
+  salesReturn    SalesReturn    @relation(fields: [salesReturnId], references: [id], onDelete: Cascade)
+  salesOrderLine SalesOrderLine @relation(fields: [salesOrderLineId], references: [id])
+}

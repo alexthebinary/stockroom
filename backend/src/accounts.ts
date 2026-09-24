@@ -66,6 +66,9 @@ export const TRANSACTION_TYPE = {
   SALES_SHIPMENT_COGS: "SALES_SHIPMENT_COGS",
   CUSTOMER_DEPOSIT: "CUSTOMER_DEPOSIT",
   DEPOSIT_APPLIED: "DEPOSIT_APPLIED",
+  SALES_RETURN: "SALES_RETURN",
+  RETURN_RESTOCK: "RETURN_RESTOCK",
+  CUSTOMER_REFUND: "CUSTOMER_REFUND",
   PURCHASE_BILL: "PURCHASE_BILL",
   PURCHASE_PAYMENT: "PURCHASE_PAYMENT",
   GOODS_RECEIPT: "GOODS_RECEIPT",
@@ -113,6 +116,28 @@ export const JOURNAL_TEMPLATES: {
     description: "Apply a checkout payment to the invoice raised on shipment",
     debitAccountCode: ACCOUNT.CUSTOMER_DEPOSITS,
     creditAccountCode: ACCOUNT.ACCOUNTS_RECEIVABLE,
+  },
+  {
+    // Booked straight against Sales Revenue rather than a contra account: the
+    // chart check requires every INCOME account to be credit-normal, and a
+    // debit-normal "Sales Returns" would trip it. The return documents carry
+    // the detail a separate account would.
+    transactionType: TRANSACTION_TYPE.SALES_RETURN,
+    description: "Credit a customer for goods returned",
+    debitAccountCode: ACCOUNT.SALES_REVENUE,
+    creditAccountCode: ACCOUNT.ACCOUNTS_RECEIVABLE,
+  },
+  {
+    transactionType: TRANSACTION_TYPE.RETURN_RESTOCK,
+    description: "Put returned goods back into stock at the cost they left at",
+    debitAccountCode: ACCOUNT.INVENTORY,
+    creditAccountCode: ACCOUNT.COGS,
+  },
+  {
+    transactionType: TRANSACTION_TYPE.CUSTOMER_REFUND,
+    description: "Refund a customer who has paid more than they owe",
+    debitAccountCode: ACCOUNT.ACCOUNTS_RECEIVABLE,
+    creditAccountCode: ACCOUNT.BANK,
   },
   {
     transactionType: TRANSACTION_TYPE.REPAIR_PARTS_CONSUMPTION,

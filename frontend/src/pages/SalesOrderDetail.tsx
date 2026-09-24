@@ -8,6 +8,7 @@ import {
   Grid,
   Group,
   SimpleGrid,
+  Stack,
   Switch,
   Table,
   Text,
@@ -19,6 +20,7 @@ import { Link, useParams } from "react-router-dom";
 import { useState } from "react";
 import { api, type SalesOrder, type ShipmentOnOrder, openPdf } from "../api";
 import { GatedButton } from "../components/GatedButton";
+import { ReturnItemsModal } from "../components/ReturnItemsModal";
 import {
   PageHeader,
   QueryState,
@@ -173,6 +175,7 @@ export default function SalesOrderDetail() {
   const { id } = useParams();
   const orderId = Number(id);
   const queryClient = useQueryClient();
+  const [returnOpen, setReturnOpen] = useState(false);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["sales-order", orderId],
@@ -265,6 +268,22 @@ export default function SalesOrderDetail() {
               >
                 Ship
               </GatedButton>
+              {(readiness === "SHIPPED" || readiness === "DELIVERED") && (
+                <GatedButton
+                  variant="light"
+                  color="orange"
+                  onClick={() => setReturnOpen(true)}
+                  reason={
+                    !data.invoices?.some((i) => i.status === "POSTED")
+                      ? "Invoice this order first — a return credits its invoice"
+                      : data.lines.every((l) => (l.returnedQty ?? 0) >= l.quantity)
+                        ? "Everything on this order has already been returned"
+                        : undefined
+                  }
+                >
+                  Return items
+                </GatedButton>
+              )}
               {payment === "INVOICED" && (
                 <GatedButton
                   variant="light"
@@ -457,6 +476,35 @@ export default function SalesOrderDetail() {
               </Grid.Col>
             </Grid>
 
+            {(data.returns?.length ?? 0) > 0 && (
+              <>
+                <Title order={4} mt="xl" mb="sm">
+                  Returns
+                </Title>
+                <Card withBorder radius="md" p="md">
+                  <Stack gap="xs">
+                    {data.returns?.map((r) => (
+                      <Group key={r.id} justify="space-between" wrap="wrap">
+                        <Stack gap={0}>
+                          <Text fw={600} size="sm">
+                            {r.returnNumber} · {r.lines.reduce((s, l) => s + l.quantity, 0)} unit(s)
+                            {r.lines.some((l) => l.disposition === "WRITE_OFF") && " · includes write-off"}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            {r.reason} · {formatDate(r.createdAt)}
+                          </Text>
+                        </Stack>
+                        <Text size="sm">
+                          {money(r.creditCents)} credited
+                          {r.refundCents > 0 && ` · ${money(r.refundCents)} refunded (${formatStatus(r.refundMethod ?? "")})`}
+                        </Text>
+                      </Group>
+                    ))}
+                  </Stack>
+                </Card>
+              </>
+            )}
+
             {(data.shipments?.length ?? 0) > 0 && (
               <>
                 <Title order={4} mt="xl" mb="sm">
@@ -473,6 +521,7 @@ export default function SalesOrderDetail() {
                 </SimpleGrid>
               </>
             )}
+            <ReturnItemsModal order={data} opened={returnOpen} onClose={() => setReturnOpen(false)} />
           </>
         )}
       </QueryState>
