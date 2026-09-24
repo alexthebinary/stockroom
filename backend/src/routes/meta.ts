@@ -203,7 +203,7 @@ metaRouter.get(
               rows: purchaseOrderLines,
               note: "Landed cost — this unit cost plus its share of tax and shipping — becomes the layer",
             },
-            { name: "Bill", rows: bills, note: "Dr Prepaid Inventory / Cr Accounts Payable" },
+            { name: "Bill", rows: bills, note: "Dr Inventory Clearing – Inbound / Cr Accounts Payable" },
             { name: "GoodsReceipt", rows: receipts, note: "Creates the cost layers" },
             { name: "Payment", rows: payments, note: "Receipt from a customer, or disbursement to a vendor" },
           ],

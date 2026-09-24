@@ -4,7 +4,9 @@ Every stock and money event posts a double-entry journal entry automatically; no
 
 **Accounting (/ledger)** — the trial balance and the journal. **Live Audit** in the menu summarises the four checks that can genuinely fail: an entry that does not balance, an account signed the wrong way, a reversal whose original is gone, and an entry taken off the books while its document still says posted. A posted entry is corrected with **Reverse** (a mirror entry), never by deleting it.
 
-**Posting rules (/catalogs/posting)** — which accounts each kind of event posts to. Key accounts: Bank, Accounts Receivable, Inventory, Inventory In Transit, Prepaid Inventory, Accounts Payable, Customer Deposits (checkout money for goods not yet shipped), Sales Revenue, Cost of Goods Sold.
+**Posting rules (/catalogs/posting)** — which accounts each kind of event posts to. The chart follows the client's sheet: 1000 Bank / Cash, 1100 Accounts Receivable (AR), 1200 Inventory, 1210 Inventory Clearing – Inbound (billed, not yet received), 1220 Inventory Clearing – Outbound (shipped, cost not yet matched to an invoice), 2000 Accounts Payable (AP), 3000 Opening Balance Equity, 4000 Sales Revenue, 4100 Inventory Adjustment Gain, 5000 Cost of Goods Sold, 5100 Inventory Adjustment Loss. Stockroom adds 1230 Inventory In Transit (between warehouses), 2100 Customer Deposits (checkout money for goods not yet shipped), 5200 Rounding Variance, 5300 Repair Parts, 5400 Warranty.
+
+How a sale posts: shipping is a goods issue (Dr 1220 / Cr 1200 at FIFO cost); the invoice recognises revenue (Dr 1100 / Cr 4000) and the cost (Dr 5000 / Cr 1220). Anything left in 1220 is goods shipped but not yet invoiced.
 
 **Reports (/reports)** — Sales (by customer, channel, manager, category), Purchases, Stock on hand, Valuation (stock value from FIFO cost layers, reconciled with the Inventory account).
 

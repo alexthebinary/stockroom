@@ -1,6 +1,6 @@
 import { hashPassword } from "../src/auth";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { CHART_OF_ACCOUNTS, JOURNAL_TEMPLATES } from "../src/accounts";
+import { ACCOUNT, CHART_OF_ACCOUNTS, JOURNAL_TEMPLATES } from "../src/accounts";
 
 const prisma = new PrismaClient();
 
@@ -506,7 +506,7 @@ async function main() {
       status: "POSTED",
     },
   });
-  const prepaid = await prisma.account.findUniqueOrThrow({ where: { code: "1250" } });
+  const prepaid = await prisma.account.findUniqueOrThrow({ where: { code: ACCOUNT.PREPAID_INVENTORY } });
   const ap = await prisma.account.findUniqueOrThrow({ where: { code: "2000" } });
   await prisma.journalEntry.create({
     data: {

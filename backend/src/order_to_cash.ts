@@ -156,12 +156,48 @@ export async function raiseInvoice(tx: Tx, order: OrderForCash, actor: string, i
     });
   }
 
+  await recognizeCogs(tx, order.id, actor);
+
   const paid = await paidAgainst(tx, { invoiceId: invoice.id });
   if (paid >= invoice.totalCents) {
     await tx.salesOrder.update({ where: { id: order.id }, data: { paymentStatus: "PAID" } });
   }
 
   return { invoice, entry, appliedDeposits: deposits.length };
+}
+
+/**
+ * Match the cost of shipped goods to the invoice (client sheet 3.1 part B):
+ * Dr Cost of Goods Sold / Cr Inventory Clearing – Outbound, once per shipment.
+ *
+ * A shipment already costed — by a live recognition, or by the legacy entry
+ * that posted COGS straight off Inventory before this rule existed — is
+ * skipped, so it is safe to call from both /ship and /invoice.
+ */
+export async function recognizeCogs(tx: Tx, salesOrderId: number, actor: string) {
+  const shipments = await tx.shipment.findMany({
+    where: { salesOrderId, status: { not: "VOID" }, cogsCents: { gt: 0 } },
+  });
+  for (const sh of shipments) {
+    const legacy = await tx.journalEntry.count({
+      where: { referenceType: "SHIPMENT", referenceId: sh.id, transactionType: "SALES_SHIPMENT_COGS", status: "POSTED" },
+    });
+    const posted = await tx.journalEntry.count({
+      where: { referenceType: "SHIPMENT_COGS", referenceId: sh.id, transactionType: "INVOICE_COGS", status: "POSTED" },
+    });
+    const reversed = await tx.journalEntry.count({
+      where: { referenceType: "SHIPMENT_COGS", referenceId: sh.id, transactionType: "INVOICE_COGS_REVERSAL", status: "POSTED" },
+    });
+    if (legacy > 0 || posted > reversed) continue;
+    await postSimple(tx, {
+      transactionType: TRANSACTION_TYPE.INVOICE_COGS,
+      amountCents: sh.cogsCents,
+      memo: `Cost of goods sold for ${sh.shipmentNumber}`,
+      referenceType: "SHIPMENT_COGS",
+      referenceId: sh.id,
+      actor,
+    });
+  }
 }
 
 /**

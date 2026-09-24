@@ -385,7 +385,7 @@ purchaseOrdersRouter.post(
   })
 );
 
-/** POSTED creates the Vendor Bill: Dr Prepaid Inventory, Cr Accounts Payable. */
+/** POSTED creates the Vendor Bill: Dr Inventory Clearing – Inbound, Cr Accounts Payable. */
 purchaseOrdersRouter.post(
   "/:id/post",
   requireMoney,
@@ -532,7 +532,7 @@ purchaseOrdersRouter.post(
 
 /**
  * DELIVERED creates the GRN, the FIFO cost layers, and posts
- * Dr Inventory / Cr Prepaid Inventory.
+ * Dr Inventory / Cr Inventory Clearing – Inbound.
  *
  * This is the only place stock acquires a cost from a purchase, which is why
  * the layers are created here and not when the PO was posted.

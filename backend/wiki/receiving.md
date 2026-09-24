@@ -10,6 +10,6 @@ Goods arrive against a purchase order (see [[purchasing]]). Two ways to book the
 
 **With the assistant:** attach a photo of the packing slip. It reads the PO number, SKUs and quantities, looks up the PO, and proposes one receipt for what arrived, saying what is short or unexpected. Check the card and press Approve.
 
-**What receiving does to the books:** stock goes up at the warehouse on the line, a cost layer is created at the landed unit cost, and Prepaid Inventory moves into Inventory. Every receipt is listed under Purchases → Receipts (/receipts), each with a printable goods-received note.
+**What receiving does to the books:** stock goes up at the warehouse on the line, a cost layer is created at the landed unit cost, and its value moves from Inventory Clearing – Inbound (1210) into Inventory (1200). Every receipt is listed under Purchases → Receipts (/receipts), each with a printable goods-received note.
 
 Short, over or wrong items: receive what really arrived; tell the vendor about the rest. Damaged on arrival: receive it, then decrease it with a reason — see [[inventory]].

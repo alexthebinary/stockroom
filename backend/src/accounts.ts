@@ -7,12 +7,24 @@
  * Financial Transaction Types" asks for.
  */
 
+/**
+ * Codes and names follow the client's "Chart of Accounts & Transaction Journal
+ * Entries" (adopted 2026-09-24). Accounts the client's sheet does not cover
+ * (customer deposits, transit between warehouses, rounding, repairs, warranty)
+ * keep their own codes in the gaps. The old constant names stay as aliases so
+ * the posting code reads the same; syncChartOfAccounts() renumbers live rows.
+ */
 export const ACCOUNT = {
   BANK: "1000",
   ACCOUNTS_RECEIVABLE: "1100",
   INVENTORY: "1200",
-  INVENTORY_IN_TRANSIT: "1210",
-  PREPAID_INVENTORY: "1250",
+  /// Bill received, goods not yet put away (client: 1210). Was 1250 "Prepaid Inventory".
+  INVENTORY_CLEARING_INBOUND: "1210",
+  PREPAID_INVENTORY: "1210",
+  /// Goods issued on a shipment, cost not yet matched to an invoice (client: 1220).
+  INVENTORY_CLEARING_OUTBOUND: "1220",
+  /// Stock between two of our warehouses. Was 1210 until the client's chart took that code.
+  INVENTORY_IN_TRANSIT: "1230",
   ACCOUNTS_PAYABLE: "2000",
   /// Money taken at checkout for goods not yet shipped. It is owed to the
   /// customer (as goods or a refund) until the order ships, so it is a
@@ -20,8 +32,11 @@ export const ACCOUNT = {
   CUSTOMER_DEPOSITS: "2100",
   OPENING_BALANCE_EQUITY: "3000",
   SALES_REVENUE: "4000",
-  INVENTORY_GAIN: "4900",
+  /// Found stock on a count (client: 4100). Was 4900 "Inventory Gain".
+  INVENTORY_ADJUSTMENT_GAIN: "4100",
+  INVENTORY_GAIN: "4100",
   COGS: "5000",
+  INVENTORY_ADJUSTMENT_LOSS: "5100",
   INVENTORY_SHRINKAGE: "5100",
   /// Parts consumed repairing a unit. NOT Cost of Goods Sold: repair parts are
   /// not matched to sales revenue, so folding them into 5000 would understate
@@ -35,22 +50,23 @@ export const ACCOUNT = {
 
 export const CHART_OF_ACCOUNTS = [
   { code: ACCOUNT.BANK, name: "Bank / Cash", accountType: "ASSET", normalSide: "DEBIT" },
-  { code: ACCOUNT.ACCOUNTS_RECEIVABLE, name: "Accounts Receivable", accountType: "ASSET", normalSide: "DEBIT" },
+  { code: ACCOUNT.ACCOUNTS_RECEIVABLE, name: "Accounts Receivable (AR)", accountType: "ASSET", normalSide: "DEBIT" },
   { code: ACCOUNT.INVENTORY, name: "Inventory", accountType: "ASSET", normalSide: "DEBIT" },
   // Stock that has left one warehouse and not yet arrived at the other. It is
   // owned, but it cannot be picked, so it is not Inventory either.
+  { code: ACCOUNT.INVENTORY_CLEARING_INBOUND, name: "Inventory Clearing – Inbound", accountType: "ASSET", normalSide: "DEBIT" },
+  { code: ACCOUNT.INVENTORY_CLEARING_OUTBOUND, name: "Inventory Clearing – Outbound", accountType: "ASSET", normalSide: "DEBIT" },
   { code: ACCOUNT.INVENTORY_IN_TRANSIT, name: "Inventory In Transit", accountType: "ASSET", normalSide: "DEBIT" },
-  { code: ACCOUNT.PREPAID_INVENTORY, name: "Prepaid Inventory", accountType: "ASSET", normalSide: "DEBIT" },
-  { code: ACCOUNT.ACCOUNTS_PAYABLE, name: "Accounts Payable", accountType: "LIABILITY", normalSide: "CREDIT" },
+  { code: ACCOUNT.ACCOUNTS_PAYABLE, name: "Accounts Payable (AP)", accountType: "LIABILITY", normalSide: "CREDIT" },
   { code: ACCOUNT.CUSTOMER_DEPOSITS, name: "Customer Deposits", accountType: "LIABILITY", normalSide: "CREDIT" },
   // Where stock that existed before the books did comes from. Opening stock is
   // not income: booking it to Inventory Gain overstates revenue by the whole
   // opening position and shows a period with sales and no cost.
   { code: ACCOUNT.OPENING_BALANCE_EQUITY, name: "Opening Balance Equity", accountType: "EQUITY", normalSide: "CREDIT" },
   { code: ACCOUNT.SALES_REVENUE, name: "Sales Revenue", accountType: "INCOME", normalSide: "CREDIT" },
-  { code: ACCOUNT.INVENTORY_GAIN, name: "Inventory Gain", accountType: "INCOME", normalSide: "CREDIT" },
+  { code: ACCOUNT.INVENTORY_ADJUSTMENT_GAIN, name: "Inventory Adjustment Gain", accountType: "INCOME", normalSide: "CREDIT" },
   { code: ACCOUNT.COGS, name: "Cost of Goods Sold", accountType: "EXPENSE", normalSide: "DEBIT" },
-  { code: ACCOUNT.INVENTORY_SHRINKAGE, name: "Inventory Shrinkage", accountType: "EXPENSE", normalSide: "DEBIT" },
+  { code: ACCOUNT.INVENTORY_ADJUSTMENT_LOSS, name: "Inventory Adjustment Loss", accountType: "EXPENSE", normalSide: "DEBIT" },
   { code: ACCOUNT.REPAIR_PARTS, name: "Repair Parts Expense", accountType: "EXPENSE", normalSide: "DEBIT" },
   { code: ACCOUNT.WARRANTY_EXPENSE, name: "Warranty Expense", accountType: "EXPENSE", normalSide: "DEBIT" },
   // Reported inside cost of sales rather than as an operating expense: it
@@ -63,7 +79,10 @@ export const CHART_OF_ACCOUNTS = [
 export const TRANSACTION_TYPE = {
   SALES_INVOICE: "SALES_INVOICE",
   SALES_PAYMENT: "SALES_PAYMENT",
+  /// Legacy: shipments before 2026-09-24 posted COGS straight off Inventory.
   SALES_SHIPMENT_COGS: "SALES_SHIPMENT_COGS",
+  GOODS_ISSUE: "GOODS_ISSUE",
+  INVOICE_COGS: "INVOICE_COGS",
   CUSTOMER_DEPOSIT: "CUSTOMER_DEPOSIT",
   DEPOSIT_APPLIED: "DEPOSIT_APPLIED",
   SALES_RETURN: "SALES_RETURN",
@@ -153,9 +172,24 @@ export const JOURNAL_TEMPLATES: {
   },
   {
     transactionType: TRANSACTION_TYPE.SALES_SHIPMENT_COGS,
-    description: "Recognise cost of goods sold on shipment (FIFO)",
+    description: "Legacy: cost of goods sold straight off Inventory on shipment",
     debitAccountCode: ACCOUNT.COGS,
     creditAccountCode: ACCOUNT.INVENTORY,
+  },
+  {
+    // Client sheet 3.3: the shipment relieves on-hand Inventory into the
+    // outbound clearing account at FIFO cost.
+    transactionType: TRANSACTION_TYPE.GOODS_ISSUE,
+    description: "Goods issue: stock leaves on a shipment (FIFO cost)",
+    debitAccountCode: ACCOUNT.INVENTORY_CLEARING_OUTBOUND,
+    creditAccountCode: ACCOUNT.INVENTORY,
+  },
+  {
+    // Client sheet 3.1 part B: the invoice recognises the cost of what it bills.
+    transactionType: TRANSACTION_TYPE.INVOICE_COGS,
+    description: "Recognise cost of goods sold against the invoice",
+    debitAccountCode: ACCOUNT.COGS,
+    creditAccountCode: ACCOUNT.INVENTORY_CLEARING_OUTBOUND,
   },
   {
     transactionType: TRANSACTION_TYPE.PURCHASE_BILL,
@@ -224,21 +258,60 @@ export const JOURNAL_TEMPLATES: {
  * ever inserts: renaming or retyping an existing account is a migration with
  * consequences for history, not something a boot step should do silently.
  */
+/** Live accounts renumbered to the client's chart. Applied in this order: 1210 must move before 1250 takes it. */
+const RENUMBER: { from: string; to: string; ifNamed: string }[] = [
+  { from: "1210", to: "1230", ifNamed: "Inventory In Transit" },
+  { from: "1250", to: "1210", ifNamed: "Prepaid Inventory" },
+  { from: "4900", to: "4100", ifNamed: "Inventory Gain" },
+];
+
 export async function syncChartOfAccounts() {
   const { prisma } = await import("./db");
-  const existing = new Set((await prisma.account.findMany({ select: { code: true } })).map((a) => a.code));
-  const missing = CHART_OF_ACCOUNTS.filter((a) => !existing.has(a.code));
-  // Posting rules are data too, and a seed only runs on an empty database, so
-  // a rule added in code has to be reconciled here or the Posting rules page
-  // never shows it on an existing install.
-  const rules = new Set(
-    (await prisma.journalTemplate.findMany({ select: { transactionType: true } })).map((t) => t.transactionType)
+  const changes: string[] = [];
+
+  // Renumber in place. Journal lines point at the account's id, not its code,
+  // so history moves with the row; only the label an accountant reads changes.
+  // Guarded by name so a database that already has the new chart is untouched.
+  for (const r of RENUMBER) {
+    const row = await prisma.account.findUnique({ where: { code: r.from } });
+    const taken = await prisma.account.findUnique({ where: { code: r.to } });
+    if (row && row.name === r.ifNamed && !taken) {
+      await prisma.account.update({ where: { id: row.id }, data: { code: r.to } });
+      changes.push(`${r.from}→${r.to}`);
+    }
+  }
+
+  const existing = await prisma.account.findMany({ select: { id: true, code: true, name: true } });
+  const byCode = new Map(existing.map((a) => [a.code, a]));
+  for (const a of CHART_OF_ACCOUNTS) {
+    const row = byCode.get(a.code);
+    if (!row) {
+      await prisma.account.create({ data: a });
+      changes.push(`+${a.code} ${a.name}`);
+    } else if (row.name !== a.name) {
+      await prisma.account.update({ where: { id: row.id }, data: { name: a.name } });
+      changes.push(`${a.code} renamed "${a.name}"`);
+    }
+  }
+
+  // Posting rules are data too; keep the stored table equal to this file so the
+  // Posting rules page shows what the code actually posts.
+  const rules = new Map(
+    (await prisma.journalTemplate.findMany()).map((t) => [t.transactionType, t])
   );
-  const missingRules = JOURNAL_TEMPLATES.filter((t) => !rules.has(t.transactionType));
-  if (missingRules.length > 0) await prisma.journalTemplate.createMany({ data: missingRules });
-  if (missing.length === 0) return [];
-  await prisma.account.createMany({ data: missing });
-  return missing.map((a) => `${a.code} ${a.name}`);
+  for (const t of JOURNAL_TEMPLATES) {
+    const row = rules.get(t.transactionType);
+    if (!row) {
+      await prisma.journalTemplate.create({ data: t });
+    } else if (
+      row.debitAccountCode !== t.debitAccountCode ||
+      row.creditAccountCode !== t.creditAccountCode ||
+      row.description !== t.description
+    ) {
+      await prisma.journalTemplate.update({ where: { id: row.id }, data: t });
+    }
+  }
+  return changes;
 }
 
 /** The expense accounts that belong inside gross margin, not below it. */

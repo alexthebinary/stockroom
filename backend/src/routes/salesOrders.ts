@@ -16,7 +16,7 @@ import { TRANSACTION_TYPE } from "../accounts";
 import { assertReferencesUsable } from "../refs";
 import { lockDocumentForPayment, paidAgainst } from "../payments";
 import { CHANNELS, CHANNEL_CODES } from "../channels";
-import { raiseInvoice, syncDelivered, takeDeposit, unappliedDeposits } from "../order_to_cash";
+import { raiseInvoice, recognizeCogs, syncDelivered, takeDeposit, unappliedDeposits } from "../order_to_cash";
 import { CREDIT_NOTE, postReturn } from "../returns";
 import {
   nextInvoiceNumber,
@@ -923,24 +923,29 @@ async function shipPacked(tx: Prisma.TransactionClient, current: LoadedOrder, sh
 
   await tx.shipment.update({ where: { id: shipment.id }, data: { cogsCents } });
 
-  // Revenue is earned as the goods leave, so the invoice is raised here, in
-  // the same transaction as COGS. An order billed in advance already has
-  // one. An order with no catalog customer or no value cannot be invoiced;
-  // it still ships, and the close rulebook reports it as unbilled.
+  // Client sheet 3.3 — goods issue: on-hand Inventory into outbound clearing
+  // at the FIFO cost of the exact layers consumed.
+  const entry = await postSimple(tx, {
+    transactionType: TRANSACTION_TYPE.GOODS_ISSUE,
+    amountCents: cogsCents,
+    memo: `Goods issue ${shipment.shipmentNumber} (${current.orderNumber})`,
+    referenceType: "SHIPMENT",
+    referenceId: shipment.id,
+    actor,
+  });
+
+  // Revenue is earned as the goods leave, so the invoice is raised here, in the
+  // same transaction — and raising it recognises this shipment's cost (sheet
+  // 3.1 part B), clearing outbound. An order billed in advance already has an
+  // invoice, so its cost is recognised now. An order with no catalog customer or
+  // no value cannot be invoiced; it ships, its cost waits in outbound clearing,
+  // and the close rulebook reports it as shipped-not-invoiced.
   const invoiceable =
     (current.paymentStatus === "AWAITING_PAYMENT" || current.paymentStatus === "PREPAID") &&
     current.customerId !== null &&
     current.totalCents > 0;
   if (invoiceable) await raiseInvoice(tx, current, actor);
-
-  const entry = await postSimple(tx, {
-    transactionType: TRANSACTION_TYPE.SALES_SHIPMENT_COGS,
-    amountCents: cogsCents,
-    memo: `COGS for ${shipment.shipmentNumber} (${current.orderNumber})`,
-    referenceType: "SHIPMENT",
-    referenceId: shipment.id,
-    actor,
-  });
+  else if (current.invoices.some((i) => i.status === "POSTED")) await recognizeCogs(tx, current.id, actor);
 
   return { shipment: { ...shipment, cogsCents }, entry };
 }
@@ -1222,6 +1227,14 @@ salesOrdersRouter.post(
           actor,
           memo: `Void ${invoice.invoiceNumber}`,
         });
+        // The cost matched to that invoice goes back to waiting in outbound
+        // clearing, so revenue and its cost leave the P&L together.
+        for (const sh of current.shipments) {
+          await reverseDocumentEntry(tx, "SHIPMENT_COGS", sh.id, {
+            actor,
+            memo: `Cost of ${sh.shipmentNumber} back to outbound clearing (void ${invoice.invoiceNumber})`,
+          });
+        }
       }
 
       return tx.salesOrder.findUniqueOrThrow({ where: { id }, include });
