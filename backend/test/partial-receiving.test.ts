@@ -280,3 +280,20 @@ describe("partial receiving", () => {
     expect(all.every((g: any) => g.orderReceivedQty === 10)).toBe(true);
   });
 });
+
+describe("serial-tracked lines", () => {
+  it("refuses a bulk receipt, because it would record stock with no serials", async () => {
+    const pid = await product(50_000);
+    await prisma.product.update({ where: { id: pid }, data: { trackingMode: "SERIAL" } });
+    const { id, api, detail } = await postedOrder([
+      { productId: pid, warehouseId, quantity: 2, unitCostCents: 50_000 },
+    ]);
+    const lineId = detail.lines[0].id;
+    const lotsBefore = await prisma.inventoryLot.count({ where: { productId: pid } });
+
+    const res = await api.post(`/api/purchase-orders/${id}/receive`).send({ lines: [{ lineId, quantity: 2 }] });
+    expect(res.status).toBe(400);
+    expect(res.body.details?.action).toBe("receive-serials");
+    expect(await prisma.inventoryLot.count({ where: { productId: pid } })).toBe(lotsBefore);
+  });
+});

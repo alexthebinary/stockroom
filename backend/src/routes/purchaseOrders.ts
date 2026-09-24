@@ -642,6 +642,20 @@ purchaseOrdersRouter.post(
         }
       }
 
+      // A serial-tracked product needs one cost layer PER UNIT with its serial on it
+      // (serials.ts). Received here in bulk it would get one multi-unit layer and no
+      // serials, and the first shipment would fail to find a unit to sell. Serialised
+      // lines are received box by box through /receive, which records each serial.
+      const serialLines = current.lines.filter(
+        (l) => requested.has(l.id) && l.product.trackingMode === "SERIAL"
+      );
+      if (serialLines.length > 0) {
+        throw badRequest(
+          `${serialLines.map((l) => l.product.sku).join(", ")} ${serialLines.length === 1 ? "is" : "are"} serial-tracked — receive ${serialLines.length === 1 ? "it" : "them"} on the Receive screen so each unit's serial is recorded`,
+          { action: "receive-serials", lineIds: serialLines.map((l) => l.id) }
+        );
+      }
+
       const receipt = await receiveAgainstOrder(tx, { order: current, requested, actor });
       return {
         ...receipt,
