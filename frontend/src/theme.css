@@ -1319,7 +1319,9 @@ h3,
 
 .palette-input input {
   height: 52px;
-  padding-left: 4px;
+  /* No padding-left here: Mantine reserves the icon's width through
+     padding-inline-start when leftSection is set, and overriding it put the
+     text underneath the search icon (seen 2026-09-24). */
   font-size: 15px;
 }
 
