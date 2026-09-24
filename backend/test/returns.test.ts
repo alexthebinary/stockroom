@@ -93,6 +93,10 @@ describe("returns", () => {
     expect(await balance(ACCOUNT.COGS)).toBe(cogsBefore - 1_000);
     const stock = await prisma.inventoryBalance.findFirstOrThrow({ where: { productId, warehouseId } });
     expect(stock.onHandQty).toBe(3); // 5 − 3 shipped + 1 back
+
+    // Margin ex-tax, net of the return: (9,000 − 3,000) − (3,000 − 1,000). Tax is not profit.
+    const detail = await api.get(`/api/sales-orders/${order.id}`);
+    expect(detail.body.margin).toEqual({ revenueCents: 6_000, costCents: 2_000, marginCents: 4_000, returnedCents: 3_000 });
     await booksHold();
   });
 

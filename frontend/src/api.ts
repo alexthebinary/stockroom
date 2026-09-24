@@ -317,6 +317,8 @@ export type SalesOrder = {
   lineCount?: number;
   /** Checkout payments taken before shipment (live ones only). */
   deposits?: { id: number; paymentNumber: string; amountCents: number; invoiceId: number | null; method?: string }[];
+  /** Server-computed: goods revenue ex-tax net of returns, minus cost net of restocks. */
+  margin?: { revenueCents: number; costCents: number; marginCents: number; returnedCents: number };
   /** Customer returns posted against this order, oldest first. */
   returns?: {
     id: number;

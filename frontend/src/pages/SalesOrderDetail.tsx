@@ -328,7 +328,14 @@ export default function SalesOrderDetail() {
               <Stat
                 label="Order total"
                 value={money(data.totalCents)}
-                hint={`${data.totalQuantity ?? 0} units`}
+                hint={(() => {
+                  const units = data.totalQuantity ?? 0;
+                  const base = `${units} ${units === 1 ? "unit" : "units"}`;
+                  const credited = (data.returns ?? []).reduce((s, r) => s + r.creditCents, 0);
+                  // After a return the original total is still the right headline
+                  // (it is what was invoiced), but it must not read as the net.
+                  return credited > 0 ? `${base} · ${money(credited)} credited back` : base;
+                })()}
               />
               <Stat label="Created" value={formatDate(data.createdAt)} hint={data.employee?.name} />
             </SimpleGrid>
@@ -460,13 +467,10 @@ export default function SalesOrderDetail() {
                         <Divider my="sm" />
                         <Group justify="space-between">
                           <Text size="sm" c="dimmed">
-                            Gross margin
+                            Gross margin (ex-tax{data.margin && data.margin.returnedCents > 0 ? ", after returns" : ""})
                           </Text>
                           <Text size="sm" fw={700}>
-                            {money(
-                              data.totalCents -
-                                (data.shipments ?? []).reduce((s, sh) => s + sh.cogsCents, 0)
-                            )}
+                            {money(data.margin?.marginCents ?? 0)}
                           </Text>
                         </Group>
                       </>
@@ -487,7 +491,10 @@ export default function SalesOrderDetail() {
                       <Group key={r.id} justify="space-between" wrap="wrap">
                         <Stack gap={0}>
                           <Text fw={600} size="sm">
-                            {r.returnNumber} · {r.lines.reduce((s, l) => s + l.quantity, 0)} unit(s)
+                            {r.returnNumber} · {(() => {
+                              const n = r.lines.reduce((s, l) => s + l.quantity, 0);
+                              return `${n} ${n === 1 ? "unit" : "units"}`;
+                            })()}
                             {r.lines.some((l) => l.disposition === "WRITE_OFF") && " · includes write-off"}
                           </Text>
                           <Text size="xs" c="dimmed">

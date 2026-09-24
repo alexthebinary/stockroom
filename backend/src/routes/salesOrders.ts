@@ -303,9 +303,34 @@ salesOrdersRouter.get(
     res.json({
       ...withTrackingUrls(order),
       totalQuantity: order.lines.reduce((s, l) => s + l.quantity, 0),
+      margin: marginOf(order),
     });
   })
 );
+
+/**
+ * Gross margin as an owner reads it: goods revenue EXCLUDING tax and shipping,
+ * net of anything returned, minus the cost of what actually stayed sold. Tax
+ * collected is owed to the state and was never profit — the order page used to
+ * show total − COGS, which counted it (critique 2026-09-24, SO-001003 showed
+ * $23.44 against $19.60 ex-tax before its return).
+ */
+function marginOf(order: LoadedOrder) {
+  const soldCents = order.shipments
+    .filter((s) => s.status !== "VOID")
+    .length > 0
+    ? order.subtotalCents
+    : 0;
+  const returnedCents = order.returns.reduce(
+    (s, r) => s + r.lines.reduce((t, l) => t + l.quantity * l.unitPriceCents, 0),
+    0
+  );
+  const cogsCents = order.shipments.filter((s) => s.status !== "VOID").reduce((s, sh) => s + sh.cogsCents, 0);
+  const restockedCents = order.returns.reduce((s, r) => s + r.restockCostCents, 0);
+  const revenueCents = soldCents - returnedCents;
+  const costCents = cogsCents - restockedCents;
+  return { revenueCents, costCents, marginCents: revenueCents - costCents, returnedCents };
+}
 
 type CreateOrderInput = z.infer<typeof createSchema>;
 
