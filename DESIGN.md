@@ -35,3 +35,7 @@ Funnel Sans Variable (OFL-1.1, self-hosted via @fontsource). Chosen over Geist (
 ## Contract
 
 `backend/test/theme-contract.test.ts` enforces AA for every text/fill pair in both schemes (now including `--signal-ink` on `--signal`), light/dark token parity, and no fixed Mantine greys. It reads CSS text; it cannot see a render — look at both schemes at 1440 and 390 after any token change.
+
+## Derived states (hover) — read before touching a palette
+
+Mantine derives a filled button's hover as the next palette shade (`shade + 1`), per scheme. The `ink` and `teal` palettes are deliberately NOT ordered by lightness (shade 7 = light fill, shade 8 = dark fill), so unpinned the black pill hovered to near-white and the olive button to pale lime (operator report, 2026-09-24). Hover colours are pinned in `theme.css` (`--mantine-color-{ink,teal}-filled-hover`, under `:root:root[data-mantine-color-scheme=…]`: the doubled `:root` is what beats the variables Mantine injects at runtime). Any new palette with a non-monotonic ramp needs the same pin, and a hover check in both schemes.
