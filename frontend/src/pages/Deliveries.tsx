@@ -14,8 +14,8 @@ import { IconExternalLink } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { api, qs, type DeliveryRow, type Paginated } from "../api";
-import { PageHeader, QueryState, Stat, formatDate } from "../components/ui";
+import { api, qs, type DeliveryRow, type Paginated, openPdf } from "../api";
+import { PageHeader, QueryState, Stat, formatDate, toastErr } from "../components/ui";
 
 type Delivered = "" | "NO" | "YES";
 
@@ -197,17 +197,17 @@ export default function Deliveries() {
                     <Table.Td>
                       <Group gap="xs" wrap="nowrap">
                         <Anchor
-                          href={`/api/sales-orders/shipments/${shipment.id}/packing-slip.pdf`}
-                          target="_blank"
-                          rel="noreferrer"
+                          component="button"
+                          type="button"
+                          onClick={() => openPdf(`/sales-orders/shipments/${shipment.id}/packing-slip.pdf`).catch(toastErr)}
                           size="sm"
                         >
                           Slip
                         </Anchor>
                         <Anchor
-                          href={`/api/sales-orders/shipments/${shipment.id}/label.pdf`}
-                          target="_blank"
-                          rel="noreferrer"
+                          component="button"
+                          type="button"
+                          onClick={() => openPdf(`/sales-orders/shipments/${shipment.id}/label.pdf`).catch(toastErr)}
                           size="sm"
                         >
                           Label

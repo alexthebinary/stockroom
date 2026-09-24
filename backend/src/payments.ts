@@ -53,7 +53,7 @@ export async function paidAgainst(
  */
 export async function lockDocumentForPayment(
   tx: Tx,
-  table: "Invoice" | "Bill",
+  table: "Invoice" | "Bill" | "SalesOrder",
   id: number
 ) {
   const url = process.env.DATABASE_URL ?? "";

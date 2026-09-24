@@ -33,6 +33,7 @@ const STATUS_HUES: Record<string, string> = {
   ORDERED: IN_FLIGHT,
   POSTED: IN_FLIGHT,
   INVOICED: IN_FLIGHT,
+  PREPAID: IN_FLIGHT,
   IN_TRANSIT: IN_FLIGHT,
 
   // Settled / stock arrived

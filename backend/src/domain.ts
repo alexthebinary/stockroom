@@ -13,8 +13,11 @@ export const MOVEMENT_TYPES = [
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
 /// Sales orders carry two independent axes, per the scope.
-export const READINESS_STATUSES = ["NOT_PACKED", "PACKED", "SHIPPED", "CANCELED"] as const;
-export const SO_PAYMENT_STATUSES = ["AWAITING_PAYMENT", "INVOICED", "PAID", "VOIDED"] as const;
+export const READINESS_STATUSES = ["NOT_PACKED", "PACKED", "SHIPPED", "DELIVERED", "CANCELED"] as const;
+/// PREPAID: paid in full at checkout, not yet shipped, so the money is a
+/// customer deposit and no revenue exists yet. Shipping invoices the order and
+/// applies the deposit, which moves it to PAID.
+export const SO_PAYMENT_STATUSES = ["AWAITING_PAYMENT", "PREPAID", "INVOICED", "PAID", "VOIDED"] as const;
 
 /// The scope's purchase-order lifecycle, in order.
 export const PURCHASE_ORDER_STATUSES = ["SAVED", "POSTED", "PAID", "DELIVERED", "CANCELED"] as const;

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import { contains } from "../search";
 import { badRequest, conflict, notFound } from "../errors";
@@ -14,6 +15,8 @@ import { postSimple, reverseDocumentEntry } from "../ledger";
 import { TRANSACTION_TYPE } from "../accounts";
 import { assertReferencesUsable } from "../refs";
 import { lockDocumentForPayment, paidAgainst } from "../payments";
+import { CHANNELS, CHANNEL_CODES } from "../channels";
+import { raiseInvoice, syncDelivered, takeDeposit, unappliedDeposits } from "../order_to_cash";
 import {
   nextInvoiceNumber,
   nextPaymentNumber,
@@ -27,7 +30,7 @@ const createSchema = z.object({
   customerId: z.number().int().positive().optional(),
   customerName: z.string().min(1).optional(),
   employeeId: z.number().int().positive().optional(),
-  channel: z.string().optional(),
+  channel: z.enum(CHANNEL_CODES).optional(),
   notes: z.string().optional().nullable(),
   taxCents: z.number().int().min(0).optional(),
   shippingCents: z.number().int().min(0).optional(),
@@ -64,7 +67,10 @@ const include = {
   employee: true,
   invoices: true,
   shipments: true,
+  deposits: { where: { status: { not: "VOID" } } },
 };
+
+type LoadedOrder = Prisma.SalesOrderGetPayload<{ include: typeof include }>;
 
 salesOrdersRouter.get(
   "/",
@@ -109,6 +115,14 @@ salesOrdersRouter.get(
  * Declared BEFORE "/:id" — Express matches in declaration order, so after it
  * this literal path is read as an order id and fails "id must be an integer".
  */
+/** GET /api/sales-orders/channels — each channel and when its customers pay. */
+salesOrdersRouter.get(
+  "/channels",
+  asyncHandler(async (_req, res) => {
+    res.json({ channels: CHANNELS });
+  })
+);
+
 salesOrdersRouter.get(
   "/shipping-carriers",
   asyncHandler(async (_req, res) => res.json({ carriers: CARRIERS }))
@@ -291,6 +305,79 @@ salesOrdersRouter.get(
   })
 );
 
+type CreateOrderInput = z.infer<typeof createSchema>;
+
+/** Create an order inside a transaction. Shared by POST / and the counter sale. */
+async function createOrder(tx: Prisma.TransactionClient, body: CreateOrderInput) {
+  await assertReferencesUsable(tx, body.lines);
+
+  // A customer may be named freely on a direct order, but if an id is given
+  // it has to resolve — and its name wins, so the catalog stays the truth.
+  let customerName = body.customerName?.trim() ?? "";
+  if (body.customerId) {
+    const customer = await tx.customer.findUnique({ where: { id: body.customerId } });
+    if (!customer) throw notFound(`Customer ${body.customerId} not found`);
+    if (!customer.isActive) throw badRequest(`Customer ${customer.name} is archived`);
+    customerName = customer.name;
+  }
+  if (!customerName) throw badRequest("A sales order needs a customer");
+
+  const products = await tx.product.findMany({
+    where: { id: { in: body.lines.map((l) => l.productId) } },
+  });
+  const priceOf = (productId: number, given?: number) =>
+    given ?? products.find((p) => p.id === productId)?.defaultPriceCents ?? 0;
+
+  const lines = body.lines.map((l) => {
+    const unitPriceCents = priceOf(l.productId, l.unitPriceCents);
+    return {
+      productId: l.productId,
+      warehouseId: l.warehouseId,
+      quantity: l.quantity,
+      unitPriceCents,
+      lineTotalCents: unitPriceCents * l.quantity,
+      status: "PENDING",
+    };
+  });
+
+  const subtotalCents = lines.reduce((s, l) => s + l.lineTotalCents, 0);
+  const taxCents = body.taxCents ?? 0;
+  const shippingCents = body.shippingCents ?? 0;
+
+  return tx.salesOrder.create({
+    data: {
+      orderNumber: await nextSalesOrderNumber(tx),
+      customerId: body.customerId ?? null,
+      customerName,
+      employeeId: body.employeeId ?? null,
+      channel: body.channel ?? "DIRECT",
+      notes: body.notes ?? null,
+      readinessStatus: "NOT_PACKED",
+      paymentStatus: "AWAITING_PAYMENT",
+      subtotalCents,
+      taxCents,
+      shippingCents,
+      totalCents: subtotalCents + taxCents + shippingCents,
+      lines: { create: lines },
+    },
+    include,
+  });
+}
+
+/** Reserve every line of an order against its warehouse. */
+async function reserveLines(tx: Prisma.TransactionClient, current: LoadedOrder) {
+  for (const line of current.lines) {
+    await reserveStock(
+      tx,
+      line.productId,
+      line.warehouseId,
+      line.quantity,
+      `Cannot reserve ${line.product.sku} at ${line.warehouse.code}`
+    );
+    await tx.salesOrderLine.update({ where: { id: line.id }, data: { status: "RESERVED" } });
+  }
+}
+
 salesOrdersRouter.post(
   "/",
   requireStock,
@@ -298,59 +385,7 @@ salesOrdersRouter.post(
     const body = parseBody(createSchema, req.body);
 
     const order = await prisma.$transaction(async (tx) => {
-      await assertReferencesUsable(tx, body.lines);
-
-      // A customer may be named freely on a direct order, but if an id is given
-      // it has to resolve — and its name wins, so the catalog stays the truth.
-      let customerName = body.customerName?.trim() ?? "";
-      if (body.customerId) {
-        const customer = await tx.customer.findUnique({ where: { id: body.customerId } });
-        if (!customer) throw notFound(`Customer ${body.customerId} not found`);
-        if (!customer.isActive) throw badRequest(`Customer ${customer.name} is archived`);
-        customerName = customer.name;
-      }
-      if (!customerName) throw badRequest("A sales order needs a customer");
-
-      const products = await tx.product.findMany({
-        where: { id: { in: body.lines.map((l) => l.productId) } },
-      });
-      const priceOf = (productId: number, given?: number) =>
-        given ?? products.find((p) => p.id === productId)?.defaultPriceCents ?? 0;
-
-      const lines = body.lines.map((l) => {
-        const unitPriceCents = priceOf(l.productId, l.unitPriceCents);
-        return {
-          productId: l.productId,
-          warehouseId: l.warehouseId,
-          quantity: l.quantity,
-          unitPriceCents,
-          lineTotalCents: unitPriceCents * l.quantity,
-          status: "PENDING",
-        };
-      });
-
-      const subtotalCents = lines.reduce((s, l) => s + l.lineTotalCents, 0);
-      const taxCents = body.taxCents ?? 0;
-      const shippingCents = body.shippingCents ?? 0;
-
-      return tx.salesOrder.create({
-        data: {
-          orderNumber: await nextSalesOrderNumber(tx),
-          customerId: body.customerId ?? null,
-          customerName,
-          employeeId: body.employeeId ?? null,
-          channel: body.channel ?? "DIRECT",
-          notes: body.notes ?? null,
-          readinessStatus: "NOT_PACKED",
-          paymentStatus: "AWAITING_PAYMENT",
-          subtotalCents,
-          taxCents,
-          shippingCents,
-          totalCents: subtotalCents + taxCents + shippingCents,
-          lines: { create: lines },
-        },
-        include,
-      });
+      return createOrder(tx, body);
     });
 
     res.status(201).json(order);
@@ -386,16 +421,7 @@ salesOrdersRouter.post(
       );
       if (!claimed) throw conflict("This order was already packed by another request");
 
-      for (const line of current.lines) {
-        await reserveStock(
-          tx,
-          line.productId,
-          line.warehouseId,
-          line.quantity,
-          `Cannot reserve ${line.product.sku} at ${line.warehouse.code}`
-        );
-        await tx.salesOrderLine.update({ where: { id: line.id }, data: { status: "RESERVED" } });
-      }
+      await reserveLines(tx, current);
 
       return tx.salesOrder.findUniqueOrThrow({ where: { id }, include });
     });
@@ -404,7 +430,12 @@ salesOrdersRouter.post(
   })
 );
 
-/** Invoicing is a financial transaction: Dr Accounts Receivable, Cr Sales Revenue. */
+/**
+ * Invoice in advance of shipment — billing a wholesale buyer before the goods
+ * leave, or a pro-forma. The normal path does not need this: /ship raises the
+ * invoice itself, because that is when revenue is earned. Checkout deposits
+ * already held are applied to it either way.
+ */
 salesOrdersRouter.post(
   "/:id/invoice",
   requireMoney,
@@ -416,46 +447,10 @@ salesOrdersRouter.post(
       const current = await tx.salesOrder.findUnique({ where: { id }, include });
       if (!current) throw notFound("Sales order not found");
       if (current.readinessStatus === "CANCELED") throw conflict("A canceled order cannot be invoiced");
-      if (current.paymentStatus !== "AWAITING_PAYMENT") {
+      if (current.paymentStatus !== "AWAITING_PAYMENT" && current.paymentStatus !== "PREPAID") {
         throw conflict(`This order is already ${current.paymentStatus.toLowerCase().replace("_", " ")}`);
       }
-      if (!current.customerId) {
-        throw badRequest("An invoice needs a customer from the catalog, not just a name");
-      }
-      if (current.totalCents <= 0) {
-        throw badRequest("Cannot invoice an order with no value — set unit prices on its lines");
-      }
-
-      // Claim the payment-status transition atomically, so a double-click
-      // cannot post two invoices for the same order.
-      const claimed = await tx.salesOrder.updateMany({
-        where: { id, paymentStatus: "AWAITING_PAYMENT" },
-        data: { paymentStatus: "INVOICED" },
-      });
-      if (claimed.count === 0) throw conflict("This order was already invoiced");
-
-      const invoice = await tx.invoice.create({
-        data: {
-          invoiceNumber: await nextInvoiceNumber(tx),
-          salesOrderId: current.id,
-          customerId: current.customerId,
-          subtotalCents: current.subtotalCents,
-          taxCents: current.taxCents,
-          shippingCents: current.shippingCents,
-          totalCents: current.totalCents,
-          status: "POSTED",
-        },
-      });
-
-      const entry = await postSimple(tx, {
-        transactionType: TRANSACTION_TYPE.SALES_INVOICE,
-        amountCents: current.totalCents,
-        memo: `Invoice ${invoice.invoiceNumber} for ${current.orderNumber}`,
-        referenceType: "INVOICE",
-        referenceId: invoice.id,
-        actor,
-      });
-
+      const { invoice, entry } = await raiseInvoice(tx, current, actor);
       return { invoice, entry, order: await tx.salesOrder.findUniqueOrThrow({ where: { id }, include }) };
     });
 
@@ -476,6 +471,13 @@ salesOrdersRouter.post(
     const result = await prisma.$transaction(async (tx) => {
       const current = await tx.salesOrder.findUnique({ where: { id }, include });
       if (!current) throw notFound("Sales order not found");
+      // Before shipment the money is a checkout deposit, not a payment against
+      // revenue: nothing has been sold yet.
+      if (current.paymentStatus === "AWAITING_PAYMENT") {
+        const deposit = await takeDeposit(tx, current, { amountCents: body.amountCents, method, actor });
+        return { ...deposit, order: await tx.salesOrder.findUniqueOrThrow({ where: { id }, include }) };
+      }
+      if (current.paymentStatus === "PREPAID") throw conflict("This order was paid in full at checkout");
       if (current.paymentStatus !== "INVOICED") {
         throw conflict(`Only an invoiced order can be paid (this one is ${current.paymentStatus})`);
       }
@@ -610,6 +612,10 @@ salesOrdersRouter.post(
       },
     });
 
+    if (body.delivered !== undefined) {
+      await prisma.$transaction((tx) => syncDelivered(tx, shipment.salesOrderId));
+    }
+
     res.json({ ...shipment, trackingUrl: trackingUrl(shipment.carrier, shipment.trackingNumber) });
   })
 );
@@ -717,17 +723,16 @@ salesOrdersRouter.post(
       // Deliberately NOT gated on PAID. Once an invoice can be part paid, a
       // mis-keyed deposit sits on an order that never reached PAID, and the old
       // guard made exactly that mistake impossible to undo.
-      if (current.paymentStatus !== "PAID" && current.paymentStatus !== "INVOICED") {
-        throw conflict(`This order has no payment to reverse (it is ${current.paymentStatus})`);
-      }
-
       const invoiceIds = current.invoices.map((i) => i.id);
+      // A payment belongs to the order either through its invoice or, when it
+      // was taken at checkout, directly as a deposit.
+      const belongs = { OR: [{ invoiceId: { in: invoiceIds } }, { salesOrderId: id }] };
       const payment = body.paymentId
         ? await tx.payment.findFirst({
-            where: { id: body.paymentId, invoiceId: { in: invoiceIds }, status: { not: "VOID" } },
+            where: { id: body.paymentId, ...belongs, status: { not: "VOID" } },
           })
         : await tx.payment.findFirst({
-            where: { invoiceId: { in: invoiceIds }, status: { not: "VOID" } },
+            where: { ...belongs, status: { not: "VOID" } },
             orderBy: { id: "desc" },
           });
       if (!payment) {
@@ -748,6 +753,13 @@ salesOrdersRouter.post(
         });
         if (claimed.count === 0) throw conflict("This order was already changed");
       }
+      // A full checkout payment reversed before shipment: nothing is paid now.
+      if (current.paymentStatus === "PREPAID") {
+        await tx.salesOrder.updateMany({
+          where: { id, paymentStatus: "PREPAID" },
+          data: { paymentStatus: "AWAITING_PAYMENT" },
+        });
+      }
 
       // Void the payment BEFORE reversing its entry: unpostEntry now refuses an
       // entry whose document still reads posted, and reverseDocumentEntry runs
@@ -758,6 +770,14 @@ salesOrdersRouter.post(
         actor,
         memo: `Payment ${payment.paymentNumber} reversed: ${reason}`,
       });
+      // A checkout deposit that was applied to the invoice moved Deposits into
+      // AR as well. Undo both legs, or Customer Deposits is left negative.
+      if (payment.salesOrderId && payment.invoiceId) {
+        await reverseDocumentEntry(tx, "DEPOSIT_APPLICATION", payment.id, {
+          actor,
+          memo: `Application of ${payment.paymentNumber} reversed: ${reason}`,
+        });
+      }
 
       return {
         payment: await tx.payment.findUniqueOrThrow({ where: { id: payment.id } }),
@@ -769,6 +789,145 @@ salesOrdersRouter.post(
     res.json(result);
   })
 );
+
+type ShipInput = z.infer<typeof shipSchema>;
+
+/**
+ * Ship a packed order: stock leaves, FIFO layers are consumed, COGS is booked,
+ * and the invoice is raised. Shared by /ship and the showroom counter sale, so
+ * a sale made at the counter is costed exactly like one that left in a van.
+ */
+async function shipPacked(tx: Prisma.TransactionClient, current: LoadedOrder, shipInput: ShipInput, actor: string) {
+  const id = current.id;
+  if (current.readinessStatus !== "PACKED") {
+    throw conflict(`Only a packed order can ship (this one is ${current.readinessStatus})`);
+  }
+
+  const claimed = await claimStatusTransition(
+    (args) =>
+      tx.salesOrder.updateMany({
+        where: { id: args.where.id, readinessStatus: args.where.status },
+        data: { readinessStatus: args.data.status },
+      }),
+    id,
+    "PACKED",
+    "SHIPPED"
+  );
+  if (!claimed) throw conflict("This order was already shipped by another request");
+
+  // Each line ships from its own warehouse. Naming one on the document
+  // would be a lie for a multi-warehouse order, so it is only set when
+  // every line agrees.
+  const warehouseIds = new Set(current.lines.map((l) => l.warehouseId));
+  const warehouseId = warehouseIds.size === 1 ? current.lines[0].warehouseId : null;
+  const shipment = await tx.shipment.create({
+    data: {
+      shipmentNumber: await nextShipmentNumber(tx),
+      salesOrderId: current.id,
+      warehouseId,
+      status: "POSTED",
+      // Optional, because the tracking number often arrives after the van
+      // has gone. /tracking below fills it in later without reopening the
+      // shipment or touching stock.
+      carrier: shipInput.carrier ?? null,
+      trackingNumber: shipInput.trackingNumber ?? null,
+    },
+  });
+
+  let cogsCents = 0;
+  for (const line of current.lines) {
+    await applyBalanceDelta(
+      tx,
+      line.productId,
+      line.warehouseId,
+      { onHandQty: -line.quantity, reservedQty: -line.quantity },
+      `Cannot ship ${line.product.sku} from ${line.warehouse.code}`,
+      // A shipment releases the reservation it is drawing down.
+      { allowReserved: true }
+    );
+
+    // 🔴 SERIALIZED PRODUCTS TAKE A DIFFERENT PATH ON PURPOSE.
+    // consumeFifo is quantity-driven and oldest-layer-first. For a serialized
+    // product that would ship SOME unit, cost it correctly, and record the
+    // WRONG serial against the shipment — the customer holds serial X while
+    // our warranty lookup says Y. Silent until a claim. So a serialized line
+    // must name its units, and consumption resolves to exactly those layers.
+    const serialized = line.product.trackingMode === "SERIAL";
+    let consumed: { totalCostCents: number; consumptionIds: number[] };
+
+    if (serialized) {
+      const named = shipInput.serials?.find((s) => s.lineId === line.id);
+      if (!named) {
+        throw badRequest(
+          `${line.product.sku} is serial-tracked — name the ${line.quantity} unit(s) being shipped on this line`,
+          { action: "scan-serials", lineId: line.id, quantity: line.quantity }
+        );
+      }
+      if (named.serialNumbers.length !== line.quantity) {
+        throw badRequest(
+          `${line.product.sku}: ${named.serialNumbers.length} serial(s) named for a line of ${line.quantity}`,
+          { action: "scan-serials", lineId: line.id, quantity: line.quantity }
+        );
+      }
+      consumed = await consumeSerials(tx, {
+        productId: line.productId,
+        warehouseId: line.warehouseId,
+        serialNumbers: named.serialNumbers,
+        sourceType: "SHIPMENT",
+        sourceId: shipment.id,
+        context: `Cannot ship ${line.product.sku} from ${line.warehouse.code}`,
+        toStatus: "SOLD",
+      });
+    } else {
+      consumed = await consumeFifo(tx, {
+        productId: line.productId,
+        warehouseId: line.warehouseId,
+        quantity: line.quantity,
+        sourceType: "SHIPMENT",
+        sourceId: shipment.id,
+        context: `Cannot cost ${line.product.sku} at ${line.warehouse.code}`,
+      });
+    }
+    cogsCents += consumed.totalCostCents;
+
+    const movement = await recordMovement(tx, {
+      productId: line.productId,
+      fromWarehouseId: line.warehouseId,
+      quantity: line.quantity,
+      movementType: "SALE_SHIP",
+      reason: `Shipped on ${current.orderNumber}`,
+      referenceType: "SHIPMENT",
+      referenceId: shipment.id,
+      totalCostCents: consumed.totalCostCents,
+      actor,
+    });
+    await attachConsumptionsToMovement(tx, consumed.consumptionIds, movement.id);
+    await tx.salesOrderLine.update({ where: { id: line.id }, data: { status: "SHIPPED" } });
+  }
+
+  await tx.shipment.update({ where: { id: shipment.id }, data: { cogsCents } });
+
+  // Revenue is earned as the goods leave, so the invoice is raised here, in
+  // the same transaction as COGS. An order billed in advance already has
+  // one. An order with no catalog customer or no value cannot be invoiced;
+  // it still ships, and the close rulebook reports it as unbilled.
+  const invoiceable =
+    (current.paymentStatus === "AWAITING_PAYMENT" || current.paymentStatus === "PREPAID") &&
+    current.customerId !== null &&
+    current.totalCents > 0;
+  if (invoiceable) await raiseInvoice(tx, current, actor);
+
+  const entry = await postSimple(tx, {
+    transactionType: TRANSACTION_TYPE.SALES_SHIPMENT_COGS,
+    amountCents: cogsCents,
+    memo: `COGS for ${shipment.shipmentNumber} (${current.orderNumber})`,
+    referenceType: "SHIPMENT",
+    referenceId: shipment.id,
+    actor,
+  });
+
+  return { shipment: { ...shipment, cogsCents }, entry };
+}
 
 /**
  * SHIP is where inventory and the ledger meet: stock leaves, FIFO layers are
@@ -785,131 +944,94 @@ salesOrdersRouter.post(
     const result = await prisma.$transaction(async (tx) => {
       const current = await tx.salesOrder.findUnique({ where: { id }, include });
       if (!current) throw notFound("Sales order not found");
-      if (current.readinessStatus !== "PACKED") {
-        throw conflict(`Only a packed order can ship (this one is ${current.readinessStatus})`);
-      }
-
-      const claimed = await claimStatusTransition(
-        (args) =>
-          tx.salesOrder.updateMany({
-            where: { id: args.where.id, readinessStatus: args.where.status },
-            data: { readinessStatus: args.data.status },
-          }),
-        id,
-        "PACKED",
-        "SHIPPED"
-      );
-      if (!claimed) throw conflict("This order was already shipped by another request");
-
-      // Each line ships from its own warehouse. Naming one on the document
-      // would be a lie for a multi-warehouse order, so it is only set when
-      // every line agrees.
-      const warehouseIds = new Set(current.lines.map((l) => l.warehouseId));
-      const warehouseId = warehouseIds.size === 1 ? current.lines[0].warehouseId : null;
-      const shipment = await tx.shipment.create({
-        data: {
-          shipmentNumber: await nextShipmentNumber(tx),
-          salesOrderId: current.id,
-          warehouseId,
-          status: "POSTED",
-          // Optional, because the tracking number often arrives after the van
-          // has gone. /tracking below fills it in later without reopening the
-          // shipment or touching stock.
-          carrier: shipInput.carrier ?? null,
-          trackingNumber: shipInput.trackingNumber ?? null,
-        },
-      });
-
-      let cogsCents = 0;
-      for (const line of current.lines) {
-        await applyBalanceDelta(
-          tx,
-          line.productId,
-          line.warehouseId,
-          { onHandQty: -line.quantity, reservedQty: -line.quantity },
-          `Cannot ship ${line.product.sku} from ${line.warehouse.code}`,
-          // A shipment releases the reservation it is drawing down.
-          { allowReserved: true }
-        );
-
-        // 🔴 SERIALIZED PRODUCTS TAKE A DIFFERENT PATH ON PURPOSE.
-        // consumeFifo is quantity-driven and oldest-layer-first. For a serialized
-        // product that would ship SOME unit, cost it correctly, and record the
-        // WRONG serial against the shipment — the customer holds serial X while
-        // our warranty lookup says Y. Silent until a claim. So a serialized line
-        // must name its units, and consumption resolves to exactly those layers.
-        const serialized = line.product.trackingMode === "SERIAL";
-        let consumed: { totalCostCents: number; consumptionIds: number[] };
-
-        if (serialized) {
-          const named = shipInput.serials?.find((s) => s.lineId === line.id);
-          if (!named) {
-            throw badRequest(
-              `${line.product.sku} is serial-tracked — name the ${line.quantity} unit(s) being shipped on this line`,
-              { action: "scan-serials", lineId: line.id, quantity: line.quantity }
-            );
-          }
-          if (named.serialNumbers.length !== line.quantity) {
-            throw badRequest(
-              `${line.product.sku}: ${named.serialNumbers.length} serial(s) named for a line of ${line.quantity}`,
-              { action: "scan-serials", lineId: line.id, quantity: line.quantity }
-            );
-          }
-          consumed = await consumeSerials(tx, {
-            productId: line.productId,
-            warehouseId: line.warehouseId,
-            serialNumbers: named.serialNumbers,
-            sourceType: "SHIPMENT",
-            sourceId: shipment.id,
-            context: `Cannot ship ${line.product.sku} from ${line.warehouse.code}`,
-            toStatus: "SOLD",
-          });
-        } else {
-          consumed = await consumeFifo(tx, {
-            productId: line.productId,
-            warehouseId: line.warehouseId,
-            quantity: line.quantity,
-            sourceType: "SHIPMENT",
-            sourceId: shipment.id,
-            context: `Cannot cost ${line.product.sku} at ${line.warehouse.code}`,
-          });
-        }
-        cogsCents += consumed.totalCostCents;
-
-        const movement = await recordMovement(tx, {
-          productId: line.productId,
-          fromWarehouseId: line.warehouseId,
-          quantity: line.quantity,
-          movementType: "SALE_SHIP",
-          reason: `Shipped on ${current.orderNumber}`,
-          referenceType: "SHIPMENT",
-          referenceId: shipment.id,
-          totalCostCents: consumed.totalCostCents,
-          actor,
-        });
-        await attachConsumptionsToMovement(tx, consumed.consumptionIds, movement.id);
-        await tx.salesOrderLine.update({ where: { id: line.id }, data: { status: "SHIPPED" } });
-      }
-
-      await tx.shipment.update({ where: { id: shipment.id }, data: { cogsCents } });
-
-      const entry = await postSimple(tx, {
-        transactionType: TRANSACTION_TYPE.SALES_SHIPMENT_COGS,
-        amountCents: cogsCents,
-        memo: `COGS for ${shipment.shipmentNumber} (${current.orderNumber})`,
-        referenceType: "SHIPMENT",
-        referenceId: shipment.id,
-        actor,
-      });
+      const { shipment, entry } = await shipPacked(tx, current, shipInput, actor);
 
       return {
-        shipment: { ...shipment, cogsCents },
+        shipment,
         entry,
         order: await tx.salesOrder.findUniqueOrThrow({ where: { id }, include }),
       };
     });
 
     res.json(result);
+  })
+);
+
+const counterSaleSchema = createSchema.omit({ channel: true, customerName: true }).extend({
+  /// A new client met in the showroom. Ignored when customerId is given.
+  client: z
+    .object({
+      name: z.string().trim().min(1),
+      email: z.string().trim().email().optional().nullable(),
+      phone: z.string().trim().optional().nullable(),
+    })
+    .optional(),
+  method: z.enum(["CARD", "CASH", "BANK"]).default("CARD"),
+  serials: shipSchema.shape.serials,
+});
+
+/**
+ * A showroom sale: the client pays at the counter and leaves with the goods.
+ *
+ * One request, one transaction, and every step is the ordinary one — the
+ * order is created on the SHOWROOM channel, reserved, paid (a checkout
+ * deposit), shipped (FIFO cost, COGS, and the invoice that applies the
+ * deposit), and marked delivered because the client carried it out. Nothing
+ * here is a shortcut through the books, so the counter sale reconciles exactly
+ * like an order that left in a van. The response carries the invoice, whose
+ * PDF is the paid in-store invoice handed to the client.
+ */
+salesOrdersRouter.post(
+  "/counter-sale",
+  requireStock,
+  requireMoney,
+  asyncHandler(async (req, res) => {
+    const body = parseBody(counterSaleSchema, req.body);
+    const actor = actorOf(req);
+
+    const result = await prisma.$transaction(async (tx) => {
+      let customerId = body.customerId;
+      if (!customerId) {
+        // A named new client joins the catalog, because they are a real client
+        // with an invoice in their name. An unnamed sale goes to one shared
+        // walk-in record rather than inventing a customer per receipt.
+        const name = body.client?.name ?? "Walk-in client";
+        const existing = body.client ? null : await tx.customer.findFirst({ where: { name } });
+        customerId = (
+          existing ??
+          (await tx.customer.create({
+            data: { name, email: body.client?.email ?? null, phone: body.client?.phone ?? null },
+          }))
+        ).id;
+      }
+
+      const created = await createOrder(tx, {
+        ...body,
+        customerId,
+        channel: "SHOWROOM",
+      });
+      await tx.salesOrder.update({ where: { id: created.id }, data: { readinessStatus: "PACKED" } });
+      await reserveLines(tx, created);
+
+      const packed = await tx.salesOrder.findUniqueOrThrow({ where: { id: created.id }, include });
+      const { payment } = await takeDeposit(tx, packed, { method: body.method ?? "CARD", actor });
+
+      const paid = await tx.salesOrder.findUniqueOrThrow({ where: { id: created.id }, include });
+      const { shipment } = await shipPacked(
+        tx,
+        paid,
+        { carrier: "Collected in store", serials: body.serials },
+        actor
+      );
+      await tx.shipment.update({ where: { id: shipment.id }, data: { deliveredAt: new Date() } });
+      await syncDelivered(tx, created.id);
+
+      const order = await tx.salesOrder.findUniqueOrThrow({ where: { id: created.id }, include });
+      const invoice = order.invoices.find((i) => i.status === "POSTED");
+      return { order, invoice, shipment, payment };
+    });
+
+    res.status(201).json(result);
   })
 );
 
@@ -923,7 +1045,18 @@ salesOrdersRouter.post(
     const order = await prisma.$transaction(async (tx) => {
       const current = await tx.salesOrder.findUnique({ where: { id }, include });
       if (!current) throw notFound("Sales order not found");
-      if (current.readinessStatus === "SHIPPED") throw conflict("A shipped order cannot be canceled");
+      if (current.readinessStatus === "SHIPPED" || current.readinessStatus === "DELIVERED") {
+        throw conflict("A shipped order cannot be canceled");
+      }
+      // Checkout money is owed back to the customer. Cancelling around it
+      // would leave the deposit on the books with no order to ship.
+      const held = await unappliedDeposits(tx, id);
+      if (held.length > 0) {
+        throw conflict(
+          `This order holds checkout payment ${held[held.length - 1].paymentNumber}. Reverse it (refund the customer) first, then cancel.`,
+          { action: "reverse-payment", salesOrderId: current.id, paymentNumber: held[held.length - 1].paymentNumber }
+        );
+      }
       if (current.readinessStatus === "CANCELED") throw conflict("Order is already canceled");
       if (current.paymentStatus === "PAID") {
         // Naming an action without saying where it lives is a dead end: until

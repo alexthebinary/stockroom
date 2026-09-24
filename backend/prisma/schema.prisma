@@ -173,6 +173,7 @@ model SalesOrder {
   lines     SalesOrderLine[]
   invoices  Invoice[]
   shipments Shipment[]
+  deposits  Payment[]
 }
 
 /// status: PENDING | RESERVED | SHIPPED | CANCELED
@@ -567,6 +568,9 @@ model Invoice {
   salesOrderId  Int?
   customerId    Int
   issueDate     DateTime @default(now())
+  /// When the customer owes it: issue date plus the channel's terms. Null on
+  /// invoices raised before channels carried terms.
+  dueDate       DateTime?
   subtotalCents Int      @default(0)
   taxCents      Int      @default(0)
   shippingCents Int      @default(0)
@@ -618,9 +622,14 @@ model Payment {
   billId        Int?
   customerId    Int?
   vendorId      Int?
+  /// Set on a checkout payment taken before the order shipped. Until shipment
+  /// raises the invoice, invoiceId is null and the money is a deposit; the
+  /// invoice is attached when the deposit is applied.
+  salesOrderId  Int?
   createdAt     DateTime @default(now())
 
-  invoice  Invoice?  @relation(fields: [invoiceId], references: [id])
+  invoice    Invoice?    @relation(fields: [invoiceId], references: [id])
+  salesOrder SalesOrder? @relation(fields: [salesOrderId], references: [id])
   bill     Bill?     @relation(fields: [billId], references: [id])
   customer Customer? @relation(fields: [customerId], references: [id])
   vendor   Vendor?   @relation(fields: [vendorId], references: [id])

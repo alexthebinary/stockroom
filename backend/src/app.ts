@@ -17,6 +17,7 @@ import { stockCountsRouter } from "./routes/stockCounts";
 import { stockTransfersRouter } from "./routes/stockTransfers";
 import { warehousesRouter } from "./routes/warehouses";
 import { receivingRouter } from "./routes/receiving";
+import { closeRouter } from "./routes/close";
 import { errorMiddleware } from "./http";
 import { basicAuthGate } from "./auth-gate";
 import { attachUser, ensureBootstrapAdmin, requireSession } from "./auth";
@@ -76,6 +77,7 @@ export function createApp() {
   // inventoryRouter owns two unrelated paths, so it mounts at the API root.
   app.use("/api", inventoryRouter);
   app.use("/api", receivingRouter);
+  app.use("/api", closeRouter);
 
   /**
    * Single-process mode.

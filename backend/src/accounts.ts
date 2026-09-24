@@ -14,6 +14,10 @@ export const ACCOUNT = {
   INVENTORY_IN_TRANSIT: "1210",
   PREPAID_INVENTORY: "1250",
   ACCOUNTS_PAYABLE: "2000",
+  /// Money taken at checkout for goods not yet shipped. It is owed to the
+  /// customer (as goods or a refund) until the order ships, so it is a
+  /// liability, not revenue.
+  CUSTOMER_DEPOSITS: "2100",
   OPENING_BALANCE_EQUITY: "3000",
   SALES_REVENUE: "4000",
   INVENTORY_GAIN: "4900",
@@ -38,6 +42,7 @@ export const CHART_OF_ACCOUNTS = [
   { code: ACCOUNT.INVENTORY_IN_TRANSIT, name: "Inventory In Transit", accountType: "ASSET", normalSide: "DEBIT" },
   { code: ACCOUNT.PREPAID_INVENTORY, name: "Prepaid Inventory", accountType: "ASSET", normalSide: "DEBIT" },
   { code: ACCOUNT.ACCOUNTS_PAYABLE, name: "Accounts Payable", accountType: "LIABILITY", normalSide: "CREDIT" },
+  { code: ACCOUNT.CUSTOMER_DEPOSITS, name: "Customer Deposits", accountType: "LIABILITY", normalSide: "CREDIT" },
   // Where stock that existed before the books did comes from. Opening stock is
   // not income: booking it to Inventory Gain overstates revenue by the whole
   // opening position and shows a period with sales and no cost.
@@ -59,6 +64,8 @@ export const TRANSACTION_TYPE = {
   SALES_INVOICE: "SALES_INVOICE",
   SALES_PAYMENT: "SALES_PAYMENT",
   SALES_SHIPMENT_COGS: "SALES_SHIPMENT_COGS",
+  CUSTOMER_DEPOSIT: "CUSTOMER_DEPOSIT",
+  DEPOSIT_APPLIED: "DEPOSIT_APPLIED",
   PURCHASE_BILL: "PURCHASE_BILL",
   PURCHASE_PAYMENT: "PURCHASE_PAYMENT",
   GOODS_RECEIPT: "GOODS_RECEIPT",
@@ -93,6 +100,18 @@ export const JOURNAL_TEMPLATES: {
     transactionType: TRANSACTION_TYPE.SALES_PAYMENT,
     description: "Receive payment from a customer",
     debitAccountCode: ACCOUNT.BANK,
+    creditAccountCode: ACCOUNT.ACCOUNTS_RECEIVABLE,
+  },
+  {
+    transactionType: TRANSACTION_TYPE.CUSTOMER_DEPOSIT,
+    description: "Take payment at checkout, before the goods ship",
+    debitAccountCode: ACCOUNT.BANK,
+    creditAccountCode: ACCOUNT.CUSTOMER_DEPOSITS,
+  },
+  {
+    transactionType: TRANSACTION_TYPE.DEPOSIT_APPLIED,
+    description: "Apply a checkout payment to the invoice raised on shipment",
+    debitAccountCode: ACCOUNT.CUSTOMER_DEPOSITS,
     creditAccountCode: ACCOUNT.ACCOUNTS_RECEIVABLE,
   },
   {
@@ -184,6 +203,14 @@ export async function syncChartOfAccounts() {
   const { prisma } = await import("./db");
   const existing = new Set((await prisma.account.findMany({ select: { code: true } })).map((a) => a.code));
   const missing = CHART_OF_ACCOUNTS.filter((a) => !existing.has(a.code));
+  // Posting rules are data too, and a seed only runs on an empty database, so
+  // a rule added in code has to be reconciled here or the Posting rules page
+  // never shows it on an existing install.
+  const rules = new Set(
+    (await prisma.journalTemplate.findMany({ select: { transactionType: true } })).map((t) => t.transactionType)
+  );
+  const missingRules = JOURNAL_TEMPLATES.filter((t) => !rules.has(t.transactionType));
+  if (missingRules.length > 0) await prisma.journalTemplate.createMany({ data: missingRules });
   if (missing.length === 0) return [];
   await prisma.account.createMany({ data: missing });
   return missing.map((a) => `${a.code} ${a.name}`);

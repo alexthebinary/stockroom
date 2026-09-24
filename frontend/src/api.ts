@@ -313,6 +313,8 @@ export type SalesOrder = {
   shipments?: ShipmentOnOrder[];
   totalQuantity?: number;
   lineCount?: number;
+  /** Checkout payments taken before shipment (live ones only). */
+  deposits?: { id: number; paymentNumber: string; amountCents: number; invoiceId: number | null }[];
 };
 
 /**
@@ -588,6 +590,45 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, body?.error ?? res.statusText, body?.details);
   }
   return body as T;
+}
+
+/**
+ * Open a server-rendered PDF in a new tab.
+ *
+ * The API authenticates with a HEADER, and a plain `<a href>` cannot send one,
+ * so every PDF link in the app answered 401 once sign-in became real. This
+ * fetches with the session, then shows the bytes. The tab is opened BEFORE the
+ * await: a window opened after one is no longer a response to the click, and
+ * mobile Safari blocks it as a pop-up.
+ */
+export async function openPdf(path: string) {
+  const tab = window.open("", "_blank");
+  try {
+    const res = await fetch(`/api${path}`, {
+      headers: {
+        ...(authToken() ? { "X-Stockroom-Session": authToken()! } : {}),
+        ...(actingRole() ? { "X-Act-As-Role": actingRole()! } : {}),
+      },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let message = res.statusText;
+      try {
+        message = JSON.parse(text)?.error ?? message;
+      } catch {
+        /* not JSON */
+      }
+      throw new ApiError(res.status, message);
+    }
+    const url = URL.createObjectURL(await res.blob());
+    if (tab) tab.location.href = url;
+    else window.location.href = url;
+    // Long enough for the viewer to load it; the tab keeps its own copy.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (error) {
+    tab?.close();
+    throw error;
+  }
 }
 
 /** Drops empty/undefined params so the URL stays readable. */

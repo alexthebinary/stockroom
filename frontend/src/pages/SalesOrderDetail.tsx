@@ -17,7 +17,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { useState } from "react";
-import { api, type SalesOrder, type ShipmentOnOrder } from "../api";
+import { api, type SalesOrder, type ShipmentOnOrder, openPdf } from "../api";
 import { GatedButton } from "../components/GatedButton";
 import {
   PageHeader,
@@ -104,18 +104,18 @@ function ShipmentTracking({
             </Badge>
           )}
           <Anchor
-            href={`/api/sales-orders/shipments/${shipment.id}/packing-slip.pdf`}
-            target="_blank"
-            rel="noopener"
+            component="button"
+            type="button"
+            onClick={() => openPdf(`/sales-orders/shipments/${shipment.id}/packing-slip.pdf`).catch(toastErr)}
             size="xs"
             fw={500}
           >
             Packing slip
           </Anchor>
           <Anchor
-            href={`/api/sales-orders/shipments/${shipment.id}/label.pdf`}
-            target="_blank"
-            rel="noopener"
+            component="button"
+            type="button"
+            onClick={() => openPdf(`/sales-orders/shipments/${shipment.id}/label.pdf`).catch(toastErr)}
             size="xs"
             fw={500}
           >
@@ -222,26 +222,36 @@ export default function SalesOrderDetail() {
                 onClick={() => action.mutate("invoice")}
                 loading={busy("invoice")}
                 reason={
-                  payment !== "AWAITING_PAYMENT"
+                  payment !== "AWAITING_PAYMENT" && payment !== "PREPAID"
                     ? `This order is already ${formatStatus(payment!).toLowerCase()}`
                     : !data.customerId
                       ? "An invoice needs a customer from the catalog"
                       : undefined
                 }
               >
-                Invoice
+                {/* Shipping invoices the order by itself; this is billing ahead of it. */}
+                Invoice before shipping
               </GatedButton>
               <GatedButton
                 variant="light"
                 onClick={() => action.mutate("pay")}
                 loading={busy("pay")}
                 reason={
-                  payment !== "INVOICED"
-                    ? `Only an invoiced order can be paid — this one is ${formatStatus(payment!).toLowerCase()}`
-                    : undefined
+                  readiness === "CANCELED"
+                    ? "This order is canceled"
+                    : payment === "PREPAID"
+                      ? "Paid in full at checkout — shipping will invoice and settle it"
+                      : payment === "PAID"
+                        ? "This order is paid"
+                        : payment === "VOIDED"
+                          ? "This order's payment was voided"
+                          : !data.customerId
+                            ? "Taking payment needs a customer from the catalog"
+                            : undefined
                 }
               >
-                Record payment
+                {/* Before shipment the money is held as a customer deposit. */}
+                {payment === "AWAITING_PAYMENT" ? "Take payment" : "Record payment"}
               </GatedButton>
               <GatedButton
                 color="teal.9"
@@ -270,8 +280,10 @@ export default function SalesOrderDetail() {
                 onClick={() => action.mutate("cancel")}
                 loading={busy("cancel")}
                 reason={
-                  readiness === "SHIPPED"
+                  readiness === "SHIPPED" || readiness === "DELIVERED"
                     ? "A shipped order cannot be canceled"
+                    : payment === "PREPAID" || (data.deposits?.length ?? 0) > 0
+                      ? "This order holds a checkout payment — reverse it (refund) first"
                     : readiness === "CANCELED"
                       ? "This order is already canceled"
                       : payment === "PAID"
@@ -383,13 +395,12 @@ export default function SalesOrderDetail() {
                             </Table.Td>
                             <Table.Td ta="right">{money(inv.totalCents)}</Table.Td>
                             <Table.Td ta="right" w={110}>
-                              {/* A plain link, not a fetch-and-blob: the browser
-                                  already knows how to open a PDF, and this way
-                                  the URL can be copied, bookmarked and sent. */}
+                              {/* Fetched with the session header: a plain link
+                                  cannot send it, and answered 401. */}
                               <Anchor
-                                href={`/api/sales-orders/invoices/${inv.id}/pdf`}
-                                target="_blank"
-                                rel="noopener"
+                                component="button"
+                                type="button"
+                                onClick={() => openPdf(`/sales-orders/invoices/${inv.id}/pdf`).catch(toastErr)}
                                 size="xs"
                                 fw={500}
                               >
@@ -411,9 +422,9 @@ export default function SalesOrderDetail() {
                             <Table.Td ta="right">{money(sh.cogsCents)}</Table.Td>
                             <Table.Td ta="right" w={110}>
                               <Anchor
-                                href={`/api/sales-orders/shipments/${sh.id}/packing-slip.pdf`}
-                                target="_blank"
-                                rel="noopener"
+                                component="button"
+                                type="button"
+                                onClick={() => openPdf(`/sales-orders/shipments/${sh.id}/packing-slip.pdf`).catch(toastErr)}
                                 size="xs"
                                 fw={500}
                               >

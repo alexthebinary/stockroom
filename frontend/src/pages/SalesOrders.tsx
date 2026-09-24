@@ -38,6 +38,7 @@ export default function SalesOrders() {
   const [opened, { open, close }] = useDisclosure(false);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [employeeId, setEmployeeId] = useState<string | null>(null);
+  const [channel, setChannel] = useState<string | null>("DIRECT");
   const [taxPercent, setTaxPercent] = useState<number | "">(8);
   const [lines, setLines] = useState<DraftLine[]>([emptyLine]);
   const [debouncedSearch] = useDebouncedValue(search, 250);
@@ -49,6 +50,16 @@ export default function SalesOrders() {
     queryKey: ["customers", "options"],
     queryFn: () => api.get<Paginated<Party>>("/customers?activeOnly=true&pageSize=200"),
     staleTime: 60_000,
+  });
+  // The channel decides when the customer pays: at checkout, or on terms after
+  // shipment. Served by the API so the form and the books use one policy.
+  const channels = useQuery({
+    queryKey: ["sales-channels"],
+    queryFn: () =>
+      api.get<{ channels: { code: string; label: string; payment: "PREPAID" | "TERMS"; termsDays: number }[] }>(
+        "/sales-orders/channels"
+      ),
+    staleTime: Infinity,
   });
   const employees = useQuery({
     queryKey: ["employees", "options"],
@@ -74,6 +85,7 @@ export default function SalesOrders() {
       return api.post<SalesOrder>("/sales-orders", {
         customerId: Number(customerId),
         employeeId: employeeId ? Number(employeeId) : undefined,
+        channel: channel ?? "DIRECT",
         taxCents: Math.round((subtotal * Number(taxPercent || 0)) / 100),
         lines: lines.map((l) => ({
           productId: Number(l.productId),
@@ -99,7 +111,7 @@ export default function SalesOrders() {
     <>
       <PageHeader
         title="Sales orders"
-        subtitle="Pack reserves stock; invoice and payment post to the ledger; shipping consumes FIFO cost."
+        subtitle="Checkout payments are held until shipment; shipping books the cost and the invoice together."
         action={<Button onClick={open}>New sales order</Button>}
       />
 
@@ -120,7 +132,7 @@ export default function SalesOrders() {
           <Select
             label="Readiness"
             placeholder="Any"
-            data={["NOT_PACKED", "PACKED", "SHIPPED", "CANCELED"]}
+            data={["NOT_PACKED", "PACKED", "SHIPPED", "DELIVERED", "CANCELED"]}
             value={readinessStatus}
             onChange={(v) => {
               setReadiness(v);
@@ -133,7 +145,7 @@ export default function SalesOrders() {
           <Select
             label="Payment"
             placeholder="Any"
-            data={["AWAITING_PAYMENT", "INVOICED", "PAID", "VOIDED"]}
+            data={["AWAITING_PAYMENT", "PREPAID", "INVOICED", "PAID", "VOIDED"]}
             value={paymentStatus}
             onChange={(v) => {
               setPayment(v);
@@ -246,6 +258,20 @@ export default function SalesOrders() {
               value={customerId}
               onChange={setCustomerId}
               searchable
+            />
+            <Select
+              label="Channel"
+              data={(channels.data?.channels ?? []).map((c) => ({ value: c.code, label: c.label }))}
+              value={channel}
+              onChange={setChannel}
+              allowDeselect={false}
+              description={(() => {
+                const c = channels.data?.channels.find((x) => x.code === channel);
+                if (!c) return undefined;
+                return c.payment === "PREPAID"
+                  ? "Paid at checkout · invoiced when it ships"
+                  : `Invoiced when it ships · due in ${c.termsDays} days`;
+              })()}
             />
             <Select
               label="Manager"

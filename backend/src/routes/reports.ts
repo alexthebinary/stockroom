@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db";
 import { asyncHandler, optionalInt } from "../http";
-import { ACCOUNT } from "../accounts";
+import { inventoryValuation } from "../books";
 
 export const reportsRouter = Router();
 
@@ -248,65 +248,6 @@ reportsRouter.get(
 reportsRouter.get(
   "/inventory-valuation",
   asyncHandler(async (_req, res) => {
-    const lots = await prisma.inventoryLot.findMany({
-      where: { remainingQty: { gt: 0 } },
-      include: { product: true, warehouse: true },
-    });
-
-    const byProduct = new Map<
-      string,
-      { sku: string; name: string; warehouseCode: string; quantity: number; valueCents: number; layers: number }
-    >();
-
-    for (const lot of lots) {
-      const key = `${lot.productId}:${lot.warehouseId}`;
-      const row =
-        byProduct.get(key) ??
-        {
-          sku: lot.product.sku,
-          name: lot.product.name,
-          warehouseCode: lot.warehouse.code,
-          quantity: 0,
-          valueCents: 0,
-          layers: 0,
-        };
-      row.quantity += lot.remainingQty;
-      row.valueCents += lot.remainingQty * lot.unitCostCents;
-      row.layers += 1;
-      byProduct.set(key, row);
-    }
-
-    const rows = [...byProduct.values()].sort((a, b) => b.valueCents - a.valueCents);
-    const layerValueCents = rows.reduce((s, r) => s + r.valueCents, 0);
-
-    const inventoryAccount = await prisma.account.findUnique({ where: { code: ACCOUNT.INVENTORY } });
-    let ledgerValueCents = 0;
-    if (inventoryAccount) {
-      const lines = await prisma.journalLine.findMany({
-        where: { accountId: inventoryAccount.id, journalEntry: { status: "POSTED" } },
-      });
-      ledgerValueCents = lines.reduce((s, l) => s + l.debitCents - l.creditCents, 0);
-    }
-
-    // Stock in transit has left its source layers but not yet arrived at the
-    // destination, so it is owned by neither warehouse while still being an
-    // asset on the books. Counting it is the difference between a real
-    // reconciliation and one that cries wolf during every transfer.
-    const inTransit = await prisma.stockTransfer.findMany({
-      where: { status: "IN_TRANSIT" },
-      select: { costCents: true },
-    });
-    const inTransitCents = inTransit.reduce((s, t) => s + t.costCents, 0);
-    const assetValueCents = layerValueCents + inTransitCents;
-
-    res.json({
-      rows,
-      layerValueCents,
-      inTransitCents,
-      assetValueCents,
-      ledgerValueCents,
-      varianceCents: assetValueCents - ledgerValueCents,
-      reconciled: assetValueCents === ledgerValueCents,
-    });
+    res.json(await inventoryValuation());
   })
 );

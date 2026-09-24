@@ -30,6 +30,7 @@ const day = (d: Date | string) =>
 export type InvoiceForPdf = {
   invoiceNumber: string;
   issueDate: Date | string;
+  dueDate?: Date | string | null;
   currency: string;
   subtotalCents: number;
   taxCents: number;
@@ -39,6 +40,7 @@ export type InvoiceForPdf = {
   customer: { name: string; email?: string | null; phone?: string | null; address?: string | null };
   salesOrder?: {
     orderNumber: string;
+    channel?: string;
     lines: {
       quantity: number;
       unitPriceCents: number;
@@ -104,7 +106,15 @@ export function renderInvoice(res: Response, invoice: InvoiceForPdf, company: Co
 
   const facts: [string, string][] = [
     ["Issued", day(invoice.issueDate)],
+    // A showroom sale is settled at the counter; a due date there would only
+    // invite the question of whether it is still owed.
+    ...(invoice.dueDate && invoice.salesOrder?.channel !== "SHOWROOM"
+      ? ([["Due", day(invoice.dueDate)]] as [string, string][])
+      : []),
     ...(invoice.salesOrder ? ([["Order", invoice.salesOrder.orderNumber]] as [string, string][]) : []),
+    ...(invoice.salesOrder?.channel === "SHOWROOM"
+      ? ([["Sold", "In store"]] as [string, string][])
+      : []),
     ["Currency", invoice.currency],
   ];
   let fy = y;

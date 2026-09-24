@@ -13,8 +13,8 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { api, qs, type InvoiceRow, type Paginated } from "../api";
-import { PageHeader, QueryState, Stat, formatDate, money } from "../components/ui";
+import { api, qs, type InvoiceRow, type Paginated, openPdf } from "../api";
+import { PageHeader, QueryState, Stat, formatDate, money, toastErr } from "../components/ui";
 
 type Settlement = "" | "UNPAID" | "PAID";
 
@@ -133,10 +133,9 @@ export default function Invoices() {
                     <Table.Tr key={invoice.id}>
                       <Table.Td>
                         <Anchor
-                          component="a"
-                          href={`/api/sales-orders/invoices/${invoice.id}/pdf`}
-                          target="_blank"
-                          rel="noreferrer"
+                          component="button"
+                          type="button"
+                          onClick={() => openPdf(`/sales-orders/invoices/${invoice.id}/pdf`).catch(toastErr)}
                           fw={600}
                         >
                           {invoice.invoiceNumber}

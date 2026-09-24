@@ -25,6 +25,8 @@ import About from "./pages/About";
 import Adjustments from "./pages/Adjustments";
 import Bills from "./pages/Bills";
 import Catalogs from "./pages/Catalogs";
+import Close from "./pages/Close";
+import Showroom from "./pages/Showroom";
 import Dashboard from "./pages/Dashboard";
 import Deliveries from "./pages/Deliveries";
 import Inventory from "./pages/Inventory";
@@ -481,6 +483,8 @@ export default function App() {
           <Route path="/transfers" element={<Transfers />} />
           <Route path="/adjustments" element={<Adjustments />} />
           <Route path="/ledger" element={<Ledger />} />
+          <Route path="/close" element={<Close />} />
+          <Route path="/showroom" element={<Showroom />} />
           {/* The tab is in the URL so a report can be linked to and reloaded. */}
           <Route path="/reports" element={<Navigate to="/reports/sales" replace />} />
           <Route path="/reports/:tab" element={<Reports />} />

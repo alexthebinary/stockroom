@@ -1,5 +1,7 @@
 import {
   IconBook2,
+  IconBuildingStore,
+  IconCalendarCheck,
   IconChartBar,
   IconLayoutDashboard,
   IconReceipt,
@@ -25,6 +27,13 @@ export const NAV: SidebarGroup[] = [
     label: "Operations",
     sections: [
       { label: "Home", icon: IconLayoutDashboard, to: "/" },
+      {
+        // The counter: a client in the showroom pays and leaves with the goods.
+        label: "Showroom sale",
+        icon: IconBuildingStore,
+        to: "/showroom",
+        needs: "money",
+      },
       {
         label: "Receive",
         icon: IconTruckLoading,
@@ -114,6 +123,8 @@ export const NAV: SidebarGroup[] = [
     sections: [
       // Reads are open server-side, so Reports stays visible to everyone.
       // Accounting is money work and is gated to match.
+      // The deliverable: a month whose stock and books are proved and locked.
+      { label: "Month-end close", icon: IconCalendarCheck, to: "/close" },
       { label: "Accounting", icon: IconBook2, to: "/ledger", needs: "money" },
       {
         label: "Reports",

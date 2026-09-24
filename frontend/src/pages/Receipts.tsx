@@ -12,8 +12,8 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { api, qs, type GoodsReceiptRow, type Paginated } from "../api";
-import { PageHeader, QueryState, Stat, formatDate, money } from "../components/ui";
+import { api, qs, type GoodsReceiptRow, type Paginated, openPdf } from "../api";
+import { PageHeader, QueryState, Stat, formatDate, money, toastErr } from "../components/ui";
 import { useWarehouseOptions } from "../hooks";
 
 /**
@@ -157,9 +157,9 @@ export default function Receipts() {
                     </Table.Td>
                     <Table.Td>
                       <Anchor
-                        href={`/api/purchase-orders/goods-receipts/${grn.id}/note.pdf`}
-                        target="_blank"
-                        rel="noreferrer"
+                        component="button"
+                        type="button"
+                        onClick={() => openPdf(`/purchase-orders/goods-receipts/${grn.id}/note.pdf`).catch(toastErr)}
                         size="sm"
                       >
                         Receipt note

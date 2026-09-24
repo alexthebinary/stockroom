@@ -98,7 +98,7 @@ dashboardRouter.get(
       prisma.invoice.findMany({
         where: { status: { not: "VOID" } },
         select: {
-          id: true, invoiceNumber: true, totalCents: true, issueDate: true,
+          id: true, invoiceNumber: true, totalCents: true, issueDate: true, dueDate: true,
           customer: { select: { name: true } },
           salesOrder: { select: { id: true } },
           payments: { where: { status: { not: "VOID" } }, select: { amountCents: true } },
@@ -156,8 +156,14 @@ dashboardRouter.get(
 
     // "Old" is a judgement, so it is stated rather than hidden: 30 days is the
     // common net term, and anything past it is the thing worth chasing first.
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const overdue = owedToUs.filter((i) => i.issueDate < thirtyDaysAgo);
+    // Due by the channel's terms; older invoices without a due date fall back
+    // to the common net 30.
+    const dueOf = (i: { issueDate: Date; dueDate: Date | null }) =>
+      i.dueDate ?? new Date(i.issueDate.getTime() + 30 * 86_400_000);
+    const overdue = invoices.filter(
+      (i) =>
+        i.totalCents - i.payments.reduce((s, p) => s + p.amountCents, 0) > 0 && dueOf(i).getTime() < now
+    );
 
     // A purchase order is short when it has been billed but not fully received.
     const shortOrders = new Set(
@@ -192,11 +198,11 @@ dashboardRouter.get(
       .filter((i) => i.outstanding > 0)
       .sort((a, b) => a.issueDate.getTime() - b.issueDate.getTime())
       .slice(0, 3)) {
-      const age = days(inv.issueDate);
+      const late = days(dueOf(inv));
       jobs.push({
         id: `inv-${inv.id}`,
-        severity: age > 30 ? "urgent" : "notice",
-        title: `${inv.invoiceNumber} unpaid${age > 30 ? ` — ${age} days` : ""}`,
+        severity: late > 0 ? "urgent" : "notice",
+        title: `${inv.invoiceNumber} unpaid${late > 0 ? ` — ${late} days overdue` : ""}`,
         detail: inv.customer?.name ?? "Customer",
         amountCents: inv.outstanding,
         to: inv.salesOrder ? `/sales-orders/${inv.salesOrder.id}` : "/invoices",
