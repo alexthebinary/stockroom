@@ -170,7 +170,7 @@ export function PageHeader({
   );
 }
 
-/** One stat card, used by the dashboard and every detail page. */
+/** One figure, used by the dashboard and every detail page: a ruled spec value, not a card. */
 export function Stat({
   label,
   value,
@@ -181,24 +181,46 @@ export function Stat({
   hint?: ReactNode;
 }) {
   return (
-    <Card withBorder radius="md" p="md">
-      <Text size="xs" c="dimmed" tt="uppercase" fw={600}>
-        {label}
-      </Text>
+    <div className="spec">
+      <div className="spec-label">{label}</div>
       {/* A figure, not a heading: stat values were h3s and broke the outline. */}
       {typeof value === "string" || typeof value === "number" ? (
-        <Text fz="h3" fw={700} lh={1.3} mt={4}>
+        <div
+          className="spec-value"
+          // A date or a name is a label-length value, not a measured figure.
+          data-long={typeof value === "string" && !/^[-$\d.,% ]+$/.test(value) ? "" : undefined}
+        >
           {typeof value === "number" ? value.toLocaleString() : value}
-        </Text>
+        </div>
       ) : (
         <Group mt={8}>{value}</Group>
       )}
-      {hint && (
-        <Text size="xs" c="dimmed" mt={2}>
-          {hint}
-        </Text>
-      )}
-    </Card>
+      {hint && <div className="spec-hint">{hint}</div>}
+    </div>
+  );
+}
+
+/** A record header's money line: three figures under one rule. `signal` marks the one that passed. */
+export function SpecStrip({
+  items,
+  className,
+}: {
+  items: { label: string; value: ReactNode; hint?: ReactNode; signal?: boolean }[];
+  className?: string;
+}) {
+  return (
+    <div className={`spec-strip${className ? ` ${className}` : ""}`}>
+      {items.map((it) => (
+        <div key={it.label}>
+          <div className="spec-label">{it.label}</div>
+          <div className="spec-value">
+            {it.value}
+            {it.signal && <span className="signal-dot" aria-hidden />}
+          </div>
+          {it.hint && <div className="spec-hint">{it.hint}</div>}
+        </div>
+      ))}
+    </div>
   );
 }
 

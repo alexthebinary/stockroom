@@ -5,7 +5,7 @@ import {
   Stack, ActionIcon, Badge
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconPlus, IconMinus, IconX, IconCircleCheck, IconSearch } from '@tabler/icons-react';
+import { IconPlus, IconMinus, IconX, IconSearch } from '@tabler/icons-react';
 import { api, qs, type Paginated, type Balance, type Party, type Warehouse, openPdf } from '../api';
 import { useAuth } from '../auth';
 import { PageHeader, money, toastOk, toastErr } from '../components/ui';
@@ -291,11 +291,16 @@ export default function Showroom() {
         <Grid.Col span={{ base: 12, md: 5 }}>
           <Card withBorder style={{ position: 'sticky', top: '1rem' }}>
             {success ? (
-              <Stack align="center" gap="md" py="md">
-                <IconCircleCheck size={64} color="var(--mantine-color-green-6)" />
-                <Text size="xl" fw={600}>Paid — {success.invoiceNumber}</Text>
-                <Text size="lg">{money(success.totalCents)}</Text>
-                <Text c="dimmed">{success.clientName}</Text>
+              <Stack gap="md" py="xs">
+                {/* The finished figure draws its rule in: the one authored motion. */}
+                <div className="spec rule-in" role="status">
+                  <div className="spec-label">Paid · {success.invoiceNumber}</div>
+                  <div className="spec-value" style={{ fontSize: 44 }}>
+                    {money(success.totalCents)}
+                    <span className="signal-dot" aria-hidden />
+                  </div>
+                  <div className="spec-hint">{success.clientName} · goods leave with the client</div>
+                </div>
                 <Button
                   component="button"
                   type="button"

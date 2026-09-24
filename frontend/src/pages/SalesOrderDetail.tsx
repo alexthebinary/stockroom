@@ -27,6 +27,7 @@ import {
   PageHeader,
   QueryState,
   Stat,
+  SpecStrip,
   StatusBadge,
   formatDate,
   formatStatus,
@@ -216,8 +217,10 @@ function OrderActions({ actions }: { actions: OrderAction[] }) {
       {live.map((a, i) => (
         <Button
           key={a.key}
-          variant={i === 0 ? "filled" : "light"}
-          color={a.color}
+          variant={i === 0 ? "filled" : "default"}
+          // One black pill per record; colour is kept for the menu's
+          // destructive items, where it warns.
+          color={a.color === "red" ? a.color : undefined}
           loading={a.loading}
           onClick={a.run}
         >
@@ -395,7 +398,7 @@ export default function SalesOrderDetail() {
       <QueryState isLoading={isLoading} error={error} onRetry={refetch}>
         {data && (
           <>
-            <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} mb="md">
+            <SimpleGrid cols={{ base: 2, lg: 4 }} mb="md">
               <Stat label="Delivery" value={<StatusBadge value={data.readinessStatus} />} />
               <Stat label="Payment" value={<StatusBadge value={data.paymentStatus} />} />
               <Stat
@@ -412,6 +415,21 @@ export default function SalesOrderDetail() {
               />
               <Stat label="Created" value={formatDate(data.createdAt)} hint={data.employee?.name} />
             </SimpleGrid>
+
+            {data.margin && (data.shipments?.length ?? 0) > 0 && (
+              <SpecStrip
+                items={[
+                  { label: "Revenue", value: money(data.margin.revenueCents), hint: data.margin.returnedCents > 0 ? `ex-tax, after ${money(data.margin.returnedCents)} returned` : "ex-tax" },
+                  { label: "Cost", value: money(data.margin.costCents), hint: "at the cost it left at" },
+                  {
+                    label: "Margin",
+                    value: money(data.margin.marginCents),
+                    signal: data.margin.marginCents > 0,
+                    hint: data.margin.revenueCents > 0 ? `${Math.round((data.margin.marginCents / data.margin.revenueCents) * 100)}% of revenue` : undefined,
+                  },
+                ]}
+              />
+            )}
 
             <Grid>
               <Grid.Col span={{ base: 12, lg: 8 }}>
@@ -539,19 +557,6 @@ export default function SalesOrderDetail() {
                       </Table.Tbody>
                     </Table>
 
-                    {(data.shipments?.length ?? 0) > 0 && (
-                      <>
-                        <Divider my="sm" />
-                        <Group justify="space-between">
-                          <Text size="sm" c="dimmed">
-                            Gross margin (ex-tax{data.margin && data.margin.returnedCents > 0 ? ", after returns" : ""})
-                          </Text>
-                          <Text size="sm" fw={700}>
-                            {money(data.margin?.marginCents ?? 0)}
-                          </Text>
-                        </Group>
-                      </>
-                    )}
                   </QueryState>
                 </Card>
               </Grid.Col>

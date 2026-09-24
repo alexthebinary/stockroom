@@ -151,6 +151,8 @@ describe("theme contract", () => {
       ["--warn-on-rail", "--rail-bg", 4.5],
       ["--on-accent", "--accent", 4.5],
       ["--accent-strong", "--surface", 4.5],
+      // The lime signal is a FILL; its label must read on it.
+      ["--signal-ink", "--signal", 4.5],
     ])("%s on %s >= %s:1", (fg, bg, floor) => {
       const f = tokens[fg];
       const b = tokens[bg];

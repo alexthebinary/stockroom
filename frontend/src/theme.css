@@ -12,23 +12,23 @@
  */
 :root {
   /* Command rail — the dark chrome across the top. */
-  --rail-bg: #12263f;
-  --rail-fg: #e8eef6;
+  --rail-bg: #111210;
+  --rail-fg: #f0f1ec;
 
   /* Data surface. Off-white, not #ffffff: a pure value leaves the elevated
      planes — dropdowns, the palette, popovers — nothing to sit on top of. */
-  --surface: #fbfcfe;
-  --surface-sunken: #f4f6f9;
-  --surface-border: #dfe4ec;
-  --surface-hover: #eef1f6;
+  --surface: #fafaf7;
+  --surface-sunken: #f0f1ec;
+  --surface-border: #dcded6;
+  --surface-hover: #ebece6;
   /* A separator, not a border: the lightest line that still reads as a line. */
-  --hairline: rgba(15, 32, 56, 0.12);
+  --hairline: rgba(17, 18, 16, 0.12);
 
-  --accent: #2a5fd4;
-  --accent-soft: rgba(42, 95, 212, 0.1);
+  --accent: #111210;
+  --accent-soft: rgba(198, 213, 90, 0.3);
   /* The accent is a FILL colour; as text on a 10% tint it measures 4.36:1.
      This is the same hue taken dark enough to set type in. */
-  --accent-strong: #1e4aa8;
+  --accent-strong: #111210;
 
   /* Status, as semantic tokens rather than hexes at the call site.
      The app has exactly three status axes and they were previously spelled
@@ -46,26 +46,29 @@
   --warn-rail-bg-hover: rgba(255, 170, 60, 0.3);
   --warn-rail-border: rgba(255, 190, 110, 0.35);
 
-  --ok-fg: #166534;
-  --ok-bg: rgba(22, 163, 74, 0.07);
-  --ok-border: rgba(22, 163, 74, 0.2);
+  --ok-fg: #3f4a0e;
+  --ok-bg: rgba(198, 213, 90, 0.2);
+  --ok-border: rgba(110, 125, 30, 0.35);
 
   /* Chrome that floats: the translucent bars and sheets. In dark mode these
      cannot stay white-with-alpha or they turn the page to milk. */
-  --glass: rgba(255, 255, 255, 0.72);
-  --glass-strong: rgba(255, 255, 255, 0.92);
+  --glass: rgba(250, 250, 247, 0.76);
+  --glass-strong: rgba(250, 250, 247, 0.94);
   --glass-solid: #ffffff;
-  --glass-border: rgba(15, 32, 56, 0.1);
+  --glass-border: rgba(17, 18, 16, 0.1);
 
   /* Shadows are a colour too, and a black shadow on a dark surface is
      invisible — dark mode raises the alpha rather than the blur. */
-  --shadow-sm: 0 10px 34px rgba(15, 32, 56, 0.18);
-  --shadow-lg: 0 24px 60px rgba(15, 32, 56, 0.22);
-  --scrollbar-thumb: rgba(15, 32, 56, 0.22);
-  --scrollbar-thumb-hover: rgba(15, 32, 56, 0.36);
-  --pressed: rgba(15, 32, 56, 0.1);
-  --ink: #0b1b30;
-  --on-accent: #ffffff;
+  --shadow-sm: 0 1px 2px rgba(17, 18, 16, 0.06), 0 10px 28px rgba(17, 18, 16, 0.1);
+  --shadow-lg: 0 2px 4px rgba(17, 18, 16, 0.06), 0 24px 56px rgba(17, 18, 16, 0.16);
+  --scrollbar-thumb: rgba(17, 18, 16, 0.2);
+  --scrollbar-thumb-hover: rgba(17, 18, 16, 0.34);
+  --pressed: rgba(17, 18, 16, 0.08);
+  --ink: #111210;
+  /* The one signal: go, selected, passing. Never decoration. */
+  --signal: #c6d55a;
+  --signal-ink: #111210;
+  --on-accent: #fafaf7;
 
   /* Text ramp. These were 31 hardcoded var(--mantine-color-gray-N) references,
      and a fixed grey does not flip with the colour scheme: in dark mode
@@ -74,17 +77,17 @@
      sampled passed; looking at the screenshot is what caught it.
      The light values below are the exact greys they replace, so light mode is
      unchanged by construction. */
-  --text-strong: #212529;
-  --text: #343a40;
-  --text-muted: #495057;
+  --text-strong: #111210;
+  --text: #2b2d28;
+  --text-muted: #4a4d45;
   /* Was gray-6 (#868e96), which measured 3.24:1 on the light surface and
      failed AA — a pre-existing failure the ramp inherited. Measured against the
      SUNKEN field it sits on, not the surface: #6b7280 still read 3.86:1 there,
      #5c6673 reads 5.36:1.
      All ten uses are on light planes; none is on the dark rail. */
-  --text-faint: #5c6673;
-  --line: #e9ecef;
-  --dot: #adb5bd;
+  --text-faint: #5d6157;
+  --line: #e6e7e1;
+  --dot: #a9ada1;
 
   /* Mantine's default dimmed is gray-6 (#868e96) at 3.32:1 on white — below
      the 4.5:1 body-text floor. gray-7 measures 8.18:1.
@@ -110,8 +113,10 @@
   /* -apple-system resolves to SF Pro on Apple platforms and falls through to
      each other platform's own UI face, which is the point: chrome should be
      the system's, not a brand's. */
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+  font-family: "Funnel Sans Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Arial, sans-serif;
+  /* Every figure in a stock-and-money app is read in a column. */
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -138,18 +143,18 @@
 :root[data-mantine-color-scheme="dark"] {
   color-scheme: dark;
 
-  --rail-bg: #0b141f;
-  --rail-fg: #dce6f2;
+  --rail-bg: #0a0b09;
+  --rail-fg: #e9eae4;
 
-  --surface: #121820;
-  --surface-sunken: #0d131a;
-  --surface-border: #273240;
-  --surface-hover: #1b2430;
-  --hairline: rgba(180, 205, 240, 0.14);
+  --surface: #121311;
+  --surface-sunken: #0c0d0b;
+  --surface-border: #2a2c27;
+  --surface-hover: #1b1d19;
+  --hairline: rgba(233, 234, 228, 0.12);
 
-  --accent: #7aa2ff;
-  --accent-soft: rgba(122, 162, 255, 0.16);
-  --accent-strong: #9dbaff;
+  --accent: #eeefe9;
+  --accent-soft: rgba(198, 213, 90, 0.18);
+  --accent-strong: #d6e27a;
 
   --warn: #fb923c;
   --warn-fg: #ffb877;
@@ -161,58 +166,60 @@
   --warn-rail-bg-hover: rgba(255, 170, 60, 0.32);
   --warn-rail-border: rgba(255, 190, 110, 0.4);
 
-  --ok-fg: #5fd08a;
-  --ok-bg: rgba(34, 197, 94, 0.14);
-  --ok-border: rgba(34, 197, 94, 0.3);
+  --ok-fg: #c6d55a;
+  --ok-bg: rgba(198, 213, 90, 0.14);
+  --ok-border: rgba(198, 213, 90, 0.3);
 
-  --glass: rgba(18, 24, 32, 0.72);
-  --glass-strong: rgba(18, 24, 32, 0.92);
-  --glass-solid: #161d27;
-  --glass-border: rgba(180, 205, 240, 0.12);
+  --glass: rgba(18, 19, 17, 0.74);
+  --glass-strong: rgba(18, 19, 17, 0.94);
+  --glass-solid: #181a16;
+  --glass-border: rgba(233, 234, 228, 0.1);
 
   /* Darker and deeper: on a dark surface a 0.18 black shadow does nothing. */
   --shadow-sm: 0 10px 34px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
-  --scrollbar-thumb: rgba(180, 205, 240, 0.22);
-  --scrollbar-thumb-hover: rgba(180, 205, 240, 0.36);
-  --pressed: rgba(180, 205, 240, 0.12);
-  --ink: #e6edf7;
-  --on-accent: #0b1220;
+  --scrollbar-thumb: rgba(233, 234, 228, 0.2);
+  --scrollbar-thumb-hover: rgba(233, 234, 228, 0.34);
+  --pressed: rgba(233, 234, 228, 0.1);
+  --ink: #eeefe9;
+  --signal: #c6d55a;
+  --signal-ink: #121311;
+  --on-accent: #121311;
 
   /* The light-mode dimmed fix inverted: gray-7 is unreadable on a dark
      surface. gray-5 (#adb5bd) measures 6.9:1 on #121820. */
   --mantine-color-dimmed: var(--mantine-color-gray-5);
 
-  --text-strong: #e6edf7;
-  --text: #d3dceb;
-  --text-muted: #adb5bd;
-  --text-faint: #8c97a8;
-  --line: #273240;
-  --dot: #6b7789;
+  --text-strong: #eeefe9;
+  --text: #d9dbd3;
+  --text-muted: #b0b3a8;
+  --text-faint: #8f9387;
+  --line: #2a2c27;
+  --dot: #6d7066;
 
   /* Mantine paints <body> from its own token, not from --surface, so the page
      behind the app was its default dark #242424 — a warm grey against a
      navy-tinted app. Same family or the seams show. Declared at the attribute
      specificity Mantine uses, for the reason documented on --mantine-color-dimmed. */
-  --mantine-color-body: #121820;
+  --mantine-color-body: #121311;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-mantine-color-scheme="light"]) {
     color-scheme: dark;
 
-    --rail-bg: #0b141f;
-    --rail-fg: #dce6f2;
+    --rail-bg: #0a0b09;
+    --rail-fg: #e9eae4;
 
-    --surface: #121820;
-    --surface-sunken: #0d131a;
-    --surface-border: #273240;
-    --surface-hover: #1b2430;
-    --hairline: rgba(180, 205, 240, 0.14);
+    --surface: #121311;
+    --surface-sunken: #0c0d0b;
+    --surface-border: #2a2c27;
+    --surface-hover: #1b1d19;
+    --hairline: rgba(233, 234, 228, 0.12);
 
-    --accent: #7aa2ff;
-    --accent-soft: rgba(122, 162, 255, 0.16);
-    --accent-strong: #9dbaff;
+    --accent: #eeefe9;
+    --accent-soft: rgba(198, 213, 90, 0.18);
+    --accent-strong: #d6e27a;
 
     --warn: #fb923c;
     --warn-fg: #ffb877;
@@ -224,35 +231,37 @@
     --warn-rail-bg-hover: rgba(255, 170, 60, 0.32);
     --warn-rail-border: rgba(255, 190, 110, 0.4);
 
-    --ok-fg: #5fd08a;
-    --ok-bg: rgba(34, 197, 94, 0.14);
-    --ok-border: rgba(34, 197, 94, 0.3);
+    --ok-fg: #c6d55a;
+    --ok-bg: rgba(198, 213, 90, 0.14);
+    --ok-border: rgba(198, 213, 90, 0.3);
 
-    --glass: rgba(18, 24, 32, 0.72);
-    --glass-strong: rgba(18, 24, 32, 0.92);
-    --glass-solid: #161d27;
-    --glass-border: rgba(180, 205, 240, 0.12);
+    --glass: rgba(18, 19, 17, 0.74);
+    --glass-strong: rgba(18, 19, 17, 0.94);
+    --glass-solid: #181a16;
+    --glass-border: rgba(233, 234, 228, 0.1);
 
     --shadow-sm: 0 10px 34px rgba(0, 0, 0, 0.5);
     --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
-    --scrollbar-thumb: rgba(180, 205, 240, 0.22);
-    --scrollbar-thumb-hover: rgba(180, 205, 240, 0.36);
-    --pressed: rgba(180, 205, 240, 0.12);
-    --ink: #e6edf7;
-    --on-accent: #0b1220;
+    --scrollbar-thumb: rgba(233, 234, 228, 0.2);
+    --scrollbar-thumb-hover: rgba(233, 234, 228, 0.34);
+    --pressed: rgba(233, 234, 228, 0.1);
+    --ink: #eeefe9;
+  --signal: #c6d55a;
+  --signal-ink: #121311;
+    --on-accent: #121311;
 
-    --text-strong: #e6edf7;
-    --text: #d3dceb;
-    --text-muted: #adb5bd;
-    --text-faint: #8c97a8;
-    --line: #273240;
-    --dot: #6b7789;
+    --text-strong: #eeefe9;
+    --text: #d9dbd3;
+    --text-muted: #b0b3a8;
+    --text-faint: #8f9387;
+    --line: #2a2c27;
+    --dot: #6d7066;
 
     /* Mantine paints <body> from its own token, not from --surface, so the page
        behind the app was its default dark #242424 — a warm grey against a
        navy-tinted app. Same family or the seams show. Declared at the attribute
        specificity Mantine uses, for the reason documented on --mantine-color-dimmed. */
-    --mantine-color-body: #121820;
+    --mantine-color-body: #121311;
   }
 }
 
@@ -261,19 +270,20 @@
    one place a built interface looks assembled. */
 
 ::selection {
-  background: var(--accent-soft);
-  color: var(--ink);
+  background: var(--signal);
+  color: var(--signal-ink);
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
-  border-radius: 5px;
+  box-shadow: 0 0 0 5px var(--accent-soft);
+  border-radius: 6px;
 }
 
 /* The rail is dark; its focus ring has to be too, or it vanishes. */
 .rail :focus-visible {
-  outline-color: #9dc2ff;
+  outline-color: var(--signal);
 }
 
 * {
@@ -302,10 +312,21 @@
   background: transparent;
 }
 
-a {
-  color: var(--accent);
-  text-underline-offset: 2px;
+a,
+.mantine-Anchor-root {
+  color: var(--text-strong);
+  text-decoration: underline;
+  text-decoration-color: var(--dot);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
+
+a:hover,
+.mantine-Anchor-root:hover {
+  text-decoration-color: var(--ink);
+}
+
+input, textarea { caret-color: var(--ink); }
 
 /* Optical tracking. Mantine sizes headings but leaves tracking at normal, which
    reads loose above about 20px. */
@@ -1155,13 +1176,18 @@ h3,
 
 .sidebar-link[data-active],
 .sidebar-sublink[data-active] {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--surface-sunken);
+  color: var(--ink);
   font-weight: 600;
 }
 
 .sidebar-link[data-active] svg {
-  color: var(--accent);
+  color: var(--ink);
+}
+
+/* The selected row carries the signal as a machined tab on its left edge. */
+.sidebar-link[data-active] {
+  box-shadow: inset 3px 0 0 var(--signal);
 }
 
 /* The count is information, not decoration: it stays legible when the row is
@@ -1588,4 +1614,135 @@ body:has(.receive-dock) {
    covers the last row or column of a table. */
 .app-main {
   padding-bottom: 88px;
+}
+
+/* ---- Machine-shop precision: figures and datasheets ---------------------
+ * A figure is a measured value, not a card: label above in small tracked
+ * caps, number below set large and tight, a black rule over the pair. */
+
+:root[data-mantine-color-scheme="light"] {
+  --mantine-color-ink-filled-hover: #2b2d28;
+}
+
+.spec {
+  padding-top: 10px;
+  border-top: 1px solid var(--ink);
+  min-width: 0;
+}
+
+.spec-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.spec-value {
+  margin-top: 6px;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.spec-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+/* The record header: REVENUE · COST · MARGIN as one ruled strip. */
+.spec-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 16px;
+}
+
+.spec-strip > div {
+  padding: 10px 14px 12px 0;
+  min-width: 0;
+}
+
+.spec-strip > div + div {
+  padding-left: 14px;
+  border-left: 1px solid var(--hairline);
+}
+
+.spec-strip .spec-value {
+  font-size: 34px;
+}
+
+.signal-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  vertical-align: 0.3em;
+  margin-left: 8px;
+}
+
+@media (max-width: 480px) {
+  .spec-strip .spec-value { font-size: 24px; }
+  .spec-value { font-size: 24px; }
+}
+
+/* The one authored motion: a finished figure draws its rule in. Used when a
+   month closes and when a counter sale is paid. */
+@keyframes rule-in {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.rule-in {
+  position: relative;
+}
+
+.rule-in::before {
+  content: "";
+  position: absolute;
+  inset: -1px 0 auto 0;
+  height: 3px;
+  background: var(--signal);
+  transform-origin: left;
+  animation: rule-in 480ms var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rule-in::before { animation: none; }
+}
+
+/* In a table every name is a link; underlining all of them turns a column into
+   noise. The underline returns on hover and focus. */
+.mantine-Table-td a,
+.mantine-Table-td .mantine-Anchor-root {
+  text-decoration-color: transparent;
+}
+
+.mantine-Table-td a:hover,
+.mantine-Table-td .mantine-Anchor-root:hover {
+  text-decoration-color: var(--ink);
+}
+
+.spec-value[data-long] {
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  margin-top: 8px;
+}
+
+/* The ink fill inverts in dark (near-white pill), but Mantine hard-wires the
+   label to --mantine-color-white on the primary. autoContrast does not reach
+   it, so the label follows the fill here. Inline style sets only the
+   variable, so a plain `color` rule wins. */
+:root[data-mantine-color-scheme="dark"] :is(.mantine-Button-root, .mantine-ActionIcon-root)[style*="--mantine-color-ink-filled"][data-variant="filled"],
+:root[data-mantine-color-scheme="dark"] .mantine-Button-root[data-variant="filled"]:not([style*="--mantine-color-"]) {
+  color: var(--on-accent);
 }

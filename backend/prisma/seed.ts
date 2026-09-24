@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
 const usd = (dollars: number) => Math.round(dollars * 100);
 
 const WAREHOUSES = [
-  { code: "MAIN", name: "Newark Robotics Depot", address: "120 Dockside Ave, Newark, NJ", notes: "Primary fulfilment and outbound" },
+  { code: "MAIN", name: "Newtown Showroom & Warehouse", address: "Newtown, PA 18940", notes: "Showroom, primary fulfilment and outbound" },
   { code: "SEC", name: "Chicago Service Center", address: "8 Canal Street, Chicago, IL", notes: "RMA, repairs and slow movers" },
   { code: "WEST", name: "Long Beach Import Hub", address: "441 Harbor Blvd, Long Beach, CA", notes: "Receives container freight from Shenzhen" },
 ];
@@ -540,7 +540,7 @@ async function main() {
       toWarehouseId: main,
       quantity: 12,
       status: "DRAFT",
-      notes: "Newark is down to 2 X1-Carbons; Long Beach took the last container",
+      notes: "Newtown is down to 2 X1-Carbons; Long Beach took the last container",
     },
   });
 

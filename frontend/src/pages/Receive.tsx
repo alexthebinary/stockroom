@@ -213,8 +213,8 @@ export default function Receive() {
           <Stack gap={6}>
             {log.map((r, i) => (
               <Group key={i} gap={8} wrap="nowrap">
-                {r.outcome === "received" && !r.flagged && <IconCheck size={18} color="teal" />}
-                {r.outcome === "received" && r.flagged && <IconAlertTriangle size={18} color="orange" />}
+                {r.outcome === "received" && !r.flagged && <IconCheck size={18} color="var(--ok-fg)" />}
+                {r.outcome === "received" && r.flagged && <IconAlertTriangle size={18} color="var(--warn)" />}
                 {r.outcome !== "received" && <IconRefresh size={18} color="gray" />}
                 <Text size="sm">
                   {r.outcome === "received"

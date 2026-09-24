@@ -219,7 +219,7 @@ export default function Close() {
                 <Progress
                   mt="md"
                   value={(report.passed / Math.max(report.total, 1)) * 100}
-                  color={report.blockingFailed > 0 ? "red" : "teal"}
+                  color={report.blockingFailed > 0 ? "red" : "teal.4"} // the lime signal: this bar is the "go"
                   aria-label="Checks passing"
                 />
               </Card>
@@ -230,10 +230,10 @@ export default function Close() {
                     const isOpen = expanded.has(check.id);
                     const failed = !check.passed;
                     const icon = check.passed
-                      ? <IconCircleCheck color="teal" size={18} />
+                      ? <IconCircleCheck color="var(--ok-fg)" size={18} />
                       : check.blocking
-                        ? <IconCircleX color="red" size={18} />
-                        : <IconAlertTriangle color="orange" size={18} />;
+                        ? <IconCircleX color="var(--mantine-color-red-filled)" size={18} />
+                        : <IconAlertTriangle color="var(--warn)" size={18} />;
 
                     return (
                       <Stack key={check.id} gap={4}>
@@ -315,9 +315,16 @@ export default function Close() {
 
               {report.status === "closed" && closedRecord && (
                 <Stack gap="xs">
-                  <Text size="sm" c="dimmed">
-                    Closed on {formatDate(closedRecord.closedAt)} by {closedRecord.actor}
-                  </Text>
+                  <div className="spec rule-in" role="status">
+                    <div className="spec-label">Month closed</div>
+                    <div className="spec-value">
+                      {formatPeriod(period)}
+                      <span className="signal-dot" aria-hidden />
+                    </div>
+                    <div className="spec-hint">
+                      Closed on {formatDate(closedRecord.closedAt)} by {closedRecord.actor}. Entries dated in it are locked.
+                    </div>
+                  </div>
                   {closedRecord.warnings.length === 0 ? (
                     <Text size="sm" c="dimmed">Nothing carried forward.</Text>
                   ) : (

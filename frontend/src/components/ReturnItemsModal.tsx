@@ -209,7 +209,7 @@ export function ReturnItemsModal({ order, opened, onClose }: ReturnItemsModalPro
 
       <Group justify="flex-end" mt="md">
         <Button variant="default" onClick={onClose}>Cancel</Button>
-        <Button color="orange" onClick={handleSubmit} disabled={!canSubmit} loading={pending}>
+        <Button onClick={handleSubmit} disabled={!canSubmit} loading={pending}>
           Record return
         </Button>
       </Group>
