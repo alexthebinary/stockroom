@@ -52,13 +52,17 @@ export const CHART_OF_ACCOUNTS = [
   { code: ACCOUNT.BANK, name: "Bank / Cash", accountType: "ASSET", normalSide: "DEBIT" },
   { code: ACCOUNT.ACCOUNTS_RECEIVABLE, name: "Accounts Receivable (AR)", accountType: "ASSET", normalSide: "DEBIT" },
   { code: ACCOUNT.INVENTORY, name: "Inventory", accountType: "ASSET", normalSide: "DEBIT" },
-  // Stock that has left one warehouse and not yet arrived at the other. It is
-  // owned, but it cannot be picked, so it is not Inventory either.
   { code: ACCOUNT.INVENTORY_CLEARING_INBOUND, name: "Inventory Clearing – Inbound", accountType: "ASSET", normalSide: "DEBIT" },
   { code: ACCOUNT.INVENTORY_CLEARING_OUTBOUND, name: "Inventory Clearing – Outbound", accountType: "ASSET", normalSide: "DEBIT" },
-  { code: ACCOUNT.INVENTORY_IN_TRANSIT, name: "Inventory In Transit", accountType: "ASSET", normalSide: "DEBIT" },
+  // RETIRED 2026-09-24 by the operator: transfers no longer post (stock stays
+  // in Inventory at cost). Kept, inactive, so past entries keep their account;
+  // transfers already in transit still clear through it when they arrive.
+  { code: ACCOUNT.INVENTORY_IN_TRANSIT, name: "Inventory In Transit", accountType: "ASSET", normalSide: "DEBIT", isActive: false },
   { code: ACCOUNT.ACCOUNTS_PAYABLE, name: "Accounts Payable (AP)", accountType: "LIABILITY", normalSide: "CREDIT" },
-  { code: ACCOUNT.CUSTOMER_DEPOSITS, name: "Customer Deposits", accountType: "LIABILITY", normalSide: "CREDIT" },
+  // RETIRED 2026-09-24 by the operator: checkout payments now credit Accounts
+  // Receivable. Kept, inactive, for past entries; deposits already held here
+  // are still moved onto their invoice when the order ships.
+  { code: ACCOUNT.CUSTOMER_DEPOSITS, name: "Customer Deposits", accountType: "LIABILITY", normalSide: "CREDIT", isActive: false },
   // Where stock that existed before the books did comes from. Opening stock is
   // not income: booking it to Inventory Gain overstates revenue by the whole
   // opening position and shows a period with sales and no cost.
@@ -126,13 +130,15 @@ export const JOURNAL_TEMPLATES: {
   },
   {
     transactionType: TRANSACTION_TYPE.CUSTOMER_DEPOSIT,
+    // Against the receivable: until the order ships and is invoiced, the
+    // customer's account simply shows a credit (they have paid ahead).
     description: "Take payment at checkout, before the goods ship",
     debitAccountCode: ACCOUNT.BANK,
-    creditAccountCode: ACCOUNT.CUSTOMER_DEPOSITS,
+    creditAccountCode: ACCOUNT.ACCOUNTS_RECEIVABLE,
   },
   {
     transactionType: TRANSACTION_TYPE.DEPOSIT_APPLIED,
-    description: "Apply a checkout payment to the invoice raised on shipment",
+    description: "Earlier method: move a checkout payment held in Customer Deposits onto its invoice",
     debitAccountCode: ACCOUNT.CUSTOMER_DEPOSITS,
     creditAccountCode: ACCOUNT.ACCOUNTS_RECEIVABLE,
   },
@@ -219,13 +225,13 @@ export const JOURNAL_TEMPLATES: {
     // Despatch. The destination has not received anything yet, so debiting its
     // Inventory at this point claims stock nobody can pick.
     transactionType: TRANSACTION_TYPE.INVENTORY_TRANSFER,
-    description: "Despatch stock from a warehouse into transit",
+    description: "Earlier method: despatch stock from a warehouse into transit",
     debitAccountCode: ACCOUNT.INVENTORY_IN_TRANSIT,
     creditAccountCode: ACCOUNT.INVENTORY,
   },
   {
     transactionType: TRANSACTION_TYPE.INVENTORY_TRANSFER_IN,
-    description: "Receive stock out of transit into a warehouse",
+    description: "Earlier method: receive stock out of transit into a warehouse",
     debitAccountCode: ACCOUNT.INVENTORY,
     creditAccountCode: ACCOUNT.INVENTORY_IN_TRANSIT,
   },
@@ -281,16 +287,23 @@ export async function syncChartOfAccounts() {
     }
   }
 
-  const existing = await prisma.account.findMany({ select: { id: true, code: true, name: true } });
+  const existing = await prisma.account.findMany({ select: { id: true, code: true, name: true, isActive: true } });
   const byCode = new Map(existing.map((a) => [a.code, a]));
   for (const a of CHART_OF_ACCOUNTS) {
     const row = byCode.get(a.code);
     if (!row) {
       await prisma.account.create({ data: a });
       changes.push(`+${a.code} ${a.name}`);
-    } else if (row.name !== a.name) {
-      await prisma.account.update({ where: { id: row.id }, data: { name: a.name } });
-      changes.push(`${a.code} renamed "${a.name}"`);
+    } else {
+      if (row.name !== a.name) {
+        await prisma.account.update({ where: { id: row.id }, data: { name: a.name } });
+        changes.push(`${a.code} renamed "${a.name}"`);
+      }
+      const active = a.isActive ?? true;
+      if (row.isActive !== active) {
+        await prisma.account.update({ where: { id: row.id }, data: { isActive: active } });
+        changes.push(`${a.code} ${active ? "reactivated" : "retired"}`);
+      }
     }
   }
 

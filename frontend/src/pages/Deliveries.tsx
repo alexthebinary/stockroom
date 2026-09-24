@@ -52,7 +52,7 @@ export default function Deliveries() {
   return (
     <>
       <PageHeader
-        title="Deliveries"
+        title="Shipped"
         subtitle="Every shipment that has left a warehouse. Delivery is asserted by a person — ProfitIndex records carriers and numbers, it does not call them."
       />
 

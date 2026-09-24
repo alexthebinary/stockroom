@@ -24,13 +24,13 @@ type Example = {
 /** What each account holds in this app, in plain words. */
 const ACCOUNT_NOTES: Record<string, string> = {
   "1000": "Cash and bank: customer payments in, supplier payments and refunds out.",
-  "1100": "What customers owe on invoices not yet paid.",
+  "1100": "What customers owe on invoices not yet paid, less anything paid ahead at checkout.",
   "1200": "Stock on the shelves at FIFO cost. Equals the stock valuation report.",
   "1210": "Goods billed by a supplier but not yet received into stock.",
   "1220": "Goods shipped whose cost is not yet matched to an invoice.",
-  "1230": "Stock moving between two warehouses: left one, not yet arrived at the other.",
+  "1230": "Retired: transfers no longer post. Holds only transfers despatched before the change until they arrive.",
   "2000": "What we owe suppliers on bills not yet paid.",
-  "2100": "Checkout payments (Shopify, Amazon, showroom) for goods not yet shipped.",
+  "2100": "Retired: checkout payments now go to Accounts Receivable. Holds only older deposits until their orders ship.",
   "3000": "The other side of the opening stock position when the books were set up.",
   "4000": "Sales at invoice value, less credit notes for returns.",
   "4100": "Stock found on a count or adjustment, at cost.",
@@ -66,7 +66,6 @@ const PROCESSES: { area: string; items: { type: string; title: string }[] }[] = 
       { type: "GOODS_ISSUE", title: "Goods issue (shipment leaves stock)" },
       { type: "SALES_INVOICE", title: "Invoice – revenue" },
       { type: "INVOICE_COGS", title: "Invoice – cost of goods sold" },
-      { type: "DEPOSIT_APPLIED", title: "Checkout payment applied to the invoice" },
       { type: "SALES_PAYMENT", title: "Customer payment" },
     ],
   },
@@ -84,8 +83,6 @@ const PROCESSES: { area: string; items: { type: string; title: string }[] }[] = 
       { type: "OPENING_BALANCE", title: "Opening balance" },
       { type: "ADJUSTMENT_INCREASE", title: "Adjustment – stock found" },
       { type: "ADJUSTMENT_DECREASE", title: "Adjustment – stock written off" },
-      { type: "INVENTORY_TRANSFER", title: "Transfer out (into transit)" },
-      { type: "INVENTORY_TRANSFER_IN", title: "Transfer in (out of transit)" },
     ],
   },
 ];
@@ -95,6 +92,9 @@ const DORMANT_TITLE: Record<string, string> = {
   REPAIR_PARTS_CONSUMPTION: "Repair parts used",
   WARRANTY_REPLACEMENT: "Warranty replacement",
   SALES_SHIPMENT_COGS: "Cost of goods sold on shipment (earlier method)",
+  DEPOSIT_APPLIED: "Deposit applied to the invoice (earlier method)",
+  INVENTORY_TRANSFER: "Transfer out, into transit (earlier method)",
+  INVENTORY_TRANSFER_IN: "Transfer in, out of transit (earlier method)",
 };
 
 export function ChartOfAccounts() {
@@ -102,7 +102,11 @@ export function ChartOfAccounts() {
   const trial = useQuery({ queryKey: ["trial-balance"], queryFn: () => api.get<TrialBalance>("/trial-balance") });
   const balance = (code: string) => trial.data?.accounts.find((a) => a.code === code)?.balanceCents ?? 0;
   const groups = Object.keys(TYPE_LABEL)
-    .map((type) => ({ type, rows: (accounts.data?.data ?? []).filter((a) => a.accountType === type) }))
+    // A retired account stays visible only while it still holds a balance.
+    .map((type) => ({
+      type,
+      rows: (accounts.data?.data ?? []).filter((a) => a.accountType === type && (a.isActive || balance(a.code) !== 0)),
+    }))
     .filter((g) => g.rows.length > 0);
 
   return (
@@ -194,9 +198,13 @@ export function TransactionEntries({ onShowEntries }: { onShowEntries: (transact
         ))}
         {dormant.length > 0 && (
           <div>
-            <Title order={2} size="h4" mb="sm">
-              Other
+            <Title order={2} size="h4" mb={4}>
+              Earlier methods
             </Title>
+            <Text size="sm" c="dimmed" mb="sm">
+              Rules the app no longer uses. Their past entries stay on the books as they were posted. Transfers between
+              warehouses now post nothing: the stock stays in Inventory at its cost.
+            </Text>
             <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="md">
               {dormant.map((e) => (
                 <EntryCard

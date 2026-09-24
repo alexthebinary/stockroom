@@ -1,7 +1,7 @@
 import type { Tx } from "./inventory";
 import { badRequest, conflict } from "./errors";
 import { postSimple } from "./ledger";
-import { TRANSACTION_TYPE } from "./accounts";
+import { ACCOUNT, TRANSACTION_TYPE } from "./accounts";
 import { channelPolicy, dueDateFor } from "./channels";
 import { lockDocumentForPayment, paidAgainst } from "./payments";
 import { nextInvoiceNumber, nextPaymentNumber } from "./numbering";
@@ -83,7 +83,7 @@ export async function takeDeposit(
   const entry = await postSimple(tx, {
     transactionType: TRANSACTION_TYPE.CUSTOMER_DEPOSIT,
     amountCents,
-    memo: `Checkout payment ${payment.paymentNumber} on ${order.orderNumber} — held until it ships`,
+    memo: `Checkout payment ${payment.paymentNumber} on ${order.orderNumber} — paid ahead; revenue when it ships`,
     referenceType: "PAYMENT",
     referenceId: payment.id,
     actor: input.actor,
@@ -142,10 +142,23 @@ export async function raiseInvoice(tx: Tx, order: OrderForCash, actor: string, i
     actor,
   });
 
-  // Checkout money now meets the receivable it was always for.
+  // Checkout money now meets the receivable it was always for. Since
+  // 2026-09-24 it was booked straight to Accounts Receivable, so linking the
+  // payment is enough; only money taken earlier and held in the retired
+  // Customer Deposits account still needs moving onto the invoice.
   const deposits = await unappliedDeposits(tx, order.id);
+  const deposits2100 = await tx.journalLine.findMany({
+    where: {
+      account: { code: ACCOUNT.CUSTOMER_DEPOSITS },
+      creditCents: { gt: 0 },
+      journalEntry: { referenceType: "PAYMENT", referenceId: { in: deposits.map((d) => d.id) }, status: "POSTED" },
+    },
+    select: { journalEntry: { select: { referenceId: true } } },
+  });
+  const heldIn2100 = new Set(deposits2100.map((l) => l.journalEntry.referenceId));
   for (const d of deposits) {
     await tx.payment.update({ where: { id: d.id }, data: { invoiceId: invoice.id } });
+    if (!heldIn2100.has(d.id)) continue;
     await postSimple(tx, {
       transactionType: TRANSACTION_TYPE.DEPOSIT_APPLIED,
       amountCents: d.amountCents,

@@ -83,12 +83,13 @@ export const NAV: SidebarGroup[] = [
           },
           {
             to: "/deliveries",
-            label: "Deliveries",
+            label: "Shipped",
             attention: (a) =>
               a.deliveries.inTransit > 0
                 ? { count: a.deliveries.inTransit, tone: "notice" }
                 : null,
           },
+          { to: "/sales-payments", label: "Payments" },
           { to: "/catalogs/customers", label: "Customers" },
         ],
       },
@@ -105,6 +106,7 @@ export const NAV: SidebarGroup[] = [
             attention: (a) =>
               a.bills.unpaid > 0 ? { count: a.bills.unpaid, tone: "notice" } : null,
           },
+          { to: "/purchase-payments", label: "Payments" },
           {
             to: "/receipts",
             label: "Receipts",

@@ -148,6 +148,12 @@ describe("found by the 2026-09-24 reviews", () => {
     const v = await api.get("/api/reports/inventory-valuation");
     expect(v.body.inTransitCents).toBeGreaterThan(0);
     expect(v.body.varianceCents).toBe(0);
+    // Since 2026-09-24 a transfer posts nothing: the value never leaves Inventory.
+    const entries = await prisma.journalEntry.count({ where: { referenceType: "STOCK_TRANSFER", referenceId: t.body.id } });
+    expect(entries).toBe(0);
+    expect((await api.post(`/api/stock-transfers/${t.body.id}/complete`)).status).toBeLessThan(300);
+    expect((await api.get("/api/reports/inventory-valuation")).body.varianceCents).toBe(0);
+    expect(await balance(ACCOUNT.INVENTORY_IN_TRANSIT)).toBe(0);
   });
 });
 

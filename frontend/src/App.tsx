@@ -30,6 +30,7 @@ import { AssistantPanel } from "./components/AssistantPanel";
 import Showroom from "./pages/Showroom";
 import Dashboard from "./pages/Dashboard";
 import Deliveries from "./pages/Deliveries";
+import Payments from "./pages/Payments";
 import Inventory from "./pages/Inventory";
 import Invoices from "./pages/Invoices";
 import Ledger from "./pages/Ledger";
@@ -428,6 +429,8 @@ export default function App() {
           <Route path="/sales-orders/:id" element={<SalesOrderDetail />} />
           <Route path="/invoices" element={<Invoices />} />
           <Route path="/deliveries" element={<Deliveries />} />
+          <Route path="/sales-payments" element={<Payments key="in" direction="RECEIPT" />} />
+          <Route path="/purchase-payments" element={<Payments key="out" direction="DISBURSEMENT" />} />
           <Route path="/purchase-orders" element={<PurchaseOrders />} />
           <Route path="/purchase-orders/:id" element={<PurchaseOrderDetail />} />
           <Route path="/bills" element={<Bills />} />

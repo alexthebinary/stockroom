@@ -82,7 +82,7 @@ export type Proposal = { id: string; title: string; summary: string; method: "PO
 const READABLE = [
   "/dashboard", "/products", "/inventory", "/warehouses", "/purchase-orders", "/sales-orders",
   "/close", "/close-history", "/reports/", "/receiving/capabilities", "/customers", "/vendors",
-  "/trial-balance", "/stock-transfers", "/stock-adjustments", "/stock-counts",
+  "/trial-balance", "/stock-transfers", "/stock-adjustments", "/stock-counts", "/payments",
 ];
 
 /** Writes the assistant may PROPOSE. Each is an existing route a user can already click. */

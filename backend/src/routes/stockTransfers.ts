@@ -162,31 +162,10 @@ stockTransfersRouter.post(
       });
       await attachConsumptionsToMovement(tx, consumed.consumptionIds, outMovement.id);
 
-      // Despatch moves value OUT of the source and into transit. It must not
-      // debit the destination: nothing has arrived there, and claiming it as
-      // that warehouse's Inventory asserts stock nobody can pick.
-      await createEntry(tx, {
-        transactionType: TRANSACTION_TYPE.INVENTORY_TRANSFER,
-        memo: `Transfer #${current.id}: despatched from ${current.fromWarehouse.code}`,
-        referenceType: "STOCK_TRANSFER",
-        referenceId: current.id,
-        actor,
-        lines: [
-          {
-            accountCode: ACCOUNT.INVENTORY_IN_TRANSIT,
-            debitCents: consumed.totalCostCents,
-            productId: current.productId,
-            memo: `In transit to ${current.toWarehouse.code}`,
-          },
-          {
-            accountCode: ACCOUNT.INVENTORY,
-            creditCents: consumed.totalCostCents,
-            productId: current.productId,
-            warehouseId: current.fromWarehouseId,
-            memo: `Out of ${current.fromWarehouse.code}`,
-          },
-        ],
-      });
+      // No journal entry (2026-09-24, operator): a transfer moves stock
+      // between our own warehouses, and the value stays in Inventory at the
+      // FIFO cost the layers carry. The retired In Transit account is only
+      // used to clear transfers despatched before the change (see receive).
 
       await tx.stockTransfer.update({
         where: { id },
@@ -269,10 +248,17 @@ stockTransfersRouter.post(
         actor,
       });
 
-      // Arrival: value leaves transit and becomes the destination's Inventory.
-      // Until this posts, the balance sheet shows the stock as in transit,
-      // which is what it actually is.
-      await createEntry(tx, {
+      // Only a transfer despatched before 2026-09-24 put value in In Transit;
+      // clear it into Inventory on arrival. Newer transfers posted nothing.
+      const despatched = await tx.journalEntry.findFirst({
+        where: {
+          referenceType: "STOCK_TRANSFER",
+          referenceId: current.id,
+          transactionType: TRANSACTION_TYPE.INVENTORY_TRANSFER,
+          status: "POSTED",
+        },
+      });
+      if (despatched) await createEntry(tx, {
         transactionType: TRANSACTION_TYPE.INVENTORY_TRANSFER_IN,
         memo: `Transfer #${current.id}: received at ${current.toWarehouse.code}`,
         referenceType: "STOCK_TRANSFER",

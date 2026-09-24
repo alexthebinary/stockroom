@@ -4,7 +4,7 @@
 
 **Post (create bill)** commits the order to the vendor: it records the vendor's bill for the full amount (Dr Inventory Clearing – Inbound 1210 / Cr Accounts Payable 2000). Goods then arrive against it — see [[receiving]].
 
-**Pay vendor** records payment against the bill; part payments are allowed. **Void bill** reverses a bill with no payment on it. **Cancel** an order that has not been received.
+**Pay vendor** records payment against the bill; part payments are allowed. **Purchases → Payments** (/purchase-payments) lists every supplier payment and has **Register payment** for any bill with a balance. **Void bill** reverses a bill with no payment on it. **Cancel** an order that has not been received.
 
 Bills (/bills) lists every vendor bill with what is outstanding. Vendors are kept under Purchases → Vendors (/catalogs/vendors).
 

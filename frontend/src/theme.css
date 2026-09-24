@@ -1620,8 +1620,20 @@ body:has(.receive-dock) {
  * A figure is a measured value, not a card: label above in small tracked
  * caps, number below set large and tight, a black rule over the pair. */
 
-:root[data-mantine-color-scheme="light"] {
+/* Hover colours, pinned. Mantine's filled hover is "one shade darker" on the
+   palette, and the ink/teal palettes are deliberately not ordered by
+   lightness (shade 8 is the DARK-mode fill). Unpinned, a black pill hovered
+   to near-white and the olive scanner button to pale lime.
+   Doubled :root beats the variables Mantine injects at runtime, which carry
+   the same (0,2,0) specificity and land after this stylesheet. */
+:root:root[data-mantine-color-scheme="light"] {
   --mantine-color-ink-filled-hover: #2b2d28;
+  --mantine-color-teal-filled-hover: #46520c;
+}
+
+:root:root[data-mantine-color-scheme="dark"] {
+  --mantine-color-ink-filled-hover: #d9dbd3;
+  --mantine-color-teal-filled-hover: #b3c243;
 }
 
 .spec {

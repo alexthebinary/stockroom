@@ -56,19 +56,22 @@ async function order(channel: string, productId: number, quantity = 2) {
 }
 
 describe("prepaid channel (Shopify)", () => {
-  it("checkout money is a deposit until the order ships, then it settles the invoice", async () => {
+  it("checkout money sits against the receivable until the order ships, then it settles the invoice", async () => {
     const api = as(app, token);
     const productId = await stocked(5);
     const o = await order("SHOPIFY", productId);
     const revenueBefore = await balance(ACCOUNT.SALES_REVENUE);
+    const arBefore = await balance(ACCOUNT.ACCOUNTS_RECEIVABLE);
     const depositsBefore = await balance(ACCOUNT.CUSTOMER_DEPOSITS);
 
     const paid = await api.post(`/api/sales-orders/${o.id}/pay`).send({ method: "CARD" });
     expect(paid.status, JSON.stringify(paid.body)).toBe(201);
     expect(paid.body.order.paymentStatus).toBe("PREPAID");
-    // Paid, but nothing sold yet.
+    // Paid, but nothing sold yet: the customer's account is in credit.
     expect(await balance(ACCOUNT.SALES_REVENUE)).toBe(revenueBefore);
-    expect(await balance(ACCOUNT.CUSTOMER_DEPOSITS)).toBe(depositsBefore + o.totalCents);
+    expect(await balance(ACCOUNT.ACCOUNTS_RECEIVABLE)).toBe(arBefore - o.totalCents);
+    // The retired Customer Deposits account is not touched any more.
+    expect(await balance(ACCOUNT.CUSTOMER_DEPOSITS)).toBe(depositsBefore);
 
     expect((await api.post(`/api/sales-orders/${o.id}/pack`)).status).toBe(200);
     const shipped = await api.post(`/api/sales-orders/${o.id}/ship`).send({});
@@ -77,7 +80,32 @@ describe("prepaid channel (Shopify)", () => {
     expect(shipped.body.order.invoices).toHaveLength(1);
 
     expect(await balance(ACCOUNT.SALES_REVENUE)).toBe(revenueBefore + o.totalCents);
+    expect(await balance(ACCOUNT.ACCOUNTS_RECEIVABLE)).toBe(arBefore);
+    expect((await api.get("/api/trial-balance")).body.sound).toBe(true);
+  });
+
+  it("a deposit taken before the change (held in Customer Deposits) is still cleared onto its invoice", async () => {
+    const api = as(app, token);
+    const o = await order("SHOPIFY", await stocked(4), 1);
+    const depositsBefore = await balance(ACCOUNT.CUSTOMER_DEPOSITS);
+    const arBefore = await balance(ACCOUNT.ACCOUNTS_RECEIVABLE);
+    const paid = await api.post(`/api/sales-orders/${o.id}/pay`).send({});
+    expect(paid.status).toBe(201);
+    // Recreate the old posting: the checkout credit went to 2100, not AR.
+    const dep = await prisma.account.findUniqueOrThrow({ where: { code: ACCOUNT.CUSTOMER_DEPOSITS } });
+    const ar = await prisma.account.findUniqueOrThrow({ where: { code: ACCOUNT.ACCOUNTS_RECEIVABLE } });
+    await prisma.journalLine.updateMany({
+      where: { accountId: ar.id, journalEntry: { referenceType: "PAYMENT", referenceId: paid.body.payment.id } },
+      data: { accountId: dep.id },
+    });
+    expect(await balance(ACCOUNT.CUSTOMER_DEPOSITS)).toBe(depositsBefore + o.totalCents);
+
+    await api.post(`/api/sales-orders/${o.id}/pack`);
+    const shipped = await api.post(`/api/sales-orders/${o.id}/ship`).send({});
+    expect(shipped.status, JSON.stringify(shipped.body)).toBe(200);
     expect(await balance(ACCOUNT.CUSTOMER_DEPOSITS)).toBe(depositsBefore);
+    expect(await balance(ACCOUNT.ACCOUNTS_RECEIVABLE)).toBe(arBefore);
+    expect((await api.get("/api/trial-balance")).body.sound).toBe(true);
   });
 
   it("an order holding a checkout payment cannot be cancelled around it", async () => {
