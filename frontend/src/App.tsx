@@ -183,7 +183,7 @@ function useLedgerHealth() {
   // BOTH states: the old badge rendered nothing when sound and nothing when
   // the query failed, so its silence could not be told apart.
   if (!trial.data) return null;
-  if (trial.data.sound) return { sound: true, summary: "The books tie out." };
+  if (trial.data.sound) return { sound: true, summary: "Live Audit: every ledger check passes right now." };
 
   const counts = [
     trial.data.unbalancedEntries.length && `${trial.data.unbalancedEntries.length} unbalanced`,
@@ -192,7 +192,7 @@ function useLedgerHealth() {
     trial.data.chartInconsistencies.length && `${trial.data.chartInconsistencies.length} mis-signed`,
   ].filter(Boolean).join(", ");
 
-  return { sound: false, summary: `The books do not tie out: ${counts}. Open the ledger.` };
+  return { sound: false, summary: `Live Audit failing: ${counts}. Open the ledger.` };
 }
 
 /**

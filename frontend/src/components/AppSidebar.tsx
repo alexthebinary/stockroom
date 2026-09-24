@@ -226,7 +226,7 @@ export function AppSidebar({
               ) : (
                 <IconAlertTriangle size={15} stroke={1.9} />
               )}
-              {!collapsed && <span>{ledger.sound ? "Books tie out" : "Books do not tie out"}</span>}
+              {!collapsed && <span>{ledger.sound ? "Live Audit · passing" : "Live Audit · failing"}</span>}
             </UnstyledButton>
           </Tooltip>
         )}
