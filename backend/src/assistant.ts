@@ -28,6 +28,18 @@ import { routeWithJev, SCREENS } from "./jev";
  *   zenmux z-ai/glm-4.6v-flash-free  429 on call 1  (free tiers are not a dependency)
  * The overflow is deliberately NOT another Google route: the day's failures
  * were Google-side, and a fallback that shares the outage is not one.
+ *
+ * Speed, re-benched 2026-09-24 on 19 data/change cases x2, strict grader
+ * (quantities, product/warehouse ids and figures checked, not just the path):
+ *   3.6-flash low, old loop        data 7.8 s  change 11.8 s (3 rounds)  36/38
+ *   3.6-flash low, prefetch+skip   data 7.0 s  change  4.7 s (1 round)   36/38  <- default
+ *   3.5-flash-lite, old loop       data 3.9 s  change  6.0 s             36/38
+ *   3.5-flash-lite, prefetch+skip  data 4.1 s  change  4.3 s             33/38  (claims proposals it never made)
+ *   3.6-flash reasoning "none"     SLOWER than "low" (9.8 s / 14.5 s) and more rounds
+ *   3.7-flash                      no faster than 3.6 (9.3 s / 12.3 s)
+ *   gpt-5.4-mini 18/19, grok-4.2-fast-non-reasoning 12/19: explain instead of proposing
+ * The 2 shared misses were "total stock value" running out of steps; fixed by
+ * naming /reports/inventory-valuation in the api_get description (3/3 after).
  */
 
 const PROVIDERS: Record<string, { url: string; keyEnv: string }> = {
@@ -85,6 +97,7 @@ export const ASSISTANT_TOOLS = [
         "/dashboard/search?q=<SKU, PO number, order number, serial, customer or vendor> (find anything), " +
         "/purchase-orders/<id> (lines with quantity and receivedQty), /sales-orders/<id>, " +
         "/inventory?search=<sku> (stock by warehouse), /warehouses, /close/<YYYY-MM> (month-end checks), " +
+        "/reports/inventory-valuation (total stock value: assetValueCents, reconciled with the ledger; per-SKU rows), " +
         "/receiving/capabilities.",
       parameters: {
         type: "object",
@@ -200,7 +213,9 @@ const chainLlm: Llm = async (messages, tools) => {
           model: step.model,
           messages: sent,
           tools,
-          ...(google ? { reasoning_effort: "low" } : {}),
+          // "none" is the fastest Gemini setting; benched against "low" on the
+          // full case set before becoming a default (see ASSISTANT_REASONING).
+          ...(google ? { reasoning_effort: process.env.ASSISTANT_REASONING || "low" } : {}),
         }),
         signal: AbortSignal.timeout(40_000),
       });
@@ -330,6 +345,25 @@ async function lookup(app: Express, caller: Caller, query: string) {
   return { results: results.slice(0, 8), detailOf: detailPath ? exact.label : null, detail };
 }
 
+/**
+ * Record numbers and SKUs a person typed, looked up BEFORE the first model
+ * call. "pack SO-001001" and "has PO-002003 arrived" otherwise spend a whole
+ * model round (~4 s) deciding to call lookup with the string they were given.
+ * Reads only, as the user, through the same lookup the model would call.
+ */
+const RECORD_RE = /\b(?:PO|SO|INV|RET|BILL|SHP)-\d{4,}\b/gi;
+const SKU_RE = /\b[A-Z]{2,}(?:-[A-Z0-9]+)+\b/g;
+export function referencedRecords(text: string): string[] {
+  const found = [...(text.match(RECORD_RE) ?? []).map((t) => t.toUpperCase()), ...(text.match(SKU_RE) ?? [])];
+  return [...new Set(found)].slice(0, 2);
+}
+
+async function prefetch(app: Express, caller: Caller, text: string) {
+  const refs = referencedRecords(text);
+  const found = await Promise.all(refs.map(async (q) => ({ q, result: await lookup(app, caller, q) })));
+  return found.filter((f) => !("results" in f.result && Array.isArray(f.result.results) && f.result.results.length === 0));
+}
+
 /** Models add markdown even when told not to; the panel renders plain text. */
 function plain(text: string) {
   return text
@@ -386,8 +420,13 @@ export async function chat(
   // (a fresh conversation, or one whose last answer was itself quick). A reply
   // like "yes, do that" must reach the model that knows what "that" is.
   const latestText = input.messages[input.messages.length - 1].content.trim();
+  // Where the turn's time went, returned with the reply: the only honest basis
+  // for a speed change is knowing which part is slow.
+  const timing: { jevMs?: number; modelMs: number[]; toolMs: number } = { modelMs: [], toolMs: 0 };
   if (!input.image && !input.full && input.fastOk !== false && latestText) {
+    const tJev = Date.now();
     const r = await routeWithJev(latestText, input.route);
+    timing.jevMs = Date.now() - tJev;
     const none = { input: 0, output: 0, calls: 0 };
     if (r?.kind === "navigate" && r.screen && SCREENS[r.screen]) {
       return {
@@ -397,6 +436,7 @@ export async function chat(
         model: "jev",
         usage: none,
         fast: true,
+        timing,
         navigate: { to: r.screen, label: SCREENS[r.screen] },
       };
     }
@@ -409,6 +449,7 @@ export async function chat(
         model: "jev",
         usage: none,
         fast: true,
+        timing,
         wikiPage: r.page,
       };
     }
@@ -437,8 +478,25 @@ export async function chat(
   const proposals: Proposal[] = [];
   const looked: string[] = [];
 
+  if (process.env.ASSISTANT_PREFETCH !== "0" && latestText) {
+    const tPre = Date.now();
+    const pre = await prefetch(app, caller, latestText);
+    timing.toolMs += Date.now() - tPre;
+    if (pre.length > 0) {
+      for (const f of pre) looked.push(`lookup ${f.q}`);
+      messages.splice(1, 0, {
+        role: "system",
+        content:
+          "Already looked up for the user's latest message (fresh, read as the user; do not look these up again):\n" +
+          pre.map((f) => `lookup("${f.q}") → ${JSON.stringify(f.result).slice(0, TOOL_RESULT_CHARS)}`).join("\n"),
+      });
+    }
+  }
+
   for (let round = 0; round < MAX_ROUNDS; round++) {
+    const tModel = Date.now();
     const reply = await llm(messages, ASSISTANT_TOOLS);
+    timing.modelMs.push(Date.now() - tModel);
     const u = usageOf.get(reply);
     turnUsage.calls += 1;
     turnUsage.input += u?.input ?? 0;
@@ -454,8 +512,10 @@ export async function chat(
         looked,
         model: lastModel,
         usage: { ...turnUsage },
+        timing,
       };
     }
+    const tTools = Date.now();
     for (const call of calls) {
       let args: Record<string, unknown> = {};
       try {
@@ -491,6 +551,23 @@ export async function chat(
         tool_call_id: call.id,
         content: typeof result === "string" ? result : JSON.stringify(result),
       });
+    }
+    timing.toolMs += Date.now() - tTools;
+    // A round that only prepared proposals, all accepted, is finished work: the
+    // cards carry the title and summary. Another model round only restates
+    // them (~4 s). Anything else — a refused proposal, a read — still loops.
+    const onlyProposed = calls.every((c) => c.function.name === "propose_action");
+    const accepted = messages.slice(-calls.length).every((m) => String(m.content).startsWith('{"ok":true'));
+    if (process.env.ASSISTANT_SKIP_FINAL !== "0" && onlyProposed && accepted && proposals.length > 0) {
+      const said = plain(String(reply.content ?? ""));
+      return {
+        reply: said || (proposals.length === 1 ? "Ready for you to approve:" : `${proposals.length} changes ready for you to approve:`),
+        proposals,
+        looked,
+        model: lastModel,
+        usage: { ...turnUsage },
+        timing,
+      };
     }
   }
   return {

@@ -85,8 +85,8 @@ const WIKI_GLOSS: Record<string, string> = {
   showroom: "selling to a walk-in showroom client at the counter",
   returns: "customer returns, restock or write off, credit and refund",
   inventory: "stock levels, products, warehouses, transfers, adjustments for found or damaged stock",
-  "month-end-close": "month-end checks and closing a month",
-  accounting: "ledger, posting rules, reports, period lock",
+  "month-end-close": "month-end checks, closing a month, locking a finished month so nobody can change it",
+  accounting: "ledger, journal entries, posting rules, trial balance, reports",
   settings: "categories, managers, users and roles",
 };
 

@@ -202,3 +202,49 @@ describe("Jev front door", () => {
     expect((await say("how do I hack")).body.reply).toBe("full answer");
   });
 });
+
+describe("fewer model rounds", () => {
+  it("a record the user names is looked up before the first model call", async () => {
+    await prisma.product.create({ data: { sku: "PF-TEST-1", name: "Prefetch probe" } });
+    let first: Record<string, unknown>[] = [];
+    setAssistantLlmForTests(async (messages) => {
+      if (first.length === 0) first = messages.map((m) => ({ ...m }));
+      return { role: "assistant", content: "ok" };
+    });
+    const res = await as(app, token).post("/api/assistant/chat").send({
+      messages: [{ role: "user", content: "how many PF-TEST-1 do we have?" }], route: "/", fastOk: false,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const pre = first.find((m) => m.role === "system" && String(m.content).startsWith("Already looked up"));
+    expect(String(pre?.content)).toContain("Prefetch probe");
+    expect(res.body.looked).toContain("lookup PF-TEST-1");
+
+    // Negative control: nothing named, nothing prefetched.
+    first = [];
+    await as(app, token).post("/api/assistant/chat").send({
+      messages: [{ role: "user", content: "what needs doing?" }], route: "/", fastOk: false,
+    });
+    expect(first.some((m) => String(m.content).startsWith("Already looked up"))).toBe(false);
+  });
+
+  it("a round that only prepared accepted proposals ends the turn without another model call", async () => {
+    let calls = 0;
+    setAssistantLlmForTests(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          role: "assistant",
+          content: null,
+          tool_calls: [call("p", "propose_action", { title: "Pack SO-1", summary: "Packs it.", path: "/sales-orders/1/pack", body: {} })],
+        };
+      }
+      return { role: "assistant", content: "restating the card" };
+    });
+    const res = await as(app, token).post("/api/assistant/chat").send({
+      messages: [{ role: "user", content: "pack it" }], route: "/", fastOk: false,
+    });
+    expect(res.body.proposals).toHaveLength(1);
+    expect(calls).toBe(1);
+    expect(res.body.reply).toMatch(/approve/);
+  });
+});
