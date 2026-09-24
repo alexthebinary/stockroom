@@ -7,12 +7,15 @@ import {
   Pagination,
   Select,
   Table,
+  Tabs,
   Text,
   Title,
 } from "@mantine/core";
 import { IconCheck, IconAlertTriangle } from "@tabler/icons-react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { ChartOfAccounts, PostingRules } from "./AccountingReference";
 import { api, qs, type JournalEntry, type Paginated, type TrialBalance } from "../api";
 import {
   PageHeader,
@@ -37,12 +40,25 @@ const TRANSACTION_TYPES = [
   "INVENTORY_TRANSFER",
   "ADJUSTMENT_INCREASE",
   "ADJUSTMENT_DECREASE",
+  "INVENTORY_TRANSFER_IN",
+  "OPENING_BALANCE",
+  "CUSTOMER_DEPOSIT",
+  "DEPOSIT_APPLIED",
+  "SALES_RETURN",
+  "RETURN_RESTOCK",
+  "CUSTOMER_REFUND",
+  "REPAIR_PARTS_CONSUMPTION",
+  "WARRANTY_REPLACEMENT",
 ];
 
 export default function Ledger() {
   const [transactionType, setTransactionType] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const queryClient = useQueryClient();
+  // The tab lives in the URL so "the chart of accounts" is a link someone can send.
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab") ?? "ledger";
+  const setTab = (t: string | null) => setParams(t && t !== "ledger" ? { tab: t } : {}, { replace: true });
 
   /**
    * Reversing posts a mirror-image contra entry. The original stays on the
@@ -118,6 +134,26 @@ export default function Ledger() {
         )}
       </QueryState>
 
+      <Tabs value={tab} onChange={setTab} keepMounted={false} mb="md">
+        <Tabs.List>
+          <Tabs.Tab value="ledger">Ledger</Tabs.Tab>
+          <Tabs.Tab value="chart">Chart of accounts</Tabs.Tab>
+          <Tabs.Tab value="rules">Posting rules</Tabs.Tab>
+        </Tabs.List>
+      </Tabs>
+
+      {tab === "chart" && <ChartOfAccounts />}
+      {tab === "rules" && (
+        <PostingRules
+          onShowEntries={(t) => {
+            setTransactionType(t);
+            setPage(1);
+            setTab("ledger");
+          }}
+        />
+      )}
+
+      {tab === "ledger" && (
       <Grid>
         <Grid.Col span={{ base: 12, lg: 5 }}>
           <Card withBorder radius="md" p="md" h="100%">
@@ -260,6 +296,7 @@ export default function Ledger() {
           </Card>
         </Grid.Col>
       </Grid>
+      )}
     </>
   );
 }

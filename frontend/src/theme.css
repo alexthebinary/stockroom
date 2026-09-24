@@ -1746,3 +1746,19 @@ body:has(.receive-dock) {
 :root[data-mantine-color-scheme="dark"] .mantine-Button-root[data-variant="filled"]:not([style*="--mantine-color-"]) {
   color: var(--on-accent);
 }
+
+/* Chart of accounts: the type heading rows read as section rules, not data. */
+.coa-group {
+  padding-top: 14px !important;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--surface-sunken);
+}
+
+.rule-table td {
+  font-size: 13px;
+  border-top: 1px solid var(--hairline);
+}
