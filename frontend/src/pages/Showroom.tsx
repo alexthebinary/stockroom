@@ -64,7 +64,13 @@ export default function Showroom() {
 
   useEffect(() => {
     if (warehouseId === undefined && activeWarehouses.length > 0) {
-      setWarehouseId(activeWarehouses[0].id);
+      // The counter sells from the showroom's own stock: prefer the warehouse
+      // named as the showroom, then MAIN, and only then whatever sorts first.
+      const showroom =
+        activeWarehouses.find((w) => /showroom/i.test(w.name)) ??
+        activeWarehouses.find((w) => w.code === "MAIN") ??
+        activeWarehouses[0];
+      setWarehouseId(showroom.id);
     }
   }, [activeWarehouses, warehouseId]);
 
