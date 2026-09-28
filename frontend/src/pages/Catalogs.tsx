@@ -16,7 +16,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import { api, type Paginated, type Party, type ProductCategory } from "../api";
-import { PageHeader, QueryState, toastErr, toastOk } from "../components/ui";
+import { PageHeader, QueryState, formatDate, toastErr, toastOk } from "../components/ui";
+import { useAuth } from "../auth";
 
 type PartyKind = "customers" | "vendors" | "employees";
 
@@ -297,61 +298,322 @@ function CategoryPanel() {
   );
 }
 
-/** Read-only: the posting rules the ledger uses, as configuration. */
-function PostingRulesPanel() {
-  const list = useQuery({
-    queryKey: ["journal-templates"],
+type Account = { id: number; code: string; name: string; accountType: string; normalSide: string; isActive: boolean };
+type PostingRuleRow = {
+  id: number;
+  transactionType: string;
+  description: string;
+  role: string;
+  label: string;
+  side: "DEBIT" | "CREDIT";
+  locked: boolean;
+  allowedTypes: string[];
+  account: { id: number; code: string; name: string };
+  lastChange: { actor: string; changedAt: string } | null;
+};
+
+const ACCOUNT_TYPES = ["ASSET", "LIABILITY", "EQUITY", "INCOME", "EXPENSE", "OFF_BALANCE"];
+
+function useAccounts() {
+  return useQuery({
+    queryKey: ["accounts"],
+    queryFn: () => api.get<{ data: Account[] }>("/accounts"),
+  });
+}
+
+/**
+ * Account assignment (client request 2026-09-28): which GL account each line
+ * of each transaction posts to. Admin-edited; a change applies to postings
+ * made after it and is kept in the rule's history.
+ */
+function AccountAssignmentPanel() {
+  const { user } = useAuth();
+  const canEdit = Boolean(user?.can.users);
+  const queryClient = useQueryClient();
+  const rules = useQuery({
+    queryKey: ["posting-rules"],
+    queryFn: () => api.get<{ data: PostingRuleRow[] }>("/posting-rules"),
+  });
+  const accounts = useAccounts();
+  const [historyOf, setHistoryOf] = useState<PostingRuleRow | null>(null);
+  const history = useQuery({
+    queryKey: ["posting-rule-changes", historyOf?.id],
+    enabled: historyOf != null,
     queryFn: () =>
       api.get<{
-        data: {
-          id: number;
-          transactionType: string;
-          description: string;
-          debitAccountName: string;
-          creditAccountName: string;
-        }[];
-      }>("/journal-templates"),
+        data: { id: number; actor: string; changedAt: string; from: { code: string; name: string }; to: { code: string; name: string } }[];
+      }>(`/posting-rules/${historyOf!.id}/changes`),
   });
+  const save = useMutation({
+    mutationFn: (v: { id: number; accountId: number }) => api.put(`/posting-rules/${v.id}`, { accountId: v.accountId }),
+    onSuccess: () => {
+      toastOk("Account assignment saved. New postings use it; posted entries are unchanged.");
+      queryClient.invalidateQueries({ queryKey: ["posting-rules"] });
+    },
+    onError: toastErr,
+  });
+
+  const groups = new Map<string, PostingRuleRow[]>();
+  for (const r of rules.data?.data ?? []) groups.set(r.transactionType, [...(groups.get(r.transactionType) ?? []), r]);
 
   return (
     <Card withBorder radius="md" p="md">
       <Title order={5} mb={2}>
-        Posting rules
+        Account assignment
       </Title>
       <Text size="xs" c="dimmed" mb="sm">
-        Each financial transaction type posts to a fixed pair of accounts. These are configuration,
-        not code.
+        Which account each line of each transaction posts to. A change applies to new postings only; posted
+        entries never move. Inventory and its clearing accounts are locked: the stock valuation and the
+        month-end close reconcile against them.
       </Text>
-      <QueryState isLoading={list.isLoading} error={list.error} onRetry={list.refetch}>
+      <QueryState isLoading={rules.isLoading || accounts.isLoading} error={rules.error ?? accounts.error} onRetry={rules.refetch}>
         <Table className="data-grid" verticalSpacing={6}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Transaction</Table.Th>
-              <Table.Th>Debit</Table.Th>
-              <Table.Th>Credit</Table.Th>
+              <Table.Th>Line</Table.Th>
+              <Table.Th>Account</Table.Th>
+              <Table.Th>Last change</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {list.data?.data.map((t) => (
-              <Table.Tr key={t.id}>
+            {[...groups.entries()].map(([type, rows]) =>
+              rows.map((r, i) => (
+                <Table.Tr key={r.id}>
+                  {i === 0 && (
+                    <Table.Td rowSpan={rows.length} style={{ verticalAlign: "top" }}>
+                      <Text size="sm">{r.description}</Text>
+                      <Text size="xs" c="dimmed">
+                        {type}
+                      </Text>
+                    </Table.Td>
+                  )}
+                  <Table.Td>
+                    <Group gap={6} wrap="nowrap">
+                      <Badge size="xs" variant="light" color={r.side === "DEBIT" ? "blue" : "grape"}>
+                        {r.side === "DEBIT" ? "Dr" : "Cr"}
+                      </Badge>
+                      <Text size="sm">{r.label}</Text>
+                    </Group>
+                  </Table.Td>
+                  <Table.Td miw={260}>
+                    {r.locked || !canEdit ? (
+                      <Group gap={6} wrap="nowrap">
+                        <Text size="sm">
+                          {r.account.code} {r.account.name}
+                        </Text>
+                        {r.locked && (
+                          <Badge size="xs" variant="outline" color="gray" style={{ flexShrink: 0 }} title="Valuation and close reconcile this account">
+                            locked
+                          </Badge>
+                        )}
+                      </Group>
+                    ) : (
+                      <Select
+                        size="xs"
+                        aria-label={`${type} ${r.label}`}
+                        value={String(r.account.id)}
+                        data={(accounts.data?.data ?? [])
+                          .filter((a) => (a.isActive && r.allowedTypes.includes(a.accountType)) || a.id === r.account.id)
+                          .map((a) => ({ value: String(a.id), label: `${a.code} ${a.name}` }))}
+                        onChange={(v) => v && Number(v) !== r.account.id && save.mutate({ id: r.id, accountId: Number(v) })}
+                        allowDeselect={false}
+                      />
+                    )}
+                  </Table.Td>
+                  <Table.Td>
+                    {r.lastChange ? (
+                      <Button size="compact-xs" variant="subtle" onClick={() => setHistoryOf(r)}>
+                        {r.lastChange.actor} · {formatDate(r.lastChange.changedAt)}
+                      </Button>
+                    ) : (
+                      <Text size="xs" c="dimmed">
+                        default
+                      </Text>
+                    )}
+                  </Table.Td>
+                </Table.Tr>
+              ))
+            )}
+          </Table.Tbody>
+        </Table>
+      </QueryState>
+
+      <Modal opened={historyOf != null} onClose={() => setHistoryOf(null)} title={historyOf ? `${historyOf.transactionType} · ${historyOf.label}` : ""}>
+        <QueryState isLoading={history.isLoading} error={history.error}>
+          <Table verticalSpacing={4}>
+            <Table.Tbody>
+              {history.data?.data.map((c) => (
+                <Table.Tr key={c.id}>
+                  <Table.Td>
+                    <Text size="xs" c="dimmed">
+                      {formatDate(c.changedAt)} · {c.actor}
+                    </Text>
+                    <Text size="sm">
+                      {c.from.code} {c.from.name} → {c.to.code} {c.to.name}
+                    </Text>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </QueryState>
+      </Modal>
+    </Card>
+  );
+}
+
+/** Chart of accounts: add, rename, deactivate (admin). Accounts are never deleted. */
+function ChartOfAccountsPanel() {
+  const { user } = useAuth();
+  const canEdit = Boolean(user?.can.users);
+  const queryClient = useQueryClient();
+  const accounts = useAccounts();
+  const [opened, { open, close }] = useDisclosure(false);
+  const [draft, setDraft] = useState({ code: "", name: "", accountType: "EXPENSE", normalSide: "DEBIT" });
+  const [renaming, setRenaming] = useState<{ id: number; name: string } | null>(null);
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["accounts"] });
+    queryClient.invalidateQueries({ queryKey: ["posting-rules"] });
+  };
+  const create = useMutation({
+    mutationFn: () =>
+      api.post("/accounts", {
+        code: draft.code.trim(),
+        name: draft.name.trim(),
+        accountType: draft.accountType,
+        ...(draft.accountType === "OFF_BALANCE" ? { normalSide: draft.normalSide } : {}),
+      }),
+    onSuccess: () => {
+      toastOk(`Account ${draft.code} added`);
+      close();
+      setDraft({ code: "", name: "", accountType: "EXPENSE", normalSide: "DEBIT" });
+      refresh();
+    },
+    onError: toastErr,
+  });
+  const update = useMutation({
+    mutationFn: (v: { id: number; body: { name?: string; isActive?: boolean } }) => api.put(`/accounts/${v.id}`, v.body),
+    onSuccess: () => {
+      setRenaming(null);
+      refresh();
+    },
+    onError: toastErr,
+  });
+
+  return (
+    <Card withBorder radius="md" p="md">
+      <Group justify="space-between" mb="sm">
+        <div>
+          <Title order={5} mb={2}>
+            Chart of accounts
+          </Title>
+          <Text size="xs" c="dimmed">
+            An account with postings keeps its type; one that a transaction line uses cannot be deactivated.
+          </Text>
+        </div>
+        {canEdit && (
+          <Button size="xs" onClick={open}>
+            Add account
+          </Button>
+        )}
+      </Group>
+      <QueryState isLoading={accounts.isLoading} error={accounts.error} onRetry={accounts.refetch}>
+        <Table className="data-grid" verticalSpacing={6}>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Code</Table.Th>
+              <Table.Th>Name</Table.Th>
+              <Table.Th>Type</Table.Th>
+              <Table.Th>Normal side</Table.Th>
+              <Table.Th>Status</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {accounts.data?.data.map((a) => (
+              <Table.Tr key={a.id}>
+                <Table.Td>{a.code}</Table.Td>
                 <Table.Td>
-                  <Text size="sm">{t.description}</Text>
-                  <Text size="xs" c="dimmed">
-                    {t.transactionType}
-                  </Text>
+                  {renaming?.id === a.id ? (
+                    <Group gap={6} wrap="nowrap">
+                      <TextInput
+                        size="xs"
+                        aria-label={`Rename ${a.code}`}
+                        value={renaming.name}
+                        onChange={(e) => setRenaming({ id: a.id, name: e.currentTarget.value })}
+                      />
+                      <Button size="compact-xs" onClick={() => update.mutate({ id: a.id, body: { name: renaming.name } })}>
+                        Save
+                      </Button>
+                    </Group>
+                  ) : canEdit ? (
+                    <Button size="compact-xs" variant="subtle" onClick={() => setRenaming({ id: a.id, name: a.name })}>
+                      {a.name}
+                    </Button>
+                  ) : (
+                    a.name
+                  )}
                 </Table.Td>
-                <Table.Td>{t.debitAccountName}</Table.Td>
-                <Table.Td>{t.creditAccountName}</Table.Td>
+                <Table.Td>
+                  <Text size="xs">{a.accountType.replace("_", "-").toLowerCase()}</Text>
+                </Table.Td>
+                <Table.Td>
+                  <Text size="xs">{a.normalSide.toLowerCase()}</Text>
+                </Table.Td>
+                <Table.Td>
+                  {canEdit ? (
+                    <Button
+                      size="compact-xs"
+                      variant="light"
+                      color={a.isActive ? "teal" : "gray"}
+                      onClick={() => update.mutate({ id: a.id, body: { isActive: !a.isActive } })}
+                    >
+                      {a.isActive ? "Active" : "Inactive"}
+                    </Button>
+                  ) : (
+                    <Badge size="sm" variant="light" color={a.isActive ? "teal" : "gray"}>
+                      {a.isActive ? "Active" : "Inactive"}
+                    </Badge>
+                  )}
+                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
         </Table>
       </QueryState>
+
+      <Modal opened={opened} onClose={close} title="Add account">
+        <TextInput label="Code" description="Four digits" value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.currentTarget.value })} mb="sm" />
+        <TextInput label="Name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.currentTarget.value })} mb="sm" />
+        <Select
+          label="Type"
+          data={ACCOUNT_TYPES.map((t) => ({ value: t, label: t.replace("_", "-").toLowerCase() }))}
+          value={draft.accountType}
+          onChange={(v) => v && setDraft({ ...draft, accountType: v })}
+          allowDeselect={false}
+          mb="sm"
+        />
+        {draft.accountType === "OFF_BALANCE" && (
+          <Select
+            label="Normal side"
+            data={[{ value: "DEBIT", label: "debit" }, { value: "CREDIT", label: "credit" }]}
+            value={draft.normalSide}
+            onChange={(v) => v && setDraft({ ...draft, normalSide: v })}
+            allowDeselect={false}
+            mb="sm"
+          />
+        )}
+        <Group justify="flex-end">
+          <Button loading={create.isPending} onClick={() => create.mutate()} disabled={!draft.code || !draft.name}>
+            Add
+          </Button>
+        </Group>
+      </Modal>
     </Card>
   );
 }
 
-const CATALOG_TABS = ["customers", "vendors", "employees", "categories", "posting"] as const;
+const CATALOG_TABS = ["customers", "vendors", "employees", "categories", "posting", "accounts"] as const;
 
 export default function Catalogs() {
   const { tab } = useParams();
@@ -380,7 +642,10 @@ export default function Catalogs() {
           <CategoryPanel />
         </Tabs.Panel>
         <Tabs.Panel value="posting">
-          <PostingRulesPanel />
+          <AccountAssignmentPanel />
+        </Tabs.Panel>
+        <Tabs.Panel value="accounts">
+          <ChartOfAccountsPanel />
         </Tabs.Panel>
       </Tabs>
     </>

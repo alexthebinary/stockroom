@@ -152,7 +152,7 @@ export function MenuBar({
             {user.name} · {String(user.actualRole ?? user.role).toLowerCase()}
           </Menu.Label>
           <Menu.Item onClick={() => navigate("/about")}>About ProfitIndex</Menu.Item>
-          <Menu.Item onClick={() => navigate("/catalogs/posting")}>Posting rules</Menu.Item>
+          <Menu.Item onClick={() => navigate("/catalogs/posting")}>Account assignment</Menu.Item>
           {user.actualCan?.users && (
             <>
               <Menu.Divider />

@@ -161,7 +161,8 @@ export const NAV: SidebarGroup[] = [
         items: [
           { to: "/catalogs/categories", label: "Categories" },
           { to: "/catalogs/employees", label: "Managers" },
-          { to: "/catalogs/posting", label: "Posting rules" },
+          { to: "/catalogs/posting", label: "Account assignment" },
+          { to: "/catalogs/accounts", label: "Chart of accounts" },
           { to: "/about", label: "About" },
         ],
       },

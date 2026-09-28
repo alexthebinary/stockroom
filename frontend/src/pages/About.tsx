@@ -343,8 +343,9 @@ export default function About() {
           >
             <Text size="sm" mb="sm">
               A journal entry is refused unless each line is one-sided and total debits equal
-              total credits to the cent. Postings are configuration, not code — the pairs below
-              are rows in <Code>JournalTemplate</Code>.
+              total credits to the cent. Which account each line posts to is configuration, not code:
+              a row in <Code>PostingRule</Code>, edited by an admin in Settings → Account assignment,
+              with every change kept.
             </Text>
             <Text size="xs" c="dimmed" mb="sm">
               Most entries are a simple pair. A goods receipt is the exception and carries three

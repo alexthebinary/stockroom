@@ -10,5 +10,5 @@ The assistant reads these pages to guide people. One page per area of the app. K
 - [[returns]] — a customer sends goods back: restock or write off, credit and refund
 - [[inventory]] — stock on hand, products, warehouses, transfers between warehouses, adjustments. Pages: /inventory, /products, /warehouses, /transfers, /adjustments
 - [[month-end-close]] — the checks that prove a month is right, and closing it. Pages: /close
-- [[accounting]] — the ledger, posting rules, reports, the period lock. Pages: /ledger, /catalogs/posting, /reports, /reports/sales, /reports/purchases, /reports/stock, /reports/valuation
+- [[accounting]] — the ledger, posting rules, reports, the period lock. Pages: /ledger, /catalogs/posting, /catalogs/accounts, /reports, /reports/sales, /reports/purchases, /reports/stock, /reports/valuation
 - [[settings]] — categories, managers, users and roles. Pages: /catalogs/categories, /catalogs/employees
