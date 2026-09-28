@@ -165,40 +165,51 @@ export async function trialBalance(asOf = "") {
 }
 
 /**
- * Stock value from the open FIFO layers (plus goods in transit), reconciled
- * against the Inventory account. Shared by the valuation report and the close.
+ * Stock value from the weighted average cost pools, reconciled against the
+ * Inventory account. One row per product (the average is company-wide), with
+ * where its units physically are. Shared by the valuation report and the close.
  */
 export async function inventoryValuation() {
-  const lots = await prisma.inventoryLot.findMany({
-    where: { remainingQty: { gt: 0 } },
-    include: { product: true, warehouse: true },
-  });
+  await ensureCostPools();
+  const [pools, lots, openTransfers] = await Promise.all([
+    prisma.productCost.findMany({
+      where: { OR: [{ qty: { gt: 0 } }, { valueCents: { not: 0 } }] },
+      include: { product: true },
+    }),
+    prisma.inventoryLot.groupBy({
+      by: ["productId", "warehouseId"],
+      where: { remainingQty: { gt: 0 } },
+      _sum: { remainingQty: true },
+    }),
+    prisma.stockTransfer.groupBy({
+      by: ["productId"],
+      where: { status: "IN_TRANSIT" },
+      _sum: { quantity: true },
+    }),
+  ]);
+  const warehouses = new Map(
+    (await prisma.warehouse.findMany({ select: { id: true, code: true } })).map((w) => [w.id, w.code])
+  );
 
-  const byProduct = new Map<
-    string,
-    { sku: string; name: string; warehouseCode: string; quantity: number; valueCents: number; layers: number }
-  >();
-
-  for (const lot of lots) {
-    const key = `${lot.productId}:${lot.warehouseId}`;
-    const row =
-      byProduct.get(key) ??
-      {
-        sku: lot.product.sku,
-        name: lot.product.name,
-        warehouseCode: lot.warehouse.code,
-        quantity: 0,
-        valueCents: 0,
-        layers: 0,
+  const rows = pools
+    .map((pool) => {
+      const where = lots
+        .filter((l) => l.productId === pool.productId)
+        .map((l) => ({ code: warehouses.get(l.warehouseId) ?? `#${l.warehouseId}`, qty: l._sum.remainingQty ?? 0 }))
+        .sort((x, y) => x.code.localeCompare(y.code))
+        .map((w) => `${w.code} ${w.qty}`);
+      const moving = openTransfers.find((t) => t.productId === pool.productId)?._sum.quantity ?? 0;
+      if (moving > 0) where.push(`in transit ${moving}`);
+      return {
+        sku: pool.product.sku,
+        name: pool.product.name,
+        warehouses: where.join(" · "),
+        quantity: pool.qty,
+        averageUnitCostCents: pool.qty > 0 ? Math.round(pool.valueCents / pool.qty) : 0,
+        valueCents: pool.valueCents,
       };
-    row.quantity += lot.remainingQty;
-    row.valueCents += lot.remainingQty * lot.unitCostCents;
-    row.layers += 1;
-    byProduct.set(key, row);
-  }
-
-  const rows = [...byProduct.values()].sort((a, b) => b.valueCents - a.valueCents);
-  const layerValueCents = rows.reduce((s, r) => s + r.valueCents, 0);
+    })
+    .sort((x, y) => y.valueCents - x.valueCents);
 
   // The asset side below counts goods in transit, so the ledger side must count
   // the account a transfer moves them into. Comparing against Inventory alone
@@ -228,14 +239,13 @@ export async function inventoryValuation() {
   // The asset side is the cost pools: weighted average value of every unit we
   // own, in a warehouse or in flight. Transfers never leave the pool, so in
   // transit is already inside it — adding inTransitCents again would count it
-  // twice. ensureCostPools opens any product not yet touched since the cutover.
-  await ensureCostPools();
-  const pools = await prisma.productCost.aggregate({ _sum: { valueCents: true } });
-  const assetValueCents = pools._sum.valueCents ?? 0;
+  // twice.
+  const assetValueCents = rows.reduce((s, r) => s + r.valueCents, 0);
 
   return {
     rows,
-    layerValueCents,
+    /** In a warehouse, at the average: the asset less what is in flight. */
+    onHandValueCents: assetValueCents - inTransitCents,
     inTransitCents,
     assetValueCents,
     ledgerValueCents,

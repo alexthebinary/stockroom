@@ -106,12 +106,16 @@ productsRouter.get(
     const id = intParam(req.params.id, "id");
     const product = await prisma.product.findUnique({
       where: { id },
-      include: { balances: { include: { warehouse: true } } },
+      include: { balances: { include: { warehouse: true } }, cost: true },
     });
     if (!product) throw notFound("Product not found");
-    const { balances, ...rest } = product;
+    const { balances, cost, ...rest } = product;
     res.json({
       ...withTotal(rest),
+      // Weighted average across every warehouse. Null until the product holds
+      // stock; value 0 until it has any cost.
+      averageUnitCostCents: cost && cost.qty > 0 ? Math.round(cost.valueCents / cost.qty) : null,
+      stockValueCents: cost?.valueCents ?? 0,
       ...summarize({ balances }),
       balances: balances.map((b) => ({ ...b, availableQty: b.onHandQty - b.reservedQty })),
     });

@@ -285,7 +285,7 @@ ledgerRouter.get(
         skip,
         take,
         include: { product: true, warehouse: true },
-        // Oldest first: the order FIFO will consume them in.
+        // Oldest first: the order units are picked in.
         orderBy: [{ receivedAt: "asc" }, { id: "asc" }],
       }),
     ]);
@@ -294,7 +294,8 @@ ledgerRouter.get(
       data: rows.map((l) => ({
         ...l,
         consumedQty: l.originalQty - l.remainingQty,
-        remainingValueCents: l.remainingQty * l.unitCostCents,
+        // No per-layer value: under weighted average a layer's receipt cost is
+        // history, not what its units are worth (see ProductCost).
       })),
       page,
       pageSize,

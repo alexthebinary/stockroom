@@ -57,6 +57,7 @@ metaRouter.get(
       employees,
       balances,
       movements,
+      pools,
       lots,
       consumptions,
       accounts,
@@ -91,6 +92,7 @@ metaRouter.get(
       prisma.employee.count(),
       prisma.inventoryBalance.count(),
       prisma.inventoryMovement.count(),
+      prisma.productCost.count(),
       prisma.inventoryLot.count(),
       prisma.lotConsumption.count(),
       prisma.account.count(),
@@ -161,19 +163,24 @@ metaRouter.get(
           ],
         },
         {
-          name: "FIFO costing",
+          name: "Weighted average costing",
           blurb:
-            "A quantity cannot answer what stock cost. Layers can, and they record exactly which units were consumed.",
+            "One running average per product. Every receipt re-averages it; every issue is costed at it.",
           entities: [
+            {
+              name: "ProductCost",
+              rows: pools,
+              note: "Units owned and their total value, one row per product — the valuation",
+            },
             {
               name: "InventoryLot",
               rows: lots,
-              note: "One receipt at a known unit cost, with a remaining quantity",
+              note: "One receipt, where it sits and its receipt cost — the physical trail",
             },
             {
               name: "LotConsumption",
               rows: consumptions,
-              note: "Which layers an issue drew from, and at what cost",
+              note: "Which receipts an issue physically drew from, and its share of the average cost",
             },
           ],
         },

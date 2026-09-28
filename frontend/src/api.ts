@@ -126,7 +126,6 @@ export type InventoryLot = {
   originalQty: number;
   remainingQty: number;
   consumedQty: number;
-  remainingValueCents: number;
   receivedAt: string;
   sourceType: string;
   product?: Product;
@@ -217,18 +216,21 @@ export type StockOnHandReport = {
 };
 
 export type ValuationReport = {
+  /** One row per product: the weighted average is company-wide. */
   rows: {
     sku: string;
     name: string;
-    warehouseCode: string;
+    /** Where the units are, e.g. "MAIN 3 · WEST 1 · in transit 2". */
+    warehouses: string;
     quantity: number;
+    averageUnitCostCents: number;
     valueCents: number;
-    layers: number;
   }[];
-  layerValueCents: number;
+  /** In a warehouse, at the average. */
+  onHandValueCents: number;
   /** Stock that has left one warehouse and not yet arrived at the other. */
   inTransitCents: number;
-  /** layerValueCents + inTransitCents — what the ledger should agree with. */
+  /** onHandValueCents + inTransitCents — what the ledger should agree with. */
   assetValueCents: number;
   ledgerValueCents: number;
   varianceCents: number;

@@ -343,14 +343,14 @@ export default function Reports() {
                         transit to add — otherwise it reads "X = X". */}
                     {valuation.data.inTransitCents > 0 ? (
                       <>
-                        FIFO layers {money(valuation.data.layerValueCents)} plus{" "}
+                        On hand {money(valuation.data.onHandValueCents)} plus{" "}
                         {money(valuation.data.inTransitCents)} in transit ={" "}
                         {money(valuation.data.assetValueCents)}, against a ledger balance of{" "}
                         {money(valuation.data.ledgerValueCents)}.
                       </>
                     ) : (
                       <>
-                        FIFO layers total {money(valuation.data.assetValueCents)}, against a ledger
+                        Stock at weighted average cost totals {money(valuation.data.assetValueCents)}, against a ledger
                         balance of {money(valuation.data.ledgerValueCents)}.
                       </>
                     )}{" "}
@@ -367,7 +367,7 @@ export default function Reports() {
                 </Alert>
 
                 <SimpleGrid cols={{ base: 1, sm: 3 }} mb="md">
-                  <Stat label="In warehouses" value={money(valuation.data.layerValueCents)} />
+                  <Stat label="In warehouses" value={money(valuation.data.onHandValueCents)} />
                   <Stat
                     label="In transit"
                     value={money(valuation.data.inTransitCents)}
@@ -378,13 +378,13 @@ export default function Reports() {
 
                 <Card withBorder radius="md" p="md">
                   <Title order={5} mb="sm">
-                    Value by product and warehouse
+                    Value by product
                   </Title>
                   <QueryState
                     isLoading={false}
                     error={null}
                     isEmpty={valuation.data.rows.length === 0}
-                    emptyMessage="No open cost layers."
+                    emptyMessage="No stock on hand."
                   >
                     <Table.ScrollContainer minWidth={620}>
                       <Table className="data-grid" verticalSpacing={6}>
@@ -392,20 +392,24 @@ export default function Reports() {
                           <Table.Tr>
                             <Table.Th>SKU</Table.Th>
                             <Table.Th>Product</Table.Th>
-                            <Table.Th>Warehouse</Table.Th>
+                            <Table.Th>Where</Table.Th>
                             <Table.Th ta="right">Qty</Table.Th>
-                            <Table.Th ta="right">Layers</Table.Th>
+                            <Table.Th ta="right">Average cost</Table.Th>
                             <Table.Th ta="right">Value</Table.Th>
                           </Table.Tr>
                         </Table.Thead>
                         <Table.Tbody>
                           {valuation.data.rows.map((r) => (
-                            <Table.Tr key={`${r.sku}:${r.warehouseCode}`}>
+                            <Table.Tr key={r.sku}>
                               <Table.Td>{r.sku}</Table.Td>
                               <Table.Td>{r.name}</Table.Td>
-                              <Table.Td>{r.warehouseCode}</Table.Td>
+                              <Table.Td>
+                                <Text size="xs" c="dimmed">
+                                  {r.warehouses}
+                                </Text>
+                              </Table.Td>
                               <Table.Td ta="right">{r.quantity}</Table.Td>
-                              <Table.Td ta="right">{r.layers}</Table.Td>
+                              <Table.Td ta="right">{money(r.averageUnitCostCents)}</Table.Td>
                               <Table.Td ta="right" fw={600}>
                                 {money(r.valueCents)}
                               </Table.Td>

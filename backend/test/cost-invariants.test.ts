@@ -131,4 +131,32 @@ describe("cost invariants", () => {
       await assertInvariants();
     });
   });
+
+  it("valuation lists one row per product at its average, with where the units are", async () => {
+    const api = as(app, token);
+    const p = await ok(await api.post("/api/products").send({ sku: "INV-VAL", name: "val" }));
+    const adjust = (warehouseId: number, quantity: number, unitCostCents: number) =>
+      api.post("/api/stock-adjustments").send({
+        productId: p.id, warehouseId, adjustmentType: "INCREASE", quantity, reason: "t", unitCostCents,
+      });
+    await ok(await adjust(a, 3, 1_000));
+    await ok(await adjust(b, 1, 5_000)); // 4 units worth 8_000 → avg 2_000
+
+    const res = await api.get("/api/reports/inventory-valuation");
+    expect(res.status).toBe(200);
+    const row = res.body.rows.find((r: { sku: string }) => r.sku === "INV-VAL");
+    expect(row).toMatchObject({
+      quantity: 4, valueCents: 8_000, averageUnitCostCents: 2_000, warehouses: "INVA 3 · INVB 1",
+    });
+    expect(res.body.rows.filter((r: { sku: string }) => r.sku === "INV-VAL")).toHaveLength(1);
+    expect(res.body.onHandValueCents + res.body.inTransitCents).toBe(res.body.assetValueCents);
+    expect(res.body).not.toHaveProperty("layerValueCents");
+  });
+
+  it("product detail carries its average cost and stock value", async () => {
+    const api = as(app, token);
+    const p = (await prisma.product.findUniqueOrThrow({ where: { sku: "INV-VAL" } }));
+    const got = await api.get(`/api/products/${p.id}`);
+    expect(got.body).toMatchObject({ averageUnitCostCents: 2_000, stockValueCents: 8_000 });
+  });
 });

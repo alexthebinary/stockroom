@@ -76,13 +76,13 @@ export default function Dashboard() {
               />
               <Stat
                 label="Stock value"
-                value={money(valuation.data?.layerValueCents ?? 0)}
+                value={money(valuation.data?.onHandValueCents ?? 0)}
                 hint={
                   valuation.data
                     ? valuation.data.reconciled
                       ? "reconciled with the ledger"
                       : `variance ${money(valuation.data.varianceCents)}`
-                    : "FIFO cost layers"
+                    : "at weighted average cost"
                 }
               />
             </SimpleGrid>

@@ -14,7 +14,12 @@ import { Link, useParams } from "react-router-dom";
 import { api, qs, type Balance, type InventoryLot, type Movement, type Paginated, type Product } from "../api";
 import { MovementRoute, PageHeader, QueryState, StatusBadge, formatDate, money } from "../components/ui";
 
-type ProductDetailResponse = Product & { balances: Balance[] };
+type ProductDetailResponse = Product & {
+  balances: Balance[];
+  /** Weighted average across every warehouse; null until the product holds stock. */
+  averageUnitCostCents: number | null;
+  stockValueCents: number;
+};
 
 function Field({ label, value }: { label: string; value: string | number | null | undefined }) {
   return (
@@ -147,11 +152,27 @@ export default function ProductDetail() {
             <Grid.Col span={12}>
               <Card withBorder radius="md" p="md" mb="md">
                 <Group justify="space-between" mb="sm">
-                  <Title order={5}>Open FIFO cost layers</Title>
+                  <Title order={5}>Receipts on hand</Title>
                   <Text size="xs" c="dimmed">
-                    Oldest first — the order a sale will consume them in
+                    Oldest first — the order units are picked in
                   </Text>
                 </Group>
+                <Text size="sm" mb="sm">
+                  Average cost{" "}
+                  <Text span fw={600}>
+                    {product.data.averageUnitCostCents == null
+                      ? "—"
+                      : money(product.data.averageUnitCostCents)}
+                  </Text>{" "}
+                  · stock value{" "}
+                  <Text span fw={600}>
+                    {money(product.data.stockValueCents ?? 0)}
+                  </Text>
+                  <Text span size="xs" c="dimmed">
+                    {" "}
+                    — weighted average across all warehouses; receipt costs below are history
+                  </Text>
+                </Text>
                 <QueryState
                   isLoading={lots.isLoading}
                   error={lots.error}
@@ -165,9 +186,8 @@ export default function ProductDetail() {
                         <Table.Th>Received</Table.Th>
                         <Table.Th>Warehouse</Table.Th>
                         <Table.Th>Source</Table.Th>
-                        <Table.Th ta="right">Unit cost</Table.Th>
+                        <Table.Th ta="right">Receipt cost</Table.Th>
                         <Table.Th ta="right">Remaining</Table.Th>
-                        <Table.Th ta="right">Value</Table.Th>
                       </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
@@ -187,9 +207,6 @@ export default function ProductDetail() {
                           <Table.Td ta="right">{money(l.unitCostCents)}</Table.Td>
                           <Table.Td ta="right">
                             {l.remainingQty} / {l.originalQty}
-                          </Table.Td>
-                          <Table.Td ta="right" fw={600}>
-                            {money(l.remainingValueCents)}
                           </Table.Td>
                         </Table.Tr>
                       ))}
