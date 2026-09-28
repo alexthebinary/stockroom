@@ -155,4 +155,26 @@ describe("chart of accounts editing", () => {
     const res = await as(app, token).put(`/api/accounts/${await accountId("1200")}`).send({ accountType: "EXPENSE" });
     expect(res.status).toBe(409);
   });
+
+  it("moves linked lines together, so tax can never be counted twice", async () => {
+    // Senior review 2026-09-28: pointing only the invoice's sales-tax line at
+    // 2100 double-counted tax (2100 +1,600, 2200 −800 on an 800 invoice).
+    const api = as(app, token);
+    const r = await rule("SALES_INVOICE", "salesTax");
+    const payable = await accountId("2100");
+    const res = await api.put(`/api/posting-rules/${r.id}`).send({ accountId: payable });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    for (const [type, role] of [
+      ["SALES_INVOICE", "salesTax"], ["SALES_RETURN", "salesTax"], ["REVENUE_RECLASS", "salesTax"],
+      ["SALES_TAX_RECOGNIZED", "transition"], ["SALES_TAX_UNRECOGNIZED", "transition"],
+    ]) {
+      expect((await rule(type, role)).account.code, `${type}.${role}`).toBe("2100");
+    }
+    // Every linked line got its own audit row.
+    const moved = await rule("SALES_RETURN", "salesTax");
+    expect((await api.get(`/api/posting-rules/${moved.id}/changes`)).body.data).toHaveLength(1);
+    // Put it back for the rest of the suite.
+    await api.put(`/api/posting-rules/${r.id}`).send({ accountId: await accountId("2200") });
+    expect((await rule("SALES_TAX_RECOGNIZED", "transition")).account.code).toBe("2200");
+  });
 });

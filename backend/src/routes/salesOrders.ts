@@ -1261,6 +1261,12 @@ salesOrdersRouter.post(
           actor,
           memo: `Void ${invoice.invoiceNumber}`,
         });
+        // An invoice from before the split also has its one-time reclass
+        // entry; it belongs to the invoice and goes with it.
+        await reverseDocumentEntry(tx, "INVOICE_RECLASS", invoice.id, {
+          actor,
+          memo: `Void ${invoice.invoiceNumber}: its 2026-09-28 reclass`,
+        });
         await syncSalesTaxPayable(tx, invoice.id, actor);
         // The cost matched to that invoice goes back to waiting in outbound
         // clearing, so revenue and its cost leave the P&L together.

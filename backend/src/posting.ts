@@ -112,6 +112,32 @@ export const POSTING_ROLES = {
   ...Object.fromEntries(Object.entries(MULTI).map(([type, m]) => [type, m!.roles])),
 } as Record<TransactionType, PostingRole[]>;
 
+/**
+ * Lines that must always name the SAME account, because other code moves
+ * money between them by type, not by account. If the invoice's sales tax went
+ * to 2100 while the cash-basis move still took it from 2200, tax would be
+ * counted twice. Editing one member of a group moves the whole group.
+ */
+export const LINKED_ROLES: string[][] = [
+  ["SALES_INVOICE.salesTax", "SALES_RETURN.salesTax", "REVENUE_RECLASS.salesTax",
+    "SALES_TAX_RECOGNIZED.transition", "SALES_TAX_UNRECOGNIZED.transition"],
+  ["SALES_TAX_RECOGNIZED.payable", "SALES_TAX_UNRECOGNIZED.payable"],
+  ["SALES_INVOICE.revenue", "SALES_RETURN.revenue", "REVENUE_RECLASS.revenue"],
+  ["SALES_INVOICE.shippingIncome", "REVENUE_RECLASS.shippingIncome"],
+  ["SALES_INVOICE.receivable", "SALES_RETURN.receivable", "SALES_PAYMENT.credit",
+    "CUSTOMER_DEPOSIT.credit", "DEPOSIT_APPLIED.credit", "CUSTOMER_REFUND.debit"],
+];
+
+/** The (type, role) pairs that move with this one, itself included. */
+export function linkedWith(transactionType: string, role: string) {
+  const key = `${transactionType}.${role}`;
+  const group = LINKED_ROLES.find((g) => g.includes(key)) ?? [key];
+  return group.map((k) => {
+    const [t, r] = k.split(".");
+    return { transactionType: t, role: r };
+  });
+}
+
 export function descriptionOf(transactionType: TransactionType) {
   return (
     MULTI[transactionType]?.description ??

@@ -203,6 +203,13 @@ export async function dependenciesOf(tx: Tx, entry: {
       return "this entry records stock that has already moved between warehouses";
     case "STOCK_ADJUSTMENT":
       return "this entry records a stock adjustment that has already been applied";
+    // Derived entries: the sales-tax sync recomputes them from the invoice's
+    // payments and counts its own moves. Changing one by hand is invisible to
+    // it and leaves tax payable wrong for good; change the payment instead.
+    case "INVOICE_TAX":
+      return "it moves sales tax as the invoice is paid; reverse or change the payment instead";
+    case "INVOICE_RECLASS":
+      return "it is the 2026-09-28 reclass of this invoice; void the invoice instead";
     default:
       return null;
   }

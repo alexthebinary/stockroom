@@ -131,4 +131,19 @@ describe("invoice split and cash-basis sales tax", () => {
     expect(await credit("2200")).toBe(transition0);
     await booksSound();
   });
+
+  it("a tax move cannot be reversed or unposted from the ledger screen", async () => {
+    // Senior review 2026-09-28: a ledger reversal of a tax move was accepted,
+    // and the sync (which counts its own moves) never saw it: 2100 stayed wrong.
+    const api = as(app, token);
+    const { order } = await shippedOrder("WHOLESALE");
+    await api.post(`/api/sales-orders/${order.id}/pay`).send({ amountCents: 5_900 });
+    const move = await prisma.journalEntry.findFirstOrThrow({
+      where: { transactionType: "SALES_TAX_RECOGNIZED" }, orderBy: { id: "desc" },
+    });
+    const reverse = await api.post(`/api/journal-entries/${move.id}/reverse`);
+    expect(reverse.status).toBe(409);
+    const unpost = await api.post(`/api/journal-entries/${move.id}/unpost`);
+    expect(unpost.status).toBe(409);
+  });
 });

@@ -4,7 +4,7 @@ import { prisma } from "../db";
 import { badRequest, conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, parseBody } from "../http";
 import { requireUsers } from "../auth";
-import { LOCKED_CODES, POSTING_ROLES, assignedRoles, type AccountType } from "../posting";
+import { LOCKED_CODES, POSTING_ROLES, assignedRoles, linkedWith, type AccountType } from "../posting";
 import type { TransactionType } from "../accounts";
 
 /**
@@ -97,10 +97,23 @@ accountingRouter.put(
             `${account.code} is ${account.accountType}`
         );
       }
-      if (rule.accountId !== account.id) {
-        await tx.postingRule.update({ where: { id }, data: { accountId: account.id } });
+      // Linked lines move together (see LINKED_ROLES), each audited, and each
+      // must accept the account on its own terms.
+      for (const link of linkedWith(rule.transactionType, rule.role)) {
+        const member = await tx.postingRule.findUnique({
+          where: { transactionType_role: { transactionType: link.transactionType, role: link.role } },
+        });
+        if (!member || member.accountId === account.id) continue;
+        const memberRole = POSTING_ROLES[link.transactionType as TransactionType]?.find((r) => r.role === link.role);
+        if (memberRole && !memberRole.allowedTypes.includes(account.accountType as AccountType)) {
+          throw badRequest(
+            `${link.transactionType} ${memberRole.label.toLowerCase()} moves with this line and needs ` +
+              `${memberRole.allowedTypes.join(" or ")}; ${account.code} is ${account.accountType}`
+          );
+        }
+        await tx.postingRule.update({ where: { id: member.id }, data: { accountId: account.id } });
         await tx.postingRuleChange.create({
-          data: { ruleId: id, fromAccountId: rule.accountId, toAccountId: account.id, actor },
+          data: { ruleId: member.id, fromAccountId: member.accountId, toAccountId: account.id, actor },
         });
       }
       return tx.postingRule.findUniqueOrThrow({ where: { id }, include: { account: true } });

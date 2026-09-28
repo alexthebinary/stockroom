@@ -15,12 +15,38 @@ import { syncSalesTaxPayable, taxPosition } from "./sales_tax";
  * Idempotent: skips an invoice that already has a reclass entry, or whose
  * invoice entry was posted with the split (a line on 2200 or 4100).
  */
+/**
+ * Run-once bookkeeping, in DocumentCounter (no schema change): the highest
+ * journal entry id at the first run (only invoices entered before it are
+ * candidates) and a "done" flag once a pass completes with no failures.
+ * Without it the pass re-scanned every invoice on every boot and could
+ * mistake a new invoice for an old one after an admin repointed its lines.
+ */
+export const RECLASS_MARKER = "RECLASS_2026_09_28";
+
 export async function reclassHistoricalInvoices(actor = "system:reclass-2026-09-28") {
+  const done = await prisma.documentCounter.findUnique({ where: { kind: `${RECLASS_MARKER}_DONE` } });
+  if (done) return 0;
+  let cutover = await prisma.documentCounter.findUnique({ where: { kind: `${RECLASS_MARKER}_CUTOVER` } });
+  if (!cutover) {
+    const last = await prisma.journalEntry.findFirst({ orderBy: { id: "desc" }, select: { id: true } });
+    cutover = await prisma.documentCounter.create({
+      data: { kind: `${RECLASS_MARKER}_CUTOVER`, lastValue: last?.id ?? 0 },
+    });
+  }
+
   const invoices = await prisma.invoice.findMany({ where: { status: "POSTED" }, orderBy: { id: "asc" } });
   let count = 0;
+  let failures = 0;
   for (const inv of invoices) {
-    const done = await prisma.journalEntry.count({ where: { referenceType: "INVOICE_RECLASS", referenceId: inv.id } });
-    if (done) continue;
+    const already = await prisma.journalEntry.count({ where: { referenceType: "INVOICE_RECLASS", referenceId: inv.id } });
+    if (already) continue;
+    const invoiceEntry = await prisma.journalEntry.findFirst({
+      where: { referenceType: "INVOICE", referenceId: inv.id, transactionType: TRANSACTION_TYPE.SALES_INVOICE },
+      orderBy: { id: "asc" },
+      select: { id: true },
+    });
+    if (!invoiceEntry || invoiceEntry.id > cutover.lastValue) continue;
     const splitEra = await prisma.journalLine.count({
       where: {
         journalEntry: { referenceType: "INVOICE", referenceId: inv.id, transactionType: TRANSACTION_TYPE.SALES_INVOICE },
@@ -49,8 +75,17 @@ export async function reclassHistoricalInvoices(actor = "system:reclass-2026-09-
       if (posted) count++;
     } catch (err) {
       // A closed period, most likely. Leave it visible rather than stop boot.
+      failures++;
       console.error(`Reclass skipped for ${inv.invoiceNumber}: ${(err as Error).message}`);
     }
+  }
+  // Done only after a clean pass; a skipped invoice is retried next boot.
+  if (failures === 0) {
+    await prisma.documentCounter.upsert({
+      where: { kind: `${RECLASS_MARKER}_DONE` },
+      create: { kind: `${RECLASS_MARKER}_DONE`, lastValue: 1 },
+      update: {},
+    });
   }
   return count;
 }

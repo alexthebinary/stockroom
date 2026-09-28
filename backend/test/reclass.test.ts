@@ -13,7 +13,10 @@ import "./setup";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { Express } from "express";
 import { as, boot, prisma } from "./helpers";
-import { reclassHistoricalInvoices } from "../src/reclass";
+import { RECLASS_MARKER, reclassHistoricalInvoices } from "../src/reclass";
+
+/** Each test re-arms the one-time pass, as a fresh deploy would. */
+const rearm = () => prisma.documentCounter.deleteMany({ where: { kind: { startsWith: RECLASS_MARKER } } });
 
 let app: Express;
 let token: string;
@@ -80,6 +83,7 @@ describe("one-time reclass of historical invoices", () => {
     const order = await shipped("WHOLESALE", 1, false);
     await api.post(`/api/sales-orders/${order.id}/pay`).send({ amountCents: 5_900 }); // half
     await makeOldEra(order.invoices[0].id);
+    await rearm();
     const before = await snapshot();
 
     const count = await reclassHistoricalInvoices();
@@ -104,6 +108,7 @@ describe("one-time reclass of historical invoices", () => {
     });
     expect(ret.status, JSON.stringify(ret.body)).toBe(201);
     await makeOldEra(order.invoices[0].id);
+    await rearm();
     const before = await snapshot();
 
     await reclassHistoricalInvoices();
@@ -117,6 +122,38 @@ describe("one-time reclass of historical invoices", () => {
 
   it("leaves invoices posted with the split alone", async () => {
     await shipped("WHOLESALE", 1, false);
+    await rearm();
+    const entries = await prisma.journalEntry.count();
+    expect(await reclassHistoricalInvoices()).toBe(0);
+    expect(await prisma.journalEntry.count()).toBe(entries);
+  });
+
+  it("voiding a reclassed old invoice takes the reclass back out too", async () => {
+    // Senior review 2026-09-28: void reversed only the old invoice entry, so
+    // the reclass left −1,800 in 4000, +1,000 in 4100 and +800 in 2200 for an
+    // invoice that no longer exists.
+    const api = as(app, token);
+    const order = await shipped("WHOLESALE", 1, false); // unpaid
+    await makeOldEra(order.invoices[0].id);
+    await rearm();
+    await reclassHistoricalInvoices();
+    const before = await snapshot();
+    // Void from the reclassed state: everything this invoice put anywhere goes.
+    const invoiceEffect = { revenue: -10_000, shipping: 0, transition: 0, payable: 0 };
+    const v = await api.post(`/api/sales-orders/${order.id}/void-invoice`).send({ reason: "t" });
+    expect(v.status, JSON.stringify(v.body)).toBeLessThan(300);
+    const after = await snapshot();
+    expect(after.revenue - before.revenue).toBe(invoiceEffect.revenue);
+    expect(after.shipping - before.shipping).toBe(-1_000);
+    expect(after.transition - before.transition).toBe(-800);
+    expect(after.payable - before.payable).toBe(0);
+  });
+
+  it("runs once: after a completed pass, a later invoice that merely looks old is left alone", async () => {
+    await rearm();
+    await reclassHistoricalInvoices(); // completes and marks the pass done
+    const order = await shipped("WHOLESALE", 1, false);
+    await makeOldEra(order.invoices[0].id); // e.g. an admin repointed the tax/shipping lines
     const entries = await prisma.journalEntry.count();
     expect(await reclassHistoricalInvoices()).toBe(0);
     expect(await prisma.journalEntry.count()).toBe(entries);
