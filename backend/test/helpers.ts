@@ -41,6 +41,7 @@ export function as(app: Express, tok: string) {
     post: (url: string) => request(app).post(url).set(SESSION_HEADER, tok),
     get: (url: string) => request(app).get(url).set(SESSION_HEADER, tok),
     delete: (url: string) => request(app).delete(url).set(SESSION_HEADER, tok),
+    put: (url: string) => request(app).put(url).set(SESSION_HEADER, tok),
   };
 }
 

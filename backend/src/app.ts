@@ -4,6 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { authRouter } from "./routes/auth";
 import { catalogsRouter } from "./routes/catalogs";
+import { accountingRouter } from "./routes/accounting";
 import { ledgerRouter } from "./routes/ledger";
 import { paymentsRouter } from "./routes/payments";
 import { metaRouter } from "./routes/meta";
@@ -89,6 +90,7 @@ export function createApp() {
   // inventoryRouter they mount at the API root.
   app.use("/api", metaRouter);
   app.use("/api", catalogsRouter);
+  app.use("/api", accountingRouter);
   app.use("/api", ledgerRouter);
   app.use("/api", paymentsRouter);
   // inventoryRouter owns two unrelated paths, so it mounts at the API root.
