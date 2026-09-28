@@ -55,16 +55,69 @@ function role(
   return { role, side, defaultAccountCode, label, allowedTypes, locked: LOCKED_CODES.has(defaultAccountCode) };
 }
 
-/** Every transaction type's roles. Simple types are a debit/credit pair. */
-export const POSTING_ROLES = Object.fromEntries(
-  JOURNAL_TEMPLATES.map((t) => [
-    t.transactionType,
-    [role("debit", "DEBIT", t.debitAccountCode, "Debit"), role("credit", "CREDIT", t.creditAccountCode, "Credit")],
-  ])
-) as Record<TransactionType, PostingRole[]>;
+/**
+ * Transactions with more than one line per side (client's revised mapping,
+ * 2026-09-28). Everything else is a debit/credit pair from JOURNAL_TEMPLATES.
+ */
+const MULTI: Partial<Record<TransactionType, { description: string; roles: PostingRole[] }>> = {
+  SALES_INVOICE: {
+    description: "Invoice a customer: goods to revenue, tax to transition, shipping to shipping income",
+    roles: [
+      role("receivable", "DEBIT", ACCOUNT.ACCOUNTS_RECEIVABLE, "Receivable (invoice total)"),
+      role("revenue", "CREDIT", ACCOUNT.SALES_REVENUE, "Revenue (goods)"),
+      role("salesTax", "CREDIT", ACCOUNT.SALES_TAX_TRANSITION, "Sales tax (until paid)"),
+      role("shippingIncome", "CREDIT", ACCOUNT.SHIPPING_INCOME, "Shipping charged"),
+    ],
+  },
+  SALES_RETURN: {
+    description: "Credit note: goods back out of revenue, tax share back out of transition",
+    roles: [
+      role("revenue", "DEBIT", ACCOUNT.SALES_REVENUE, "Revenue (goods returned)"),
+      role("salesTax", "DEBIT", ACCOUNT.SALES_TAX_TRANSITION, "Sales tax (share returned)"),
+      role("receivable", "CREDIT", ACCOUNT.ACCOUNTS_RECEIVABLE, "Receivable (credit total)"),
+    ],
+  },
+  SALES_TAX_RECOGNIZED: {
+    description: "Sales tax collected: transition to payable (cash basis)",
+    roles: [
+      role("transition", "DEBIT", ACCOUNT.SALES_TAX_TRANSITION, "Sales tax transition"),
+      role("payable", "CREDIT", ACCOUNT.SALES_TAX_PAYABLE, "Sales tax payable"),
+    ],
+  },
+  SALES_TAX_UNRECOGNIZED: {
+    description: "Sales tax no longer collected (refund, credit, void): payable back to transition",
+    roles: [
+      role("payable", "DEBIT", ACCOUNT.SALES_TAX_PAYABLE, "Sales tax payable"),
+      role("transition", "CREDIT", ACCOUNT.SALES_TAX_TRANSITION, "Sales tax transition"),
+    ],
+  },
+  REVENUE_RECLASS: {
+    description: "One-time reclass (2026-09-28): tax and shipping out of historical revenue",
+    roles: [
+      role("revenue", "DEBIT", ACCOUNT.SALES_REVENUE, "Revenue"),
+      role("salesTax", "CREDIT", ACCOUNT.SALES_TAX_TRANSITION, "Sales tax"),
+      role("shippingIncome", "CREDIT", ACCOUNT.SHIPPING_INCOME, "Shipping income"),
+    ],
+  },
+};
+
+/** Every transaction type's roles. */
+export const POSTING_ROLES = {
+  ...Object.fromEntries(
+    JOURNAL_TEMPLATES.map((t) => [
+      t.transactionType,
+      [role("debit", "DEBIT", t.debitAccountCode, "Debit"), role("credit", "CREDIT", t.creditAccountCode, "Credit")],
+    ])
+  ),
+  ...Object.fromEntries(Object.entries(MULTI).map(([type, m]) => [type, m!.roles])),
+} as Record<TransactionType, PostingRole[]>;
 
 export function descriptionOf(transactionType: TransactionType) {
-  return JOURNAL_TEMPLATES.find((t) => t.transactionType === transactionType)?.description ?? transactionType;
+  return (
+    MULTI[transactionType]?.description ??
+    JOURNAL_TEMPLATES.find((t) => t.transactionType === transactionType)?.description ??
+    transactionType
+  );
 }
 
 /** Every transaction type with its roles and the account each is assigned now. */

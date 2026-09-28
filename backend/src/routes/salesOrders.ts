@@ -11,6 +11,7 @@ import { CARRIERS, trackingUrl } from "../carriers";
 import { applyBalanceDelta, claimStatusTransition, recordMovement, reserveStock } from "../inventory";
 import { consumeSerials } from "../serials";
 import { attachConsumptionsToMovement, issueStock } from "../costing";
+import { syncSalesTaxPayable } from "../sales_tax";
 import { postSimple, reverseDocumentEntry } from "../ledger";
 import { TRANSACTION_TYPE } from "../accounts";
 import { assertReferencesUsable } from "../refs";
@@ -573,6 +574,8 @@ salesOrdersRouter.post(
         referenceId: payment.id,
         actor,
       });
+      // Cash basis: the share of tax this payment covers is now owed.
+      await syncSalesTaxPayable(tx, invoice.id, actor);
 
       return {
         payment,
@@ -824,6 +827,7 @@ salesOrdersRouter.post(
           memo: `Application of ${payment.paymentNumber} reversed: ${reason}`,
         });
       }
+      if (payment.invoiceId) await syncSalesTaxPayable(tx, payment.invoiceId, actor);
 
       return {
         payment: await tx.payment.findUniqueOrThrow({ where: { id: payment.id } }),
@@ -1257,6 +1261,7 @@ salesOrdersRouter.post(
           actor,
           memo: `Void ${invoice.invoiceNumber}`,
         });
+        await syncSalesTaxPayable(tx, invoice.id, actor);
         // The cost matched to that invoice goes back to waiting in outbound
         // clearing, so revenue and its cost leave the P&L together.
         for (const sh of current.shipments) {

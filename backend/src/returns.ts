@@ -1,4 +1,6 @@
 import type { Tx } from "./inventory";
+import { postRoles } from "./posting";
+import { syncSalesTaxPayable } from "./sales_tax";
 import { applyBalanceDelta, recordMovement } from "./inventory";
 import { createLot } from "./costing";
 import { postSimple } from "./ledger";
@@ -207,9 +209,9 @@ export async function postReturn(tx: Tx, orderId: number, input: ReturnInput, ac
       customerId: order.customerId,
     },
   });
-  await postSimple(tx, {
+  await postRoles(tx, {
     transactionType: TRANSACTION_TYPE.SALES_RETURN,
-    amountCents: creditCents,
+    amounts: { revenue: goodsCents, salesTax: taxShare, receivable: creditCents },
     memo: `Credit note ${creditNote.paymentNumber} on ${returnNumber} against ${invoice.invoiceNumber}`,
     referenceType: "PAYMENT",
     referenceId: creditNote.id,
@@ -258,6 +260,9 @@ export async function postReturn(tx: Tx, orderId: number, input: ReturnInput, ac
     where: { id: salesReturn.id },
     data: { refundCents, refundMethod: refund?.method ?? null },
   });
+
+  // Cash basis: the returned tax share, and any refund, change what is owed.
+  await syncSalesTaxPayable(tx, invoice.id, actor);
 
   // Settled means nothing is owed either way.
   const net = await paidAgainst(tx, { invoiceId: invoice.id });

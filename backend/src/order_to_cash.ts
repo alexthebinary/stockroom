@@ -1,4 +1,6 @@
 import type { Tx } from "./inventory";
+import { postRoles } from "./posting";
+import { syncSalesTaxPayable } from "./sales_tax";
 import { badRequest, conflict } from "./errors";
 import { postSimple } from "./ledger";
 import { ACCOUNT, TRANSACTION_TYPE } from "./accounts";
@@ -135,9 +137,16 @@ export async function raiseInvoice(tx: Tx, order: OrderForCash, actor: string, i
     },
   });
 
-  const entry = await postSimple(tx, {
+  // Revised mapping (2026-09-28): goods to revenue, tax to transition until
+  // paid, shipping charged to shipping income — not all of it to revenue.
+  const entry = await postRoles(tx, {
     transactionType: TRANSACTION_TYPE.SALES_INVOICE,
-    amountCents: order.totalCents,
+    amounts: {
+      receivable: order.totalCents,
+      revenue: order.subtotalCents,
+      salesTax: order.taxCents,
+      shippingIncome: order.shippingCents,
+    },
     memo: `Invoice ${invoice.invoiceNumber} for ${order.orderNumber}`,
     referenceType: "INVOICE",
     referenceId: invoice.id,
@@ -172,6 +181,8 @@ export async function raiseInvoice(tx: Tx, order: OrderForCash, actor: string, i
   }
 
   await recognizeCogs(tx, order.id, actor);
+  // Checkout money taken before the invoice has now met it: its tax is owed.
+  await syncSalesTaxPayable(tx, invoice.id, actor);
 
   const paid = await paidAgainst(tx, { invoiceId: invoice.id });
   if (paid >= invoice.totalCents) {

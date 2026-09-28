@@ -88,7 +88,8 @@ describe("returns", () => {
     expect(res.body.salesReturn.returnNumber).toMatch(/^RET-/);
     expect(res.body.order.paymentStatus).toBe("PAID");
 
-    expect(await balance(ACCOUNT.SALES_REVENUE)).toBe(revenueBefore - 3_300);
+    // Goods only: since 2026-09-28 the tax share leaves Sales Tax, not revenue.
+    expect(await balance(ACCOUNT.SALES_REVENUE)).toBe(revenueBefore - 3_000);
     expect(await balance(ACCOUNT.BANK)).toBe(bankBefore - 3_300);
     expect(await balance(ACCOUNT.COGS)).toBe(cogsBefore - 1_000);
     const stock = await prisma.inventoryBalance.findFirstOrThrow({ where: { productId, warehouseId } });

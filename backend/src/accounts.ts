@@ -125,6 +125,12 @@ export const TRANSACTION_TYPE = {
   WARRANTY_REPLACEMENT: "WARRANTY_REPLACEMENT",
   ADJUSTMENT_INCREASE: "ADJUSTMENT_INCREASE",
   ADJUSTMENT_DECREASE: "ADJUSTMENT_DECREASE",
+  /// Cash basis: collected tax moves from Sales Tax Transition to Payable…
+  SALES_TAX_RECOGNIZED: "SALES_TAX_RECOGNIZED",
+  /// …and back, when a refund, credit note or void reduces what was collected.
+  SALES_TAX_UNRECOGNIZED: "SALES_TAX_UNRECOGNIZED",
+  /// One-time 2026-09-28: tax and shipping out of historical revenue.
+  REVENUE_RECLASS: "REVENUE_RECLASS",
 } as const;
 
 export type TransactionType = (typeof TRANSACTION_TYPE)[keyof typeof TRANSACTION_TYPE];
