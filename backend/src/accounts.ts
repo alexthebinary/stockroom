@@ -29,15 +29,31 @@ export const ACCOUNT = {
   /// Money taken at checkout for goods not yet shipped. It is owed to the
   /// customer (as goods or a refund) until the order ships, so it is a
   /// liability, not revenue.
-  CUSTOMER_DEPOSITS: "2100",
+  CUSTOMER_DEPOSITS: "2150",
+  /// Sales tax collected and now owed to the authority (cash basis: moved here
+  /// from 2200 as the customer pays).
+  SALES_TAX_PAYABLE: "2100",
+  /// Sales tax invoiced but not yet collected.
+  SALES_TAX_TRANSITION: "2200",
   OPENING_BALANCE_EQUITY: "3000",
   SALES_REVENUE: "4000",
-  /// Found stock on a count (client: 4100). Was 4900 "Inventory Gain".
-  INVENTORY_ADJUSTMENT_GAIN: "4100",
-  INVENTORY_GAIN: "4100",
+  /// Shipping charged to customers on an invoice.
+  SHIPPING_INCOME: "4100",
+  /// Found stock on a count (client: 4200 since 2026-09-28; was 4100, and 4900 before that).
+  INVENTORY_ADJUSTMENT_GAIN: "4200",
+  INVENTORY_GAIN: "4200",
   COGS: "5000",
-  INVENTORY_ADJUSTMENT_LOSS: "5100",
-  INVENTORY_SHRINKAGE: "5100",
+  /// Inbound freight not capitalized into a receipt (client: 5100). Capitalized
+  /// freight (operator 2026-09-28) goes to Inventory through landed cost.
+  FREIGHT_IN: "5100",
+  /// Client: 6000 since 2026-09-28; was 5100.
+  INVENTORY_ADJUSTMENT_LOSS: "6000",
+  INVENTORY_SHRINKAGE: "6000",
+  /// Shipping to customers (client: 6100).
+  FREIGHT_OUT: "6100",
+  /// Off-balance memo pair: customer-owned goods held for repair (client: 9000/9100).
+  CUSTOMER_GOODS: "9000",
+  CUSTOMER_GOODS_PAYABLE: "9100",
   /// Parts consumed repairing a unit. NOT Cost of Goods Sold: repair parts are
   /// not matched to sales revenue, so folding them into 5000 would understate
   /// gross margin on every period that contains a repair.
@@ -62,21 +78,28 @@ export const CHART_OF_ACCOUNTS = [
   // RETIRED 2026-09-24 by the operator: checkout payments now credit Accounts
   // Receivable. Kept, inactive, for past entries; deposits already held here
   // are still moved onto their invoice when the order ships.
-  { code: ACCOUNT.CUSTOMER_DEPOSITS, name: "Customer Deposits", accountType: "LIABILITY", normalSide: "CREDIT", isActive: false },
+  { code: ACCOUNT.SALES_TAX_PAYABLE, name: "Sales Tax Payable", accountType: "LIABILITY", normalSide: "CREDIT" },
+  { code: ACCOUNT.CUSTOMER_DEPOSITS, name: "Customer Deposits (retired)", accountType: "LIABILITY", normalSide: "CREDIT", isActive: false },
+  { code: ACCOUNT.SALES_TAX_TRANSITION, name: "Sales Tax Transition", accountType: "LIABILITY", normalSide: "CREDIT" },
   // Where stock that existed before the books did comes from. Opening stock is
   // not income: booking it to Inventory Gain overstates revenue by the whole
   // opening position and shows a period with sales and no cost.
   { code: ACCOUNT.OPENING_BALANCE_EQUITY, name: "Opening Balance Equity", accountType: "EQUITY", normalSide: "CREDIT" },
   { code: ACCOUNT.SALES_REVENUE, name: "Sales Revenue", accountType: "INCOME", normalSide: "CREDIT" },
+  { code: ACCOUNT.SHIPPING_INCOME, name: "Shipping Income", accountType: "INCOME", normalSide: "CREDIT" },
   { code: ACCOUNT.INVENTORY_ADJUSTMENT_GAIN, name: "Inventory Adjustment Gain", accountType: "INCOME", normalSide: "CREDIT" },
   { code: ACCOUNT.COGS, name: "Cost of Goods Sold", accountType: "EXPENSE", normalSide: "DEBIT" },
+  { code: ACCOUNT.FREIGHT_IN, name: "Freight-In", accountType: "EXPENSE", normalSide: "DEBIT" },
   { code: ACCOUNT.INVENTORY_ADJUSTMENT_LOSS, name: "Inventory Adjustment Loss", accountType: "EXPENSE", normalSide: "DEBIT" },
+  { code: ACCOUNT.FREIGHT_OUT, name: "Freight-Out", accountType: "EXPENSE", normalSide: "DEBIT" },
   { code: ACCOUNT.REPAIR_PARTS, name: "Repair Parts Expense", accountType: "EXPENSE", normalSide: "DEBIT" },
   { code: ACCOUNT.WARRANTY_EXPENSE, name: "Warranty Expense", accountType: "EXPENSE", normalSide: "DEBIT" },
   // Reported inside cost of sales rather than as an operating expense: it
   // originates in the purchase cost of goods, so it belongs in gross margin.
   // An operating-expense line would imply a cost of running the business.
   { code: ACCOUNT.ROUNDING_VARIANCE, name: "Rounding Variance", accountType: "EXPENSE", normalSide: "DEBIT" },
+  { code: ACCOUNT.CUSTOMER_GOODS, name: "Customer Goods", accountType: "OFF_BALANCE", normalSide: "DEBIT" },
+  { code: ACCOUNT.CUSTOMER_GOODS_PAYABLE, name: "Customer Goods Payable", accountType: "OFF_BALANCE", normalSide: "CREDIT" },
 ];
 
 /** Financial transaction types — every one of these posts to the ledger. */
@@ -265,10 +288,21 @@ export const JOURNAL_TEMPLATES: {
  * consequences for history, not something a boot step should do silently.
  */
 /** Live accounts renumbered to the client's chart. Applied in this order: 1210 must move before 1250 takes it. */
-const RENUMBER: { from: string; to: string; ifNamed: string }[] = [
-  { from: "1210", to: "1230", ifNamed: "Inventory In Transit" },
-  { from: "1250", to: "1210", ifNamed: "Prepaid Inventory" },
-  { from: "4900", to: "4100", ifNamed: "Inventory Gain" },
+/**
+ * One-way moves, in order: each frees the code the next one (or a new account)
+ * needs. Matched on code AND name, so a database already on the new chart —
+ * where 2100 is Sales Tax Payable — is untouched. `rename` is the only way
+ * this file changes an existing account's name: admins may rename accounts.
+ */
+const RENUMBER: { from: string; to: string; ifNamed: string[]; rename?: string }[] = [
+  { from: "1210", to: "1230", ifNamed: ["Inventory In Transit"] },
+  { from: "1250", to: "1210", ifNamed: ["Prepaid Inventory"], rename: "Inventory Clearing – Inbound" },
+  // Straight to 4200: 4100 is Shipping Income on the revised chart.
+  { from: "4900", to: "4200", ifNamed: ["Inventory Gain"], rename: "Inventory Adjustment Gain" },
+  // Client's revised chart, 2026-09-28.
+  { from: "2100", to: "2150", ifNamed: ["Customer Deposits"], rename: "Customer Deposits (retired)" },
+  { from: "4100", to: "4200", ifNamed: ["Inventory Adjustment Gain", "Inventory Gain"], rename: "Inventory Adjustment Gain" },
+  { from: "5100", to: "6000", ifNamed: ["Inventory Adjustment Loss"] },
 ];
 
 export async function syncChartOfAccounts() {
@@ -281,29 +315,23 @@ export async function syncChartOfAccounts() {
   for (const r of RENUMBER) {
     const row = await prisma.account.findUnique({ where: { code: r.from } });
     const taken = await prisma.account.findUnique({ where: { code: r.to } });
-    if (row && row.name === r.ifNamed && !taken) {
-      await prisma.account.update({ where: { id: row.id }, data: { code: r.to } });
+    if (row && r.ifNamed.includes(row.name) && !taken) {
+      await prisma.account.update({
+        where: { id: row.id },
+        data: { code: r.to, ...(r.rename ? { name: r.rename } : {}) },
+      });
       changes.push(`${r.from}→${r.to}`);
     }
   }
 
-  const existing = await prisma.account.findMany({ select: { id: true, code: true, name: true, isActive: true } });
-  const byCode = new Map(existing.map((a) => [a.code, a]));
+  // Create what is missing; never overwrite an existing account's name or
+  // active flag. Since 2026-09-28 the chart is edited in the app (Settings →
+  // Chart of accounts), so the database, not this file, owns those fields.
+  const existing = new Set((await prisma.account.findMany({ select: { code: true } })).map((a) => a.code));
   for (const a of CHART_OF_ACCOUNTS) {
-    const row = byCode.get(a.code);
-    if (!row) {
+    if (!existing.has(a.code)) {
       await prisma.account.create({ data: a });
       changes.push(`+${a.code} ${a.name}`);
-    } else {
-      if (row.name !== a.name) {
-        await prisma.account.update({ where: { id: row.id }, data: { name: a.name } });
-        changes.push(`${a.code} renamed "${a.name}"`);
-      }
-      const active = a.isActive ?? true;
-      if (row.isActive !== active) {
-        await prisma.account.update({ where: { id: row.id }, data: { isActive: active } });
-        changes.push(`${a.code} ${active ? "reactivated" : "retired"}`);
-      }
     }
   }
 

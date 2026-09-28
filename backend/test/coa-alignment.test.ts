@@ -52,9 +52,15 @@ describe("client chart of accounts", () => {
     expect(name("1220")).toBe("Inventory Clearing – Outbound");
     expect(name("2000")).toBe("Accounts Payable (AP)");
     expect(name("3000")).toBe("Opening Balance Equity");
-    expect(name("4100")).toBe("Inventory Adjustment Gain");
+    // Revised sheet, 2026-09-28.
+    expect(name("2100")).toBe("Sales Tax Payable");
+    expect(name("2200")).toBe("Sales Tax Transition");
+    expect(name("4100")).toBe("Shipping Income");
+    expect(name("4200")).toBe("Inventory Adjustment Gain");
     expect(name("5000")).toBe("Cost of Goods Sold");
-    expect(name("5100")).toBe("Inventory Adjustment Loss");
+    expect(name("5100")).toBe("Freight-In");
+    expect(name("6000")).toBe("Inventory Adjustment Loss");
+    expect(name("6100")).toBe("Freight-Out");
     expect(rows.find((a) => a.code === "1250")).toBeUndefined();
     expect(rows.find((a) => a.code === "4900")).toBeUndefined();
     const rules = await prisma.journalTemplate.findMany();
@@ -73,11 +79,11 @@ describe("client chart of accounts", () => {
     const linesBefore = await prisma.journalLine.groupBy({ by: ["accountId"], _count: true });
 
     const changes = await syncChartOfAccounts();
-    expect(changes).toEqual(expect.arrayContaining(["1210→1230", "1250→1210", "4900→4100"]));
+    expect(changes).toEqual(expect.arrayContaining(["1210→1230", "1250→1210", "4900→4200"]));
 
     expect((await prisma.account.findUniqueOrThrow({ where: { id: inbound.id } })).code).toBe("1210");
     expect((await prisma.account.findUniqueOrThrow({ where: { id: transit.id } })).code).toBe("1230");
-    expect((await prisma.account.findUniqueOrThrow({ where: { id: gain.id } })).code).toBe("4100");
+    expect((await prisma.account.findUniqueOrThrow({ where: { id: gain.id } })).code).toBe("4200");
     expect(await prisma.journalLine.groupBy({ by: ["accountId"], _count: true })).toEqual(linesBefore);
     expect((await syncChartOfAccounts()).length).toBe(0); // idempotent
     expect((await as(app, token).get("/api/trial-balance")).body.sound).toBe(true);
@@ -168,7 +174,7 @@ describe("journal examples", () => {
     expect(inc.postedCount).toBeGreaterThan(0);
     // The latest opening-stock adjustment is the one just made: 2 × 700.
     expect(inc.latest.lines.map((l: { code: string; debitCents: number; creditCents: number }) => [l.code, l.debitCents, l.creditCents]))
-      .toEqual([["1200", 1_400, 0], ["4100", 0, 1_400]]);
+      .toEqual([["1200", 1_400, 0], ["4200", 0, 1_400]]);
     const unused = res.body.data.find((r: { transactionType: string }) => r.transactionType === "WARRANTY_REPLACEMENT");
     expect(unused.postedCount).toBe(0);
     expect(unused.latest).toBeNull();
