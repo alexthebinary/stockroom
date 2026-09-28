@@ -6,8 +6,7 @@ import { actorOf, asyncHandler, optionalInt, pagination, parseBody } from "../ht
 import { requireStock } from "../auth";
 import { applyBalanceDelta, recordMovement } from "../inventory";
 import { consumeSerials, SERIAL_STATUS } from "../serials";
-import { createLot, issueStock } from "../costing";
-import { totalUnitCostCents } from "../products";
+import { arrivalUnitCostCents, createLot, issueStock } from "../costing";
 import { postSimple } from "../ledger";
 import { TRANSACTION_TYPE } from "../accounts";
 import { ADJUSTMENT_TYPES } from "../domain";
@@ -95,11 +94,11 @@ stockAdjustmentsRouter.post(
       });
 
       // An increase creates a layer at the cost given (falling back to the
-      // product's total unit cost); a decrease draws the oldest layers and is
+      // current average, then the product's total unit cost); a decrease draws the oldest layers and is
       // valued at the weighted average cost.
       let totalCostCents: number;
       if (increase) {
-        const unitCostCents = body.unitCostCents ?? totalUnitCostCents(product);
+        const unitCostCents = body.unitCostCents ?? (await arrivalUnitCostCents(tx, product));
         totalCostCents = unitCostCents * body.quantity;
         await createLot(tx, {
           productId: body.productId,

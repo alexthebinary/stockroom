@@ -5,7 +5,7 @@ import { badRequest, conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, pagination, parseBody } from "../http";
 import { requireStock } from "../auth";
 import { applyBalanceDelta, recordMovement } from "../inventory";
-import { createLot, issueStock } from "../costing";
+import { arrivalUnitCostCents, createLot, issueStock } from "../costing";
 import { postSimple } from "../ledger";
 import { TRANSACTION_TYPE } from "../accounts";
 import { nextStockCountNumber } from "../numbering";
@@ -191,13 +191,10 @@ stockCountsRouter.post(
 
         if (delta > 0) {
           // Found stock. It has no purchase behind it, so it is valued at the
-          // most recent cost known for that product in this warehouse; failing
-          // that, it comes on at zero rather than inventing a price.
-          const recent = await tx.inventoryLot.findFirst({
-            where: { productId: line.productId, warehouseId: current.warehouseId },
-            orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
-          });
-          const unitCostCents = recent?.unitCostCents ?? 0;
+          // current weighted average; failing that, the product's expected
+          // total cost; failing that, zero rather than an invented price.
+          const product = await tx.product.findUniqueOrThrow({ where: { id: line.productId } });
+          const unitCostCents = await arrivalUnitCostCents(tx, product);
           const valueCents = delta * unitCostCents;
 
           await applyBalanceDelta(
@@ -207,17 +204,17 @@ stockCountsRouter.post(
             { onHandQty: delta },
             `Count ${current.countNumber}`
           );
-          if (unitCostCents > 0) {
-            await createLot(tx, {
-              productId: line.productId,
-              warehouseId: current.warehouseId,
-              quantity: delta,
-              unitCostCents,
-              sourceType: "STOCK_COUNT",
-              sourceId: current.id,
-              costing: "POOL",
-            });
-          }
+          // Always a layer, even at zero cost: without one the found units are
+          // on the shelf but in no layer and no pool, and cannot be issued.
+          await createLot(tx, {
+            productId: line.productId,
+            warehouseId: current.warehouseId,
+            quantity: delta,
+            unitCostCents,
+            sourceType: "STOCK_COUNT",
+            sourceId: current.id,
+            costing: "POOL",
+          });
           await recordMovement(tx, {
             productId: line.productId,
             toWarehouseId: current.warehouseId,

@@ -144,6 +144,20 @@ export async function averageUnitCostCents(tx: Tx, productId: number) {
   return pool.qty > 0 ? Math.round(pool.valueCents / pool.qty) : null;
 }
 
+/**
+ * Cost for stock arriving with no purchase behind it (adjust-in, found stock):
+ * today's average, else the product's expected total cost of goods per unit.
+ */
+export async function arrivalUnitCostCents(
+  tx: Tx,
+  product: { id: number; costOfGoodsCents: number; supplierShippingCents: number }
+) {
+  return (
+    (await averageUnitCostCents(tx, product.id)) ??
+    product.costOfGoodsCents + product.supplierShippingCents
+  );
+}
+
 /** Split a total over quantities by cumulative rounding, so the parts sum exactly. */
 export function allocate(totalCents: number, quantities: number[]) {
   const all = quantities.reduce((s, q) => s + q, 0);

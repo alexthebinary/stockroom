@@ -13,8 +13,7 @@ import "./setup";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { Express } from "express";
 import { as, boot, prisma } from "./helpers";
-import { createLot, ensureCostPools } from "../src/costing";
-import { applyBalanceDelta } from "../src/inventory";
+import { ensureCostPools } from "../src/costing";
 import { inventoryValuation } from "../src/books";
 
 let app: Express;
@@ -78,28 +77,6 @@ describe("cost invariants", () => {
       .toMatchObject({ qty: 7, valueCents: 10_500 });
   });
 
-  it("a transfer in flight at cutover is counted once", async () => {
-    const api = as(app, token);
-    const p = await prisma.product.create({ data: { sku: "INV-CUT", name: "cut" } });
-    await prisma.$transaction(async (tx) => {
-      await createLot(tx, {
-        productId: p.id, warehouseId: a, quantity: 3, unitCostCents: 500, sourceType: "TEST", costing: "CARRY",
-      });
-      await applyBalanceDelta(tx, p.id, a, { onHandQty: 3 }, "seed");
-    });
-    const t = await ok(await api.post("/api/stock-transfers").send({
-      productId: p.id, fromWarehouseId: a, toWarehouseId: b, quantity: 1,
-    }));
-    await ok(await api.post(`/api/stock-transfers/${t.id}/start`)); // 1 unit now lives only on the transfer
-    await prisma.productCost.deleteMany({ where: { productId: p.id } }); // started before the cutover
-    await ensureCostPools(); // cutover WHILE in flight
-    expect(await prisma.productCost.findUniqueOrThrow({ where: { productId: p.id } }))
-      .toMatchObject({ qty: 3, valueCents: 1_500 }); // 2 in lots + 1 on the transfer
-    await ok(await api.post(`/api/stock-transfers/${t.id}/complete`));
-    expect(await prisma.productCost.findUniqueOrThrow({ where: { productId: p.id } }))
-      .toMatchObject({ qty: 3, valueCents: 1_500 });
-  });
-
   it("a never-moved product with a boot-opened pool can still be hard-deleted", async () => {
     const api = as(app, token);
     const p = await ok(await api.post("/api/products").send({ sku: "INV-DEL", name: "del" }));
@@ -107,5 +84,51 @@ describe("cost invariants", () => {
     const res = await api.delete(`/api/products/${p.id}`);
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ deleted: true, soft: false });
+  });
+
+  describe("stock arriving with no price", () => {
+    const adjustIn = (productId: number, quantity: number, unitCostCents?: number) =>
+      as(app, token).post("/api/stock-adjustments").send({
+        productId, warehouseId: a, adjustmentType: "INCREASE", quantity, reason: "test", unitCostCents,
+      });
+    const countUp = async (productId: number, countedQty: number) => {
+      const api = as(app, token);
+      const opened = await ok(await api.post("/api/stock-counts").send({ warehouseId: a, productIds: [productId] }));
+      await ok(await api.post(`/api/stock-counts/${opened.id}/lines`).send({ lines: [{ productId, countedQty }] }));
+      await ok(await api.post(`/api/stock-counts/${opened.id}/post`));
+    };
+    const poolOf = (productId: number) => prisma.productCost.findUniqueOrThrow({ where: { productId } });
+
+    it("adjust-in comes in at the product's total cost when the pool is empty, then at the average", async () => {
+      const api = as(app, token);
+      const p = await ok(await api.post("/api/products").send({
+        sku: "INV-DEF", name: "def", costOfGoodsCents: 700, supplierShippingCents: 300,
+      }));
+      await ok(await adjustIn(p.id, 1)); // empty pool → 1000 (total), not 700 (goods only), not 0
+      expect(await poolOf(p.id)).toMatchObject({ qty: 1, valueCents: 1_000 });
+      await ok(await adjustIn(p.id, 1, 3_000)); // avg 2000
+      await ok(await adjustIn(p.id, 1)); // at the average
+      expect(await poolOf(p.id)).toMatchObject({ qty: 3, valueCents: 6_000 });
+      await assertInvariants();
+    });
+
+    it("a count gain comes in at the current average", async () => {
+      const api = as(app, token);
+      const p = await ok(await api.post("/api/products").send({ sku: "INV-CNT", name: "cnt", costOfGoodsCents: 999 }));
+      await ok(await adjustIn(p.id, 1, 1_000));
+      await ok(await adjustIn(p.id, 1, 3_000)); // 2 units, avg 2000
+      await countUp(p.id, 3); // found one
+      expect(await poolOf(p.id)).toMatchObject({ qty: 3, valueCents: 6_000 });
+      await assertInvariants();
+    });
+
+    it("a count gain on a product with no cost at all still lands in the pool (at zero)", async () => {
+      const api = as(app, token);
+      const p = await ok(await api.post("/api/products").send({ sku: "INV-ZERO", name: "zero" }));
+      await ok(await adjustIn(p.id, 1, 0)); // stocked, but worth nothing
+      await countUp(p.id, 3);
+      expect(await poolOf(p.id)).toMatchObject({ qty: 3, valueCents: 0 });
+      await assertInvariants();
+    });
   });
 });

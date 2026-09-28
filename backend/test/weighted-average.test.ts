@@ -9,15 +9,19 @@
  */
 import "./setup";
 import { beforeAll, describe, expect, it } from "vitest";
-import { boot, prisma } from "./helpers";
-import { allocate, createLot, ensureCostPool, issueStock, shareOfPool } from "../src/costing";
+import type { Express } from "express";
+import { as, boot, prisma } from "./helpers";
+import { applyBalanceDelta } from "../src/inventory";
+import { allocate, createLot, ensureCostPool, ensureCostPools, issueStock, shareOfPool } from "../src/costing";
 import { consumeSerials, receiveSerials } from "../src/serials";
 
+let app: Express;
+let token: string;
 let wh: number;
 let wh2: number;
 
 beforeAll(async () => {
-  await boot();
+  ({ app, token } = await boot());
   wh = (await prisma.warehouse.create({ data: { name: "WAC A", code: "WACA" } })).id;
   wh2 = (await prisma.warehouse.create({ data: { name: "WAC B", code: "WACB" } })).id;
 });
@@ -153,4 +157,34 @@ describe("weighted average cost", () => {
     await expect(issue(p.id, wh, 2)).rejects.toMatchObject({ status: 400 });
     expect(await pool(p.id)).toMatchObject({ qty: 6, valueCents: 600 });
   });
+});
+
+async function ok(res: { status: number; body: unknown }) {
+  if (res.status >= 300) throw new Error(`${res.status}: ${JSON.stringify(res.body)}`);
+  return res.body as { id: number };
+}
+
+describe("cutover with a transfer in flight", () => {
+  it("a transfer in flight at cutover is counted once", async () => {
+    const api = as(app, token);
+    const p = await prisma.product.create({ data: { sku: "INV-CUT", name: "cut" } });
+    await prisma.$transaction(async (tx) => {
+      await createLot(tx, {
+        productId: p.id, warehouseId: wh, quantity: 3, unitCostCents: 500, sourceType: "TEST", costing: "CARRY",
+      });
+      await applyBalanceDelta(tx, p.id, wh, { onHandQty: 3 }, "seed");
+    });
+    const t = await ok(await api.post("/api/stock-transfers").send({
+      productId: p.id, fromWarehouseId: wh, toWarehouseId: wh2, quantity: 1,
+    }));
+    await ok(await api.post(`/api/stock-transfers/${t.id}/start`)); // 1 unit now lives only on the transfer
+    await prisma.productCost.deleteMany({ where: { productId: p.id } }); // started before the cutover
+    await ensureCostPools(); // cutover WHILE in flight
+    expect(await prisma.productCost.findUniqueOrThrow({ where: { productId: p.id } }))
+      .toMatchObject({ qty: 3, valueCents: 1_500 }); // 2 in lots + 1 on the transfer
+    await ok(await api.post(`/api/stock-transfers/${t.id}/complete`));
+    expect(await prisma.productCost.findUniqueOrThrow({ where: { productId: p.id } }))
+      .toMatchObject({ qty: 3, valueCents: 1_500 });
+  });
+
 });
