@@ -16,11 +16,13 @@ import { prisma } from "../src/db";
 import { dependenciesOf, postSimple, unpostEntry } from "../src/ledger";
 import { syncChartOfAccounts } from "../src/accounts";
 import { ensureDocumentCounters } from "../src/numbering";
+import { syncPostingRules } from "../src/posting";
 
 let vendorId: number;
 
 beforeAll(async () => {
   await syncChartOfAccounts();
+  await syncPostingRules();
   await ensureDocumentCounters();
   const vendor = await prisma.vendor.create({
     data: { name: "Test Vendor Co", email: "vendor@test.local" },

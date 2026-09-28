@@ -335,23 +335,6 @@ export async function syncChartOfAccounts() {
     }
   }
 
-  // Posting rules are data too; keep the stored table equal to this file so the
-  // Posting rules page shows what the code actually posts.
-  const rules = new Map(
-    (await prisma.journalTemplate.findMany()).map((t) => [t.transactionType, t])
-  );
-  for (const t of JOURNAL_TEMPLATES) {
-    const row = rules.get(t.transactionType);
-    if (!row) {
-      await prisma.journalTemplate.create({ data: t });
-    } else if (
-      row.debitAccountCode !== t.debitAccountCode ||
-      row.creditAccountCode !== t.creditAccountCode ||
-      row.description !== t.description
-    ) {
-      await prisma.journalTemplate.update({ where: { id: row.id }, data: t });
-    }
-  }
   return changes;
 }
 

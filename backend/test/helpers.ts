@@ -10,6 +10,7 @@ import { syncChartOfAccounts } from "../src/accounts";
 import { ensureBootstrapAdmin, SESSION_HEADER } from "../src/auth";
 import { ensureDocumentCounters } from "../src/numbering";
 import { ensureCostPools } from "../src/costing";
+import { syncPostingRules } from "../src/posting";
 
 let app: Express | null = null;
 let token: string | null = null;
@@ -18,6 +19,7 @@ let token: string | null = null;
 export async function boot() {
   if (app && token) return { app, token };
   await syncChartOfAccounts();
+  await syncPostingRules();
   await ensureDocumentCounters();
   await ensureCostPools();
   const admin = await ensureBootstrapAdmin();

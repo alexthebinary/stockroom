@@ -63,9 +63,12 @@ describe("client chart of accounts", () => {
     expect(name("6100")).toBe("Freight-Out");
     expect(rows.find((a) => a.code === "1250")).toBeUndefined();
     expect(rows.find((a) => a.code === "4900")).toBeUndefined();
-    const rules = await prisma.journalTemplate.findMany();
-    const bill = rules.find((r) => r.transactionType === "PURCHASE_BILL");
-    expect([bill?.debitAccountCode, bill?.creditAccountCode]).toEqual(["1210", "2000"]);
+    const bill = await prisma.postingRule.findMany({
+      where: { transactionType: "PURCHASE_BILL" },
+      include: { account: true },
+      orderBy: { role: "desc" },
+    });
+    expect(bill.map((r) => [r.role, r.account.code])).toEqual([["debit", "1210"], ["credit", "2000"]]);
   });
 
   it("renumbers a live old-layout database in place, keeping every line on its account", async () => {

@@ -6,6 +6,7 @@ import { requireMoney, requireStock } from "../auth";
 import { balanceOf, dependenciesOf, repostEntry, reverseEntry, unpostEntry } from "../ledger";
 import { getLockDate, setLockDate } from "../period";
 import { trialBalance } from "../books";
+import { assignedRoles } from "../posting";
 
 export const ledgerRouter = Router();
 
@@ -18,9 +19,8 @@ export const ledgerRouter = Router();
 ledgerRouter.get(
   "/journal-examples",
   asyncHandler(async (_req, res) => {
-    const [templates, accounts, counts, latest] = await Promise.all([
-      prisma.journalTemplate.findMany({ orderBy: { transactionType: "asc" } }),
-      prisma.account.findMany(),
+    const [templates, counts, latest] = await Promise.all([
+      assignedRoles(),
       prisma.journalEntry.groupBy({ by: ["transactionType"], where: { status: "POSTED" }, _count: { _all: true } }),
       prisma.journalEntry.findMany({
         where: { status: "POSTED" },
@@ -29,15 +29,17 @@ ledgerRouter.get(
         include: { lines: { include: { account: true }, orderBy: { id: "asc" } } },
       }),
     ]);
-    const nameOf = (code: string) => accounts.find((a) => a.code === code)?.name ?? code;
     res.json({
       data: templates.map((t) => {
         const e = latest.find((x) => x.transactionType === t.transactionType);
+        const first = (side: string) => t.roles.find((r) => r.side === side)!.account;
         return {
           transactionType: t.transactionType,
           description: t.description,
-          debit: { code: t.debitAccountCode, name: nameOf(t.debitAccountCode) },
-          credit: { code: t.creditAccountCode, name: nameOf(t.creditAccountCode) },
+          // First debit and credit role, for the two-sided summary; `roles` has all.
+          debit: { code: first("DEBIT").code, name: first("DEBIT").name },
+          credit: { code: first("CREDIT").code, name: first("CREDIT").name },
+          roles: t.roles.map((r) => ({ role: r.role, label: r.label, side: r.side, code: r.account.code, name: r.account.name })),
           postedCount: counts.find((c) => c.transactionType === t.transactionType)?._count._all ?? 0,
           latest: e
             ? {

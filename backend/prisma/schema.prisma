@@ -456,6 +456,7 @@ model Account {
   isActive    Boolean @default(true)
 
   lines JournalLine[]
+  rules PostingRule[]
 }
 
 /// A financial transaction. status: SAVED | POSTED | VOID
@@ -509,12 +510,46 @@ model JournalLine {
 /// Maps a transaction type to the accounts it posts against, so the postings
 /// are configuration rather than code. "Common Journal Entry Templates
 /// corresponding to Financial Transaction Types" in the scope.
+/// DEPRECATED 2026-09-28: postings read PostingRule. Kept only because prod
+/// uses `db push` without --accept-data-loss, which will not drop a table.
 model JournalTemplate {
   id                Int    @id @default(autoincrement())
   transactionType   String @unique
   description       String
   debitAccountCode  String
   creditAccountCode String
+}
+
+/// Account Assignment (client request 2026-09-28): which GL account one role
+/// of one transaction type posts to. The roles, their sides and which account
+/// types they accept are declared in code (src/posting.ts); the account is
+/// data an admin edits. Boot inserts missing rules and never overwrites one.
+model PostingRule {
+  id              Int      @id @default(autoincrement())
+  transactionType String
+  role            String
+  accountId       Int
+  updatedAt       DateTime @updatedAt
+
+  account Account             @relation(fields: [accountId], references: [id])
+  changes PostingRuleChange[]
+
+  @@unique([transactionType, role])
+}
+
+/// Audit trail of Account Assignment edits. Account ids, not codes: a code can
+/// be renumbered, the account it named cannot.
+model PostingRuleChange {
+  id            Int      @id @default(autoincrement())
+  ruleId        Int
+  fromAccountId Int
+  toAccountId   Int
+  actor         String
+  changedAt     DateTime @default(now())
+
+  rule PostingRule @relation(fields: [ruleId], references: [id])
+
+  @@index([ruleId])
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
+import { assignedRoles } from "../posting";
 import { contains } from "../search";
 import { badRequest, notFound } from "../errors";
 import { asyncHandler, intParam, pagination, parseBody } from "../http";
@@ -186,15 +187,21 @@ catalogsRouter.get(
 catalogsRouter.get(
   "/journal-templates",
   asyncHandler(async (_req, res) => {
-    const templates = await prisma.journalTemplate.findMany({ orderBy: { transactionType: "asc" } });
-    const accounts = await prisma.account.findMany();
-    const nameOf = (code: string) => accounts.find((a) => a.code === code)?.name ?? code;
+    // Kept for the About page's summary; Settings uses /posting-rules.
+    const types = await assignedRoles();
     res.json({
-      data: templates.map((t) => ({
-        ...t,
-        debitAccountName: nameOf(t.debitAccountCode),
-        creditAccountName: nameOf(t.creditAccountCode),
-      })),
+      data: types.map((t, i) => {
+        const first = (side: string) => t.roles.find((r) => r.side === side)!.account;
+        return {
+          id: i + 1,
+          transactionType: t.transactionType,
+          description: t.description,
+          debitAccountCode: first("DEBIT").code,
+          creditAccountCode: first("CREDIT").code,
+          debitAccountName: first("DEBIT").name,
+          creditAccountName: first("CREDIT").name,
+        };
+      }),
     });
   })
 );

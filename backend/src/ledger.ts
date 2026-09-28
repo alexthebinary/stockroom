@@ -1,6 +1,7 @@
 import { badRequest, conflict, notFound } from "./errors";
 import type { Tx } from "./inventory";
-import { JOURNAL_TEMPLATES, type TransactionType } from "./accounts";
+import type { TransactionType } from "./accounts";
+import { postRoles } from "./posting";
 import { assertPeriodOpen } from "./period";
 import { nextJournalEntryNumber } from "./numbering";
 
@@ -110,7 +111,8 @@ export async function createEntry(
 
 /**
  * Convenience for the common case: a single debit and a single credit for the
- * same amount, using the accounts configured for that transaction type.
+ * same amount, to the accounts assigned to that transaction type's "debit" and
+ * "credit" roles (PostingRule; editable in Settings → Account assignment).
  */
 export async function postSimple(
   tx: Tx,
@@ -127,8 +129,6 @@ export async function postSimple(
     entryDate?: Date;
   }
 ) {
-  const template = JOURNAL_TEMPLATES.find((t) => t.transactionType === input.transactionType);
-  if (!template) throw badRequest(`No journal template for ${input.transactionType}`);
   if (input.amountCents < 0) {
     throw badRequest(`${input.transactionType}: amount cannot be negative`);
   }
@@ -137,27 +137,16 @@ export async function postSimple(
   // this is a no-op rather than an error.
   if (input.amountCents === 0) return null;
 
-  return createEntry(tx, {
+  return postRoles(tx, {
     transactionType: input.transactionType,
-    entryDate: input.entryDate,
-    memo: input.memo ?? template.description,
+    amounts: { debit: input.amountCents, credit: input.amountCents },
+    memo: input.memo,
     referenceType: input.referenceType,
     referenceId: input.referenceId,
     actor: input.actor,
-    lines: [
-      {
-        accountCode: template.debitAccountCode,
-        debitCents: input.amountCents,
-        productId: input.productId,
-        warehouseId: input.debitWarehouseId,
-      },
-      {
-        accountCode: template.creditAccountCode,
-        creditCents: input.amountCents,
-        productId: input.productId,
-        warehouseId: input.creditWarehouseId,
-      },
-    ],
+    entryDate: input.entryDate,
+    productId: input.productId,
+    warehouseIds: { debit: input.debitWarehouseId, credit: input.creditWarehouseId },
   });
 }
 

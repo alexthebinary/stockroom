@@ -96,7 +96,7 @@ metaRouter.get(
       prisma.inventoryLot.count(),
       prisma.lotConsumption.count(),
       prisma.account.count(),
-      prisma.journalTemplate.count(),
+      prisma.postingRule.count(),
       prisma.journalEntry.count(),
       prisma.journalLine.count(),
       prisma.salesOrder.count(),
@@ -190,7 +190,7 @@ metaRouter.get(
             "Double entry. An entry that does not balance to the cent is refused, not corrected.",
           entities: [
             { name: "Account", rows: accounts, note: "Chart of accounts" },
-            { name: "JournalTemplate", rows: templates, note: "The debit/credit pair per transaction type" },
+            { name: "PostingRule", rows: templates, note: "Which account each line of each transaction type posts to — editable in Settings" },
             { name: "JournalEntry", rows: entries, note: "SAVED or POSTED; only POSTED affects the ledger" },
             { name: "JournalLine", rows: lines, note: "One side of an entry, in integer cents" },
           ],

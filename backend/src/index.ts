@@ -3,6 +3,7 @@ import { ensureBootstrapAdmin } from "./auth";
 import { syncChartOfAccounts } from "./accounts";
 import { ensureDocumentCounters } from "./numbering";
 import { ensureCostPools } from "./costing";
+import { syncPostingRules } from "./posting";
 
 const app = createApp();
 
@@ -16,7 +17,11 @@ const host = process.env.HOST ?? "127.0.0.1";
 // no-op once the chart is current.
 syncChartOfAccounts()
   .then((added) => {
-    if (added.length) console.log(`Chart of accounts: added ${added.join(", ")}`);
+    if (added.length) console.log(`Chart of accounts: ${added.join(", ")}`);
+    return syncPostingRules();
+  })
+  .then((inserted) => {
+    if (inserted) console.log(`Posting rules: inserted ${inserted}`);
     return ensureDocumentCounters();
   })
   .then((seeded) => {
