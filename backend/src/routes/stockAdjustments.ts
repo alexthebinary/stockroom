@@ -6,7 +6,7 @@ import { actorOf, asyncHandler, optionalInt, pagination, parseBody } from "../ht
 import { requireStock } from "../auth";
 import { applyBalanceDelta, recordMovement } from "../inventory";
 import { consumeSerials, SERIAL_STATUS } from "../serials";
-import { consumeFifo, createLot } from "../costing";
+import { createLot, issueStock } from "../costing";
 import { totalUnitCostCents } from "../products";
 import { postSimple } from "../ledger";
 import { TRANSACTION_TYPE } from "../accounts";
@@ -22,7 +22,7 @@ const createSchema = z.object({
   quantity: z.number().int().positive(),
   reason: z.string().min(1, "A reason is required so the audit trail stays useful"),
   /// Only meaningful on an INCREASE: what the stock being written on is worth.
-  /// A DECREASE is always valued at the FIFO cost of the layers it consumes.
+  /// A DECREASE is always valued at the weighted average cost.
   unitCostCents: z.number().int().min(0).optional(),
   /// Required on a DECREASE for a SERIAL-tracked product. "One of these is
   /// broken" is not a record anyone can act on later, and for a warranty claim
@@ -95,8 +95,8 @@ stockAdjustmentsRouter.post(
       });
 
       // An increase creates a layer at the cost given (falling back to the
-      // product's total unit cost); a decrease consumes the oldest layers and is
-      // valued at exactly what they cost.
+      // product's total unit cost); a decrease draws the oldest layers and is
+      // valued at the weighted average cost.
       let totalCostCents: number;
       if (increase) {
         const unitCostCents = body.unitCostCents ?? totalUnitCostCents(product);
@@ -108,9 +108,10 @@ stockAdjustmentsRouter.post(
           unitCostCents,
           sourceType: "STOCK_ADJUSTMENT",
           sourceId: adjustment.id,
+          costing: "POOL",
         });
       } else if (product.trackingMode === "SERIAL") {
-        // 🔴 A serialized write-off must say WHICH unit. consumeFifo would pick
+        // 🔴 A serialized write-off must say WHICH unit. issueStock would pick
         // the oldest layer, scrap a correct quantity, and leave the records
         // claiming a different physical unit was destroyed — invisible until a
         // vendor warranty claim needs the serial.
@@ -133,7 +134,7 @@ stockAdjustmentsRouter.post(
         });
         totalCostCents = consumed.totalCostCents;
       } else {
-        const consumed = await consumeFifo(tx, {
+        const consumed = await issueStock(tx, {
           productId: body.productId,
           warehouseId: body.warehouseId,
           quantity: body.quantity,

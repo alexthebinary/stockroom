@@ -48,7 +48,7 @@ async function anonymousStock(sku: string, qty: number) {
     data: { sku, name: `A ${sku}`, trackingMode: "NONE", defaultPriceCents: 10_000 },
   });
   await prisma.$transaction(async (tx) => {
-    await createLot(tx, { productId: p.id, warehouseId, quantity: qty, unitCostCents: 4_000, sourceType: "TEST" });
+    await createLot(tx, { productId: p.id, warehouseId, quantity: qty, unitCostCents: 4_000, sourceType: "TEST", costing: "POOL" });
     await applyBalanceDelta(tx, p.id, warehouseId, { onHandQty: qty }, "seed");
   });
   return p;
@@ -124,7 +124,7 @@ describe("shipping a serial-tracked line", () => {
     expect(lots.reduce((s, l) => s + l.remainingQty, 0)).toBe(2);
   });
 
-  it("REGRESSION: an anonymous product still ships through consumeFifo untouched", async () => {
+  it("REGRESSION: an anonymous product still ships through issueStock untouched", async () => {
     // The branch must not change behaviour for non-serialized stock.
     const p = await anonymousStock("SHIP-ANON-1", 5);
     const order = await packedOrder(p.id, 2);

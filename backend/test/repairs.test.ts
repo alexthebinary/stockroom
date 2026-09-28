@@ -33,7 +33,7 @@ beforeAll(async () => {
     data: { sku: "PART-ACT-1", name: "Actuator", trackingMode: "NONE", costOfGoodsCents: 12_000 },
   })).id;
   await prisma.$transaction(async (tx) => {
-    await createLot(tx, { productId: partId, warehouseId, quantity: 10, unitCostCents: 12_000, sourceType: "TEST" });
+    await createLot(tx, { productId: partId, warehouseId, quantity: 10, unitCostCents: 12_000, sourceType: "TEST", costing: "POOL" });
     await applyBalanceDelta(tx, partId, warehouseId, { onHandQty: 10 }, "seed parts");
   });
 });

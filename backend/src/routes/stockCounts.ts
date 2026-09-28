@@ -5,7 +5,7 @@ import { badRequest, conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, pagination, parseBody } from "../http";
 import { requireStock } from "../auth";
 import { applyBalanceDelta, recordMovement } from "../inventory";
-import { consumeFifo, createLot } from "../costing";
+import { createLot, issueStock } from "../costing";
 import { postSimple } from "../ledger";
 import { TRANSACTION_TYPE } from "../accounts";
 import { nextStockCountNumber } from "../numbering";
@@ -215,6 +215,7 @@ stockCountsRouter.post(
               unitCostCents,
               sourceType: "STOCK_COUNT",
               sourceId: current.id,
+              costing: "POOL",
             });
           }
           await recordMovement(tx, {
@@ -231,7 +232,7 @@ stockCountsRouter.post(
           gainCents += valueCents;
         } else {
           const short = -delta;
-          const consumed = await consumeFifo(tx, {
+          const consumed = await issueStock(tx, {
             productId: line.productId,
             warehouseId: current.warehouseId,
             quantity: short,

@@ -170,6 +170,8 @@ productsRouter.delete(
 
       if (referenceCounts.reduce((a, b) => a + b, 0) === 0) {
         await tx.inventoryBalance.deleteMany({ where: { productId: id } });
+        // Every product gets an (empty) cost pool at boot; it goes with it.
+        await tx.productCost.deleteMany({ where: { productId: id } });
         await tx.product.delete({ where: { id } });
         return { deleted: true, soft: false };
       }

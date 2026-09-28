@@ -12,7 +12,7 @@
  * currently persisted at Shopify matches the `compareQuantity` we send
  * (shopify.dev, GraphQL Admin). A mismatch means someone sold while we were
  * computing, so the mutation errors rather than clobbering the sale. That is
- * the same optimistic-concurrency idiom as consumeFifo's conditional update,
+ * the same optimistic-concurrency idiom as drawLots' conditional update,
  * and it is what makes "never oversell" true rather than aspirational.
  *
  * SAFETY BUFFER. We publish available-minus-buffer, so the storefront runs out

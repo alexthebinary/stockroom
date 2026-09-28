@@ -13,7 +13,7 @@
  */
 import type { Prisma } from "@prisma/client";
 import { TRANSACTION_TYPE } from "./accounts";
-import { consumeFifo } from "./costing";
+import { issueStock } from "./costing";
 import { badRequest, conflict, notFound } from "./errors";
 import { applyBalanceDelta, recordMovement } from "./inventory";
 import { postSimple } from "./ledger";
@@ -190,7 +190,7 @@ export async function consumeRepairPart(
     });
     totalCostCents = consumed.totalCostCents;
   } else {
-    const consumed = await consumeFifo(tx, {
+    const consumed = await issueStock(tx, {
       productId: input.productId, warehouseId: input.warehouseId,
       quantity: input.quantity, sourceType: "REPAIR_ORDER", sourceId: input.repairOrderId,
       context: `Cannot cost ${product.sku} for repair ${repair.repairNumber}`,

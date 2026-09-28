@@ -9,6 +9,7 @@ import { prisma } from "../src/db";
 import { syncChartOfAccounts } from "../src/accounts";
 import { ensureBootstrapAdmin, SESSION_HEADER } from "../src/auth";
 import { ensureDocumentCounters } from "../src/numbering";
+import { ensureCostPools } from "../src/costing";
 
 let app: Express | null = null;
 let token: string | null = null;
@@ -18,6 +19,7 @@ export async function boot() {
   if (app && token) return { app, token };
   await syncChartOfAccounts();
   await ensureDocumentCounters();
+  await ensureCostPools();
   const admin = await ensureBootstrapAdmin();
   app = createApp();
 
@@ -36,6 +38,7 @@ export function as(app: Express, tok: string) {
   return {
     post: (url: string) => request(app).post(url).set(SESSION_HEADER, tok),
     get: (url: string) => request(app).get(url).set(SESSION_HEADER, tok),
+    delete: (url: string) => request(app).delete(url).set(SESSION_HEADER, tok),
   };
 }
 

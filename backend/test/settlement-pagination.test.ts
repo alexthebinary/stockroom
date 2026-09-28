@@ -38,7 +38,7 @@ beforeAll(async () => {
       data: { productId: p.id, warehouseId, onHandQty: 5 },
     });
     await prisma.$transaction((tx) =>
-      createLot(tx, { productId: p.id, warehouseId, quantity: 5, unitCostCents: 500, sourceType: "TEST" })
+      createLot(tx, { productId: p.id, warehouseId, quantity: 5, unitCostCents: 500, sourceType: "TEST", costing: "POOL" })
     );
     const created = await api.post("/api/sales-orders").send({
       customerId, lines: [{ productId: p.id, warehouseId, quantity: 1, unitPriceCents: 1_000 }],

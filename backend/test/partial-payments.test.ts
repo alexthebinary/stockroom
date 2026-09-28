@@ -42,7 +42,7 @@ async function invoicedOrder() {
     update: { onHandQty: { increment: 40 } },
   });
   await prisma.$transaction((tx) =>
-    createLot(tx, { productId, warehouseId, quantity: 40, unitCostCents: 3_000, sourceType: "TEST" })
+    createLot(tx, { productId, warehouseId, quantity: 40, unitCostCents: 3_000, sourceType: "TEST", costing: "POOL" })
   );
 
   const created = await api.post("/api/sales-orders").send({

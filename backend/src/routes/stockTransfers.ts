@@ -5,7 +5,7 @@ import { badRequest, conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, optionalInt, pagination, parseBody } from "../http";
 import { requireStock } from "../auth";
 import { applyBalanceDelta, claimStatusTransition, recordMovement } from "../inventory";
-import { attachConsumptionsToMovement, consumeFifo, createLot } from "../costing";
+import { attachConsumptionsToMovement, createLot, drawLots, ensureCostPool, quotePoolCost } from "../costing";
 import { ACCOUNT, TRANSACTION_TYPE } from "../accounts";
 import { createEntry, reverseDocumentEntry } from "../ledger";
 import { assertReferencesUsable } from "../refs";
@@ -98,6 +98,11 @@ stockTransfersRouter.post(
       if (current.status !== "DRAFT")
         throw conflict(`Only DRAFT transfers can be started (this one is ${current.status})`);
 
+      // Open the cost pool BEFORE this transfer turns IN_TRANSIT. A pool opened
+      // lazily afterwards counts the units twice: still in the lots, and again
+      // as in transit.
+      await ensureCostPool(tx, current.productId);
+
       // Claim the transition atomically so two concurrent calls cannot both
       // process the same document.
       const claimed = await claimStatusTransition(
@@ -132,10 +137,12 @@ stockTransfersRouter.post(
         );
       }
 
-      // Consume the source layers now. The cost travels with the goods and is
-      // recreated at the destination on completion, so FIFO order survives the
-      // move instead of being averaged away.
-      const consumed = await consumeFifo(tx, {
+      // Draw the source layers now; they are recreated at the destination on
+      // completion with their receipt dates, so the pick order stays oldest
+      // first. No value moves: the average is company-wide, so the pool never
+      // sees a transfer. costCents is the goods' value at today's average.
+      const costCents = await quotePoolCost(tx, current.productId, current.quantity);
+      const consumed = await drawLots(tx, {
         productId: current.productId,
         warehouseId: current.fromWarehouseId,
         quantity: current.quantity,
@@ -157,19 +164,19 @@ stockTransfersRouter.post(
           `Transfer #${current.id} dispatched to ${current.toWarehouse.code}`,
         referenceType: "STOCK_TRANSFER",
         referenceId: current.id,
-        totalCostCents: consumed.totalCostCents,
+        totalCostCents: costCents,
         actor,
       });
       await attachConsumptionsToMovement(tx, consumed.consumptionIds, outMovement.id);
 
       // No journal entry (2026-09-24, operator): a transfer moves stock
       // between our own warehouses, and the value stays in Inventory at the
-      // FIFO cost the layers carry. The retired In Transit account is only
+      // weighted average cost. The retired In Transit account is only
       // used to clear transfers despatched before the change (see receive).
 
       await tx.stockTransfer.update({
         where: { id },
-        data: { costCents: consumed.totalCostCents },
+        data: { costCents },
       });
 
       return tx.stockTransfer.findUniqueOrThrow({ where: { id }, include });
@@ -211,11 +218,10 @@ stockTransfersRouter.post(
         `Cannot receive ${current.product.sku} into ${current.toWarehouse.code}`
       );
 
-      // Recreate the layers the source gave up, at the same unit costs. The
-      // slices were recorded as LotConsumption rows when the transfer started.
-      // Recreate the layers the source gave up, at their original unit costs
-      // AND their original receipt dates, so the stock does not become
-      // artificially young and jump the FIFO queue at its new home.
+      // Recreate the layers the source gave up (recorded as LotConsumption rows
+      // when the transfer started) with their receipt costs AND receipt dates,
+      // so the stock does not become artificially young and jump the pick
+      // queue at its new home. CARRY: the units never left the cost pool.
       const slices = await tx.lotConsumption.findMany({
         where: { sourceType: "STOCK_TRANSFER", sourceId: current.id },
         include: { lot: { select: { receivedAt: true } } },
@@ -230,6 +236,7 @@ stockTransfersRouter.post(
           receivedAt: slice.lot.receivedAt,
           sourceType: "STOCK_TRANSFER",
           sourceId: current.id,
+          costing: "CARRY",
         });
       }
 
@@ -335,6 +342,7 @@ stockTransfersRouter.post(
             receivedAt: slice.lot.receivedAt,
             sourceType: "STOCK_TRANSFER_CANCEL",
             sourceId: current.id,
+            costing: "CARRY",
           });
         }
 

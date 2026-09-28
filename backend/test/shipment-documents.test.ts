@@ -56,6 +56,7 @@ async function shippedOrder() {
       quantity: 50,
       unitCostCents: 2_000,
       sourceType: "TEST",
+      costing: "POOL",
     })
   );
 

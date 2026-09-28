@@ -40,7 +40,7 @@ async function stockedProduct(price: number) {
     data: { productId: p.id, warehouseId, onHandQty: 50 },
   });
   await prisma.$transaction((tx) =>
-    createLot(tx, { productId: p.id, warehouseId, quantity: 50, unitCostCents: 1_000, sourceType: "TEST" })
+    createLot(tx, { productId: p.id, warehouseId, quantity: 50, unitCostCents: 1_000, sourceType: "TEST", costing: "POOL" })
   );
   return p.id;
 }

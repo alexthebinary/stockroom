@@ -1,12 +1,11 @@
 /**
- * FIFO consumes the OLDEST layer, not the newest or the cheapest.
+ * Shipping over HTTP books COGS at the weighted average, while the units are
+ * still PICKED oldest receipt first.
  *
- * Written after an end-to-end run asserted the wrong thing: it received stock
- * at a new cost, shipped, and expected COGS at that NEW cost. The app booked
- * the older seeded layer instead and was correct. The assertion was wrong, and
- * nothing in the suite would have caught the inverse mistake — a regression
- * that consumed newest-first would have kept every existing test green,
- * because no test held two layers at different costs.
+ * Was fifo-layer-order.test.ts. Under FIFO the older layer's cost was the COGS;
+ * since the 2026-09-28 switch the cost is the average of every unit in the
+ * pool, and layer order only decides which physical receipt is drawn down.
+ * Two layers at different costs are what separate the two rules.
  *
  * ⚠️ "./setup" first — DATABASE_URL before src/db.ts builds PrismaClient.
  */
@@ -23,7 +22,7 @@ let warehouseId: number;
 
 beforeAll(async () => {
   ({ app, token } = await boot());
-  warehouseId = (await prisma.warehouse.create({ data: { name: "FIFO WH", code: "FIFOWH" } })).id;
+  warehouseId = (await prisma.warehouse.create({ data: { name: "Pick WH", code: "PICKWH" } })).id;
 });
 
 /**
@@ -32,7 +31,7 @@ beforeAll(async () => {
  */
 async function twoLayers(sku: string, oldCost: number, newCost: number) {
   const product = await prisma.product.create({
-    data: { sku, name: `FIFO ${sku}`, brand: "Unitree", defaultPriceCents: 500_000 },
+    data: { sku, name: `WAC ${sku}`, brand: "Unitree", defaultPriceCents: 500_000 },
   });
   const older = new Date("2026-01-01T00:00:00Z");
   const newer = new Date("2026-06-01T00:00:00Z");
@@ -40,11 +39,11 @@ async function twoLayers(sku: string, oldCost: number, newCost: number) {
   await prisma.$transaction(async (tx) => {
     await createLot(tx, {
       productId: product.id, warehouseId, quantity: 5,
-      unitCostCents: oldCost, receivedAt: older, sourceType: "TEST",
+      unitCostCents: oldCost, receivedAt: older, sourceType: "TEST", costing: "POOL",
     });
     await createLot(tx, {
       productId: product.id, warehouseId, quantity: 5,
-      unitCostCents: newCost, receivedAt: newer, sourceType: "TEST",
+      unitCostCents: newCost, receivedAt: newer, sourceType: "TEST", costing: "POOL",
     });
     await applyBalanceDelta(tx, product.id, warehouseId, { onHandQty: 10 }, "seed");
   });
@@ -53,7 +52,7 @@ async function twoLayers(sku: string, oldCost: number, newCost: number) {
 
 async function shipTwo(productId: number) {
   const api = as(app, token);
-  const customer = await prisma.customer.create({ data: { name: `FIFO buyer ${productId}` } });
+  const customer = await prisma.customer.create({ data: { name: `WAC buyer ${productId}` } });
   const created = await api.post("/api/sales-orders").send({
     customerId: customer.id,
     lines: [{ productId, warehouseId, quantity: 2, unitPriceCents: 500_000 }],
@@ -68,23 +67,22 @@ async function shipTwo(productId: number) {
   return detail.body.shipments[0].cogsCents as number;
 }
 
-describe("FIFO layer order", () => {
-  it("books COGS at the OLDER layer when the older one is cheaper", async () => {
-    const productId = await twoLayers("FIFO-CHEAP-OLD", 123_500, 125_000);
-    expect(await shipTwo(productId)).toBe(2 * 123_500);
+describe("weighted average COGS, oldest-first picking", () => {
+  it("books COGS at the average, not the older layer's cost", async () => {
+    // FIFO would book 2 × 123_500; cheapest-first the same. Average: 124_250.
+    const productId = await twoLayers("WAC-CHEAP-OLD", 123_500, 125_000);
+    expect(await shipTwo(productId)).toBe(2 * 124_250);
   });
 
-  it("books COGS at the OLDER layer when the older one is DEARER", async () => {
-    // The case that separates "first in" from "cheapest". A cheapest-first
-    // implementation passes the test above and fails this one.
-    const productId = await twoLayers("FIFO-DEAR-OLD", 200_000, 100_000);
-    expect(await shipTwo(productId)).toBe(2 * 200_000);
+  it("books the same average when the older layer is DEARER", async () => {
+    const productId = await twoLayers("WAC-DEAR-OLD", 200_000, 100_000);
+    expect(await shipTwo(productId)).toBe(2 * 150_000);
   });
 
-  it("spans two layers when one cannot cover the quantity", async () => {
-    const productId = await twoLayers("FIFO-SPAN", 100_000, 300_000);
+  it("a shipment spanning both layers is still costed at the average", async () => {
+    const productId = await twoLayers("WAC-SPAN", 100_000, 300_000);
     const api = as(app, token);
-    const customer = await prisma.customer.create({ data: { name: "FIFO spanner" } });
+    const customer = await prisma.customer.create({ data: { name: "WAC spanner" } });
     const created = await api.post("/api/sales-orders").send({
       customerId: customer.id,
       lines: [{ productId, warehouseId, quantity: 7, unitPriceCents: 500_000 }],
@@ -95,12 +93,11 @@ describe("FIFO layer order", () => {
       if (res.status >= 300) throw new Error(`${verb} failed: ${JSON.stringify(res.body)}`);
     }
     const detail = await api.get(`/api/sales-orders/${id}`);
-    // All 5 of the old layer, then 2 of the new.
-    expect(detail.body.shipments[0].cogsCents).toBe(5 * 100_000 + 2 * 300_000);
+    expect(detail.body.shipments[0].cogsCents).toBe(7 * 200_000);
   });
 
-  it("leaves the newer layer untouched while the older one still covers demand", async () => {
-    const productId = await twoLayers("FIFO-REMAIN", 111_000, 222_000);
+  it("draws the OLDER receipt first while it still covers demand", async () => {
+    const productId = await twoLayers("WAC-REMAIN", 111_000, 222_000);
     await shipTwo(productId);
     const lots = await prisma.inventoryLot.findMany({
       where: { productId }, orderBy: { receivedAt: "asc" },

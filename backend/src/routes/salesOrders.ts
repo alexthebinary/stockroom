@@ -10,7 +10,7 @@ import { companyDetails, renderAddressLabel, renderInvoice, renderPackingSlip } 
 import { CARRIERS, trackingUrl } from "../carriers";
 import { applyBalanceDelta, claimStatusTransition, recordMovement, reserveStock } from "../inventory";
 import { consumeSerials } from "../serials";
-import { attachConsumptionsToMovement, consumeFifo } from "../costing";
+import { attachConsumptionsToMovement, issueStock } from "../costing";
 import { postSimple, reverseDocumentEntry } from "../ledger";
 import { TRANSACTION_TYPE } from "../accounts";
 import { assertReferencesUsable } from "../refs";
@@ -893,7 +893,7 @@ async function shipPacked(tx: Prisma.TransactionClient, current: LoadedOrder, sh
     );
 
     // 🔴 SERIALIZED PRODUCTS TAKE A DIFFERENT PATH ON PURPOSE.
-    // consumeFifo is quantity-driven and oldest-layer-first. For a serialized
+    // issueStock is quantity-driven and oldest-layer-first. For a serialized
     // product that would ship SOME unit, cost it correctly, and record the
     // WRONG serial against the shipment — the customer holds serial X while
     // our warranty lookup says Y. Silent until a claim. So a serialized line
@@ -925,7 +925,7 @@ async function shipPacked(tx: Prisma.TransactionClient, current: LoadedOrder, sh
         toStatus: "SOLD",
       });
     } else {
-      consumed = await consumeFifo(tx, {
+      consumed = await issueStock(tx, {
         productId: line.productId,
         warehouseId: line.warehouseId,
         quantity: line.quantity,

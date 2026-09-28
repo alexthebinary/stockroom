@@ -8,18 +8,18 @@
  * "In-stock serial count == on-hand quantity" is therefore true by construction,
  * not by a reconciliation job comparing two counters that drift.
  *
- * 🔴 WHY A SEPARATE CONSUME PATH EXISTS. `consumeFifo` is quantity-driven and
+ * 🔴 WHY A SEPARATE CONSUME PATH EXISTS. `issueStock` is quantity-driven and
  * oldest-layer-first. That is correct for anonymous stock and WRONG the moment a
  * specific unit matters — which, for warranty and RMA, is always. A technician
  * pulling a replacement Unitree G1 picks a serial off the shelf, not whichever
- * layer happens to be oldest. Left to `consumeFifo`, the system would pick some
+ * layer happens to be oldest. Left to `issueStock`, the system would pick some
  * unit, compute a correct cost, and record the WRONG serial against the
  * shipment: the customer holds serial X while our RMA lookup says Y went to
  * them. Silently wrong, and only discovered during a warranty claim.
  */
 import type { Prisma } from "@prisma/client";
 import { badRequest, conflict, notFound } from "./errors";
-import { createLot, type LotSource } from "./costing";
+import { createLot, ensureCostPool, priceConsumptions, takeFromPool, type ConsumptionSlice, type LotSource } from "./costing";
 
 export type Tx = Prisma.TransactionClient;
 
@@ -112,6 +112,7 @@ export async function receiveSerials(
             unitCostCents: input.unitCostCents,
             sourceType: input.sourceType,
             sourceId: input.sourceId ?? null,
+            costing: "POOL",
           });
     created.push(
       await tx.serialUnit.create({
@@ -168,8 +169,11 @@ export async function consumeSerials(
     throw notFound(`${input.context}: not on file for this product: ${missing.join(", ")}`);
   }
 
-  let totalCostCents = 0;
+  // Before any unit leaves its layer: see issueStock.
+  await ensureCostPool(tx, input.productId);
+
   const consumptionIds: number[] = [];
+  const slices: ConsumptionSlice[] = [];
 
   for (const unit of units) {
     if (unit.status !== SERIAL_STATUS.IN_STOCK) {
@@ -184,7 +188,7 @@ export async function consumeSerials(
       throw conflict(`${input.context}: ${unit.serialNumber} has no cost layer`);
     }
 
-    // Same conditional-update idiom as consumeFifo (costing.ts:105-114), so two
+    // Same conditional-update idiom as drawLots (costing.ts), so two
     // technicians racing for one unit cannot both win it.
     const written = await tx.inventoryLot.updateMany({
       where: { id: unit.lot.id, remainingQty: 1 },
@@ -201,19 +205,31 @@ export async function consumeSerials(
         lotId: unit.lot.id,
         quantity: 1,
         unitCostCents: unit.lot.unitCostCents,
+        costCents: unit.lot.unitCostCents,
         movementId: input.movementId ?? null,
         sourceType: input.sourceType,
         sourceId: input.sourceId ?? null,
       },
     });
     consumptionIds.push(consumption.id);
-    totalCostCents += unit.lot.unitCostCents;
+    slices.push({
+      lotId: unit.lot.id,
+      quantity: 1,
+      unitCostCents: unit.lot.unitCostCents,
+      costCents: unit.lot.unitCostCents,
+      receivedAt: unit.lot.receivedAt,
+    });
 
     await tx.serialUnit.update({
       where: { id: unit.id },
       data: { status: input.toStatus ?? SERIAL_STATUS.SOLD },
     });
   }
+
+  // The serial names the physical unit; the pool prices it, like any other
+  // issue. Each unit's consumption row gets its exact share of the cost.
+  const totalCostCents = await takeFromPool(tx, input.productId, units.length, input.context);
+  await priceConsumptions(tx, consumptionIds, slices, totalCostCents);
 
   return { totalCostCents, consumptionIds, units };
 }

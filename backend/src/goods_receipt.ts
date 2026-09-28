@@ -153,6 +153,7 @@ export async function receiveAgainstOrder(
       unitCostCents: landedUnitCost,
       sourceType: "GOODS_RECEIPT",
       sourceId: grn.id,
+      costing: "POOL",
     });
     createdLots.push({ lineId: line.id, lotId: lot.id });
     totalCostCents += landedUnitCost * qty;

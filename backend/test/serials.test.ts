@@ -119,7 +119,7 @@ describe("serialized stock holds its invariant", () => {
   });
 
   it("consumes the NAMED serial, not the FIFO-oldest one", async () => {
-    // The whole reason consumeFifo cannot be reused. If this fails, a customer
+    // The whole reason issueStock cannot be reused. If this fails, a customer
     // holds one serial while our records claim another.
     const p = await serializedProduct("BL-X1C");
     await receive(p.id, ["OLDEST", "MIDDLE", "NEWEST"], 150_000);

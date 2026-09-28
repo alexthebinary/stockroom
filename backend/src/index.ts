@@ -2,6 +2,7 @@ import { createApp, servingUiFlag } from "./app";
 import { ensureBootstrapAdmin } from "./auth";
 import { syncChartOfAccounts } from "./accounts";
 import { ensureDocumentCounters } from "./numbering";
+import { ensureCostPools } from "./costing";
 
 const app = createApp();
 
@@ -29,6 +30,12 @@ syncChartOfAccounts()
       console.log(`  One-time password: ${admin.password}`);
       console.log("  Change it after signing in, or set ADMIN_PASSWORD and redeploy.");
     }
+  })
+  // Weighted average cutover: open a cost pool for every product that has none,
+  // from its open layers and in-flight transfers. Idempotent.
+  .then(() => ensureCostPools())
+  .then((opened) => {
+    if (opened) console.log(`Cost pools: opened ${opened}`);
   })
   .catch((err) => console.error("Startup reconciliation failed:", err));
 

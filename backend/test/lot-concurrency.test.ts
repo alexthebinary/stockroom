@@ -1,5 +1,5 @@
 /**
- * The optimistic-concurrency guard in consumeFifo (costing.ts:105-114).
+ * The optimistic-concurrency guard on the physical layers (drawLots, via issueStock).
  *
  * WHY THIS TEST EXISTS NOW. Serialized inventory is about to add a SECOND caller
  * to this guard, under real concurrency — several technicians pulling parts for
@@ -18,7 +18,7 @@ import "./setup";
 import { beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "./helpers";
 import { boot } from "./helpers";
-import { consumeFifo, createLot } from "../src/costing";
+import { issueStock, createLot } from "../src/costing";
 
 let productId: number;
 let warehouseId: number;
@@ -33,7 +33,7 @@ beforeAll(async () => {
 
 async function seedLot(qty: number, unitCostCents: number) {
   return prisma.$transaction((tx) =>
-    createLot(tx, { productId, warehouseId, quantity: qty, unitCostCents, sourceType: "TEST" })
+    createLot(tx, { productId, warehouseId, quantity: qty, unitCostCents, sourceType: "TEST", costing: "POOL" })
   );
 }
 
@@ -42,15 +42,15 @@ async function totalRemaining() {
   return lots.reduce((s, l) => s + l.remainingQty, 0);
 }
 
-describe("consumeFifo optimistic concurrency", () => {
+describe("issueStock optimistic concurrency", () => {
   it("CONTROL: a single consumer draws down the layer normally", async () => {
-    // Without this, every race assertion below could pass because consumeFifo is
+    // Without this, every race assertion below could pass because issueStock is
     // broken for everyone — indistinguishable from the guard working.
     await seedLot(10, 1_000);
     const before = await totalRemaining();
 
     await prisma.$transaction((tx) =>
-      consumeFifo(tx, {
+      issueStock(tx, {
         productId, warehouseId, quantity: 4,
         context: "control", sourceType: "TEST",
       })
@@ -64,12 +64,12 @@ describe("consumeFifo optimistic concurrency", () => {
     // must stop at least one of them.
     const p2 = await prisma.product.create({ data: { sku: "RACE-SKU-2", name: "Race Widget 2" } });
     await prisma.$transaction((tx) =>
-      createLot(tx, { productId: p2.id, warehouseId, quantity: 5, unitCostCents: 2_000, sourceType: "TEST" })
+      createLot(tx, { productId: p2.id, warehouseId, quantity: 5, unitCostCents: 2_000, sourceType: "TEST", costing: "POOL" })
     );
 
     const pull = () =>
       prisma.$transaction((tx) =>
-        consumeFifo(tx, {
+        issueStock(tx, {
           productId: p2.id, warehouseId, quantity: 4,
           context: "race", sourceType: "TEST",
         })
@@ -86,7 +86,7 @@ describe("consumeFifo optimistic concurrency", () => {
     //
     // The loser does NOT take the optimistic-concurrency path. By the time it
     // reads, the winner has committed, so it fails the AVAILABILITY check at the
-    // top of consumeFifo and returns 400 with "only 1 unit(s) are costed in this
+    // top of issueStock and returns 400 with "only 1 unit(s) are costed in this
     // warehouse, need 4. Receive stock through a purchase order or an adjustment."
     //
     // costing.ts:110-113 already identifies this exact problem and fixed it for
@@ -118,12 +118,12 @@ describe("consumeFifo optimistic concurrency", () => {
   it("consumption rows never exceed what the layer held", async () => {
     const p3 = await prisma.product.create({ data: { sku: "RACE-SKU-3", name: "Race Widget 3" } });
     const lot = await prisma.$transaction((tx) =>
-      createLot(tx, { productId: p3.id, warehouseId, quantity: 6, unitCostCents: 500, sourceType: "TEST" })
+      createLot(tx, { productId: p3.id, warehouseId, quantity: 6, unitCostCents: 500, sourceType: "TEST", costing: "POOL" })
     );
 
     const pulls = [1, 2, 3, 4].map((q) =>
       prisma.$transaction((tx) =>
-        consumeFifo(tx, {
+        issueStock(tx, {
           productId: p3.id, warehouseId, quantity: q,
           context: "burst", sourceType: "TEST",
         })

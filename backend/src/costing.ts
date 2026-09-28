@@ -35,7 +35,7 @@ export async function createLot(
     quantity: number;
     unitCostCents: number;
     receivedAt?: Date;
-    costing?: CostingMode;
+    costing: CostingMode;
   } & LotSource
 ) {
   if (input.quantity <= 0) throw badRequest("A cost layer needs a positive quantity");
@@ -263,6 +263,9 @@ export async function drawLots(
  * row with its exact share so the trail sums to the COGS figure.
  */
 export async function issueStock(tx: Tx, input: DrawInput) {
+  // Open the pool BEFORE the draw, or a lazily-opened pool misses the units
+  // this issue is about to take and then takes them again.
+  await ensureCostPool(tx, input.productId);
   const drawn = await drawLots(tx, input);
   const totalCostCents = await takeFromPool(tx, input.productId, input.quantity, input.context);
   const slices = await priceConsumptions(tx, drawn.consumptionIds, drawn.slices, totalCostCents);
@@ -287,9 +290,6 @@ export async function priceConsumptions(
   return priced;
 }
 
-/** @deprecated Task-3 cutover shim: callers move to issueStock / drawLots. */
-export const consumeFifo = drawLots;
-
 /**
  * Link consumption rows to the movement they belong to.
  *
@@ -308,54 +308,4 @@ export async function attachConsumptionsToMovement(
     where: { id: { in: consumptionIds } },
     data: { movementId },
   });
-}
-
-/**
- * Move stock between warehouses without changing what it cost: consume the
- * source layers, then recreate them at the destination at the same unit costs.
- * Averaging here would quietly destroy FIFO ordering.
- */
-export async function transferLots(
-  tx: Tx,
-  input: {
-    productId: number;
-    fromWarehouseId: number;
-    toWarehouseId: number;
-    quantity: number;
-    context: string;
-  } & LotSource
-) {
-  const consumed = await drawLots(tx, {
-    productId: input.productId,
-    warehouseId: input.fromWarehouseId,
-    quantity: input.quantity,
-    sourceType: input.sourceType,
-    sourceId: input.sourceId,
-    context: input.context,
-  });
-
-  for (const slice of consumed.slices) {
-    await createLot(tx, {
-      productId: input.productId,
-      warehouseId: input.toWarehouseId,
-      quantity: slice.quantity,
-      unitCostCents: slice.unitCostCents,
-      // Carry the ORIGINAL receipt date across. Stamping "now" would make old
-      // stock look newest at the destination and invert FIFO for everything
-      // already sitting there.
-      receivedAt: slice.receivedAt,
-      sourceType: input.sourceType,
-      sourceId: input.sourceId,
-    });
-  }
-
-  return consumed;
-}
-
-/** Current stock value for a [product, warehouse], straight from the layers. */
-export async function valueOnHand(tx: Tx, productId: number, warehouseId?: number) {
-  const lots = await tx.inventoryLot.findMany({
-    where: { productId, ...(warehouseId ? { warehouseId } : {}), remainingQty: { gt: 0 } },
-  });
-  return lots.reduce((sum, lot) => sum + lot.remainingQty * lot.unitCostCents, 0);
 }

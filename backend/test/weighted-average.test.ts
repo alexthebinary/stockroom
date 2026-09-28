@@ -11,6 +11,7 @@ import "./setup";
 import { beforeAll, describe, expect, it } from "vitest";
 import { boot, prisma } from "./helpers";
 import { allocate, createLot, ensureCostPool, issueStock, shareOfPool } from "../src/costing";
+import { consumeSerials, receiveSerials } from "../src/serials";
 
 let wh: number;
 let wh2: number;
@@ -91,14 +92,46 @@ describe("weighted average cost", () => {
     const p = await product("WAC-CUTOVER");
     // Legacy FIFO layers: created without touching any pool.
     await prisma.$transaction(async (tx) => {
-      await createLot(tx, { productId: p.id, warehouseId: wh, quantity: 2, unitCostCents: 100, sourceType: "TEST" });
-      await createLot(tx, { productId: p.id, warehouseId: wh2, quantity: 1, unitCostCents: 400, sourceType: "TEST" });
+      await createLot(tx, { productId: p.id, warehouseId: wh, quantity: 2, unitCostCents: 100, sourceType: "TEST", costing: "CARRY" });
+      await createLot(tx, { productId: p.id, warehouseId: wh2, quantity: 1, unitCostCents: 400, sourceType: "TEST", costing: "CARRY" });
     });
     expect(await prisma.productCost.findUnique({ where: { productId: p.id } })).toBeNull();
     const opened = await prisma.$transaction((tx) => ensureCostPool(tx, p.id));
     expect(opened).toMatchObject({ qty: 3, valueCents: 600 });
     const again = await prisma.$transaction((tx) => ensureCostPool(tx, p.id));
     expect(again.valueCents).toBe(600);
+  });
+
+  it("an issue that opens the pool counts the units it draws once", async () => {
+    const p = await product("WAC-LAZY-ISSUE");
+    await prisma.$transaction((tx) =>
+      createLot(tx, { productId: p.id, warehouseId: wh, quantity: 4, unitCostCents: 250, sourceType: "TEST", costing: "CARRY" })
+    );
+    // No pool yet (legacy stock). The issue itself triggers the cutover.
+    expect((await issue(p.id, wh, 1)).totalCostCents).toBe(250);
+    expect(await pool(p.id)).toMatchObject({ qty: 3, valueCents: 750 });
+  });
+
+  it("serials are costed at the average, and a serial issue that opens the pool counts once", async () => {
+    const p = await prisma.product.create({ data: { sku: "WAC-SER", name: "ser", trackingMode: "SERIAL" } });
+    // Two legacy units at different receipt costs, no pool yet.
+    await prisma.$transaction(async (tx) => {
+      for (const [serialNumber, cost] of [["WS-1", 1_000], ["WS-2", 3_000]] as const) {
+        const lot = await createLot(tx, {
+          productId: p.id, warehouseId: wh, quantity: 1, unitCostCents: cost, sourceType: "TEST", costing: "CARRY",
+        });
+        await receiveSerials(tx, {
+          productId: p.id, warehouseId: wh, unitCostCents: cost, serials: [{ serialNumber }],
+          sourceType: "TEST", lotId: lot.id,
+        });
+      }
+    });
+    const out = await prisma.$transaction((tx) =>
+      consumeSerials(tx, { productId: p.id, warehouseId: wh, serialNumbers: ["WS-1"], sourceType: "TEST", context: "t" })
+    );
+    // WS-1 was received at 1_000, but the pool's average is 2_000.
+    expect(out.totalCostCents).toBe(2_000);
+    expect(await pool(p.id)).toMatchObject({ qty: 1, valueCents: 2_000 });
   });
 
   it("slices of one issue sum to its total", async () => {

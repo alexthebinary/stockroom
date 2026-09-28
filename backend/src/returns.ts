@@ -165,6 +165,7 @@ export async function postReturn(tx: Tx, orderId: number, input: ReturnInput, ac
       unitCostCents: p.unitCostCents,
       sourceType: "SALES_RETURN",
       sourceId: salesReturn.id,
+      costing: "POOL",
     });
     await applyBalanceDelta(
       tx,

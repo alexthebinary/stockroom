@@ -84,7 +84,7 @@ describe("serialized write-offs", () => {
       data: { sku: "ADJ-ANON-1", name: "Anon", trackingMode: "NONE" },
     });
     await prisma.$transaction(async (tx) => {
-      await createLot(tx, { productId: p.id, warehouseId, quantity: 5, unitCostCents: 1_000, sourceType: "TEST" });
+      await createLot(tx, { productId: p.id, warehouseId, quantity: 5, unitCostCents: 1_000, sourceType: "TEST", costing: "POOL" });
       await applyBalanceDelta(tx, p.id, warehouseId, { onHandQty: 5 }, "seed");
     });
     const res = await as(app, token).post("/api/stock-adjustments").send({

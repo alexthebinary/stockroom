@@ -1,6 +1,7 @@
 import { prisma } from "./db";
 import { ACCOUNT } from "./accounts";
 import { balanceOf } from "./ledger";
+import { ensureCostPools } from "./costing";
 
 /**
  * The trial balance and the four soundness checks that can genuinely fail.
@@ -223,7 +224,14 @@ export async function inventoryValuation() {
     select: { costCents: true },
   });
   const inTransitCents = inTransit.reduce((s, t) => s + t.costCents, 0);
-  const assetValueCents = layerValueCents + inTransitCents;
+
+  // The asset side is the cost pools: weighted average value of every unit we
+  // own, in a warehouse or in flight. Transfers never leave the pool, so in
+  // transit is already inside it — adding inTransitCents again would count it
+  // twice. ensureCostPools opens any product not yet touched since the cutover.
+  await ensureCostPools();
+  const pools = await prisma.productCost.aggregate({ _sum: { valueCents: true } });
+  const assetValueCents = pools._sum.valueCents ?? 0;
 
   return {
     rows,
