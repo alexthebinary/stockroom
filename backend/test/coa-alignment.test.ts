@@ -34,7 +34,7 @@ async function balance(code: string) {
 async function stocked(qty: number, cost: number, price: number) {
   sku += 1;
   const p = await prisma.product.create({
-    data: { sku: `COA-${sku}`, name: `COA ${sku}`, brand: "XAG", defaultCostCents: cost, defaultPriceCents: price },
+    data: { sku: `COA-${sku}`, name: `COA ${sku}`, brand: "XAG", costOfGoodsCents: cost, defaultPriceCents: price },
   });
   await as(app, token).post("/api/stock-adjustments").send({
     productId: p.id, warehouseId, adjustmentType: "INCREASE", quantity: qty, reason: "opening", unitCostCents: cost,
@@ -132,11 +132,11 @@ describe("goods issue and cost on invoice (sheet 3.1 B, 3.3)", () => {
 describe("found by the 2026-09-24 reviews", () => {
   it("a product created in the app keeps its cost and price", async () => {
     const res = await as(app, token).post("/api/products").send({
-      sku: "REV-COST-1", name: "Priced", defaultCostCents: 1234, defaultPriceCents: 5678,
+      sku: "REV-COST-1", name: "Priced", costOfGoodsCents: 1234, defaultPriceCents: 5678,
     });
     expect(res.status).toBe(201);
     const row = await prisma.product.findUniqueOrThrow({ where: { sku: "REV-COST-1" } });
-    expect([row.defaultCostCents, row.defaultPriceCents]).toEqual([1234, 5678]);
+    expect([row.costOfGoodsCents, row.defaultPriceCents]).toEqual([1234, 5678]);
   });
 
   it("stock in transit between warehouses still reconciles with the ledger", async () => {

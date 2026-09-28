@@ -174,7 +174,7 @@ async function main() {
         brand,
         category: subcategory,
         categoryId: categories.get(subcategory) ?? null,
-        defaultCostCents: usd(cost),
+        costOfGoodsCents: usd(cost),
         defaultPriceCents: usd(price),
         weight,
         length: l,

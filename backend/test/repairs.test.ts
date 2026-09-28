@@ -30,7 +30,7 @@ beforeAll(async () => {
     data: { sku: "UT-G1-SVC", name: "Unitree G1", brand: "Unitree", trackingMode: "SERIAL" },
   })).id;
   partId = (await prisma.product.create({
-    data: { sku: "PART-ACT-1", name: "Actuator", trackingMode: "NONE", defaultCostCents: 12_000 },
+    data: { sku: "PART-ACT-1", name: "Actuator", trackingMode: "NONE", costOfGoodsCents: 12_000 },
   })).id;
   await prisma.$transaction(async (tx) => {
     await createLot(tx, { productId: partId, warehouseId, quantity: 10, unitCostCents: 12_000, sourceType: "TEST" });

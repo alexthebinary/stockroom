@@ -28,7 +28,7 @@ type Open = { kind: string; id: number; payPath: string; label: string; outstand
 describe("payments register", () => {
   it("receipts: an invoiced order is open, a part payment shrinks it and lands in the register", async () => {
     const api = as(app, token);
-    const product = await prisma.product.create({ data: { sku: "PAY-1", name: "Pay 1", defaultCostCents: 1_000, defaultPriceCents: 3_000 } });
+    const product = await prisma.product.create({ data: { sku: "PAY-1", name: "Pay 1", costOfGoodsCents: 1_000, defaultPriceCents: 3_000 } });
     await api.post("/api/stock-adjustments").send({
       productId: product.id, warehouseId, adjustmentType: "INCREASE", quantity: 2, reason: "opening", unitCostCents: 1_000,
     });
@@ -74,7 +74,7 @@ describe("payments register", () => {
 describe("payment date", () => {
   async function invoicedOrder(sku: string) {
     const api = as(app, token);
-    const product = await prisma.product.create({ data: { sku, name: sku, defaultCostCents: 500, defaultPriceCents: 2_000 } });
+    const product = await prisma.product.create({ data: { sku, name: sku, costOfGoodsCents: 500, defaultPriceCents: 2_000 } });
     await api.post("/api/stock-adjustments").send({
       productId: product.id, warehouseId, adjustmentType: "INCREASE", quantity: 1, reason: "opening", unitCostCents: 500,
     });

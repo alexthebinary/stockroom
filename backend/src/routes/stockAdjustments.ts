@@ -7,6 +7,7 @@ import { requireStock } from "../auth";
 import { applyBalanceDelta, recordMovement } from "../inventory";
 import { consumeSerials, SERIAL_STATUS } from "../serials";
 import { consumeFifo, createLot } from "../costing";
+import { totalUnitCostCents } from "../products";
 import { postSimple } from "../ledger";
 import { TRANSACTION_TYPE } from "../accounts";
 import { ADJUSTMENT_TYPES } from "../domain";
@@ -94,11 +95,11 @@ stockAdjustmentsRouter.post(
       });
 
       // An increase creates a layer at the cost given (falling back to the
-      // product's default); a decrease consumes the oldest layers and is
+      // product's total unit cost); a decrease consumes the oldest layers and is
       // valued at exactly what they cost.
       let totalCostCents: number;
       if (increase) {
-        const unitCostCents = body.unitCostCents ?? product.defaultCostCents;
+        const unitCostCents = body.unitCostCents ?? totalUnitCostCents(product);
         totalCostCents = unitCostCents * body.quantity;
         await createLot(tx, {
           productId: body.productId,

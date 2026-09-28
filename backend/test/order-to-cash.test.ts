@@ -33,7 +33,7 @@ beforeAll(async () => {
 async function stocked(qty: number, cost = 1_000, price = 2_500) {
   sku += 1;
   const product = await prisma.product.create({
-    data: { sku: `O2C-${sku}`, name: `O2C ${sku}`, brand: "XAG", defaultCostCents: cost, defaultPriceCents: price },
+    data: { sku: `O2C-${sku}`, name: `O2C ${sku}`, brand: "XAG", costOfGoodsCents: cost, defaultPriceCents: price },
   });
   const res = await as(app, token)
     .post("/api/stock-adjustments")

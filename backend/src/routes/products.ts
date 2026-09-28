@@ -5,6 +5,7 @@ import { contains } from "../search";
 import { notFound } from "../errors";
 import { asyncHandler, intParam, pagination, parseBody } from "../http";
 import { requireStock } from "../auth";
+import { totalUnitCostCents } from "../products";
 
 export const productsRouter = Router();
 
@@ -35,11 +36,17 @@ const productSchema = z.object({
    * at cost 0 / price 0. Price 0 is refused at invoicing, and cost 0 is the
    * default unit cost offered on adjustments. Found by an agy review.
    */
-  defaultCostCents: z.number().int().min(0).optional(),
+  costOfGoodsCents: z.number().int().min(0).optional(),
+  supplierShippingCents: z.number().int().min(0).optional(),
   defaultPriceCents: z.number().int().min(0).optional(),
 });
 
 /** Sums on-hand across warehouses so the list can show one stock number per SKU. */
+/** Every product payload carries the derived total, so no client re-adds it. */
+function withTotal<P extends { costOfGoodsCents: number; supplierShippingCents: number }>(p: P) {
+  return { ...p, totalUnitCostCents: totalUnitCostCents(p) };
+}
+
 function summarize(product: { balances: { onHandQty: number; reservedQty: number; incomingQty: number }[] }) {
   const totalOnHand = product.balances.reduce((s, b) => s + b.onHandQty, 0);
   const totalReserved = product.balances.reduce((s, b) => s + b.reservedQty, 0);
@@ -84,7 +91,7 @@ productsRouter.get(
     ]);
 
     res.json({
-      data: rows.map(({ balances, ...p }) => ({ ...p, ...summarize({ balances }) })),
+      data: rows.map(({ balances, ...p }) => ({ ...withTotal(p), ...summarize({ balances }) })),
       page,
       pageSize,
       total,
@@ -104,7 +111,7 @@ productsRouter.get(
     if (!product) throw notFound("Product not found");
     const { balances, ...rest } = product;
     res.json({
-      ...rest,
+      ...withTotal(rest),
       ...summarize({ balances }),
       balances: balances.map((b) => ({ ...b, availableQty: b.onHandQty - b.reservedQty })),
     });
@@ -117,7 +124,7 @@ productsRouter.post(
   asyncHandler(async (req, res) => {
     const data = parseBody(productSchema, req.body);
     const product = await prisma.product.create({ data });
-    res.status(201).json(product);
+    res.status(201).json(withTotal(product));
   })
 );
 
@@ -130,7 +137,7 @@ productsRouter.put(
     const existing = await prisma.product.findUnique({ where: { id } });
     if (!existing) throw notFound("Product not found");
     const product = await prisma.product.update({ where: { id }, data });
-    res.json(product);
+    res.json(withTotal(product));
   })
 );
 

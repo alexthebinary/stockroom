@@ -23,7 +23,7 @@ beforeAll(async () => {
   warehouseId = (await prisma.warehouse.create({ data: { name: "GRN WH", code: "GRNWH" } })).id;
   productId = (
     await prisma.product.create({
-      data: { sku: "GRN-1", name: "Inbound widget", brand: "XAG", defaultCostCents: 50_000 },
+      data: { sku: "GRN-1", name: "Inbound widget", brand: "XAG", costOfGoodsCents: 50_000 },
     })
   ).id;
   vendorId = (await prisma.vendor.create({ data: { name: "XAG Co., Ltd (test)", email: "a@b.test" } })).id;

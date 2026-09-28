@@ -80,7 +80,7 @@ describe("month-end close", () => {
   it("an open stock count blocks; cancelling it unblocks; closing locks the books", async () => {
     const api = as(app, token);
     const product = await prisma.product.create({
-      data: { sku: "CLOSE-1", name: "Close product", brand: "XAG", defaultCostCents: 100 },
+      data: { sku: "CLOSE-1", name: "Close product", brand: "XAG", costOfGoodsCents: 100 },
     });
     await prisma.inventoryBalance.create({ data: { productId: product.id, warehouseId } });
 
@@ -116,7 +116,7 @@ describe("month-end close", () => {
     // A cost layer with no journal entry behind it: the shelves say the
     // company owns more than the balance sheet does.
     const product = await prisma.product.create({
-      data: { sku: "CLOSE-2", name: "Unbooked", brand: "XAG", defaultCostCents: 100 },
+      data: { sku: "CLOSE-2", name: "Unbooked", brand: "XAG", costOfGoodsCents: 100 },
     });
     await prisma.inventoryLot.create({
       data: {

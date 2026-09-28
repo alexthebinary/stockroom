@@ -26,7 +26,7 @@ beforeAll(async () => {
   warehouseId = (await prisma.warehouse.create({ data: { name: "PO Pay WH", code: "POPAY" } })).id;
   productId = (
     await prisma.product.create({
-      data: { sku: "POPAY-1", name: "Payable inbound", brand: "Unitree", defaultCostCents: 100_000 },
+      data: { sku: "POPAY-1", name: "Payable inbound", brand: "Unitree", costOfGoodsCents: 100_000 },
     })
   ).id;
   vendorId = (await prisma.vendor.create({ data: { name: "Unitree Robotics (test)" } })).id;

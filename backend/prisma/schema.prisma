@@ -27,8 +27,13 @@ model Product {
   brand       String?
 
   /// Money is in integer cents throughout.
-  defaultCostCents  Int @default(0)
-  defaultPriceCents Int @default(0)
+  /// Expected supplier price per unit. Seeds the unit cost on a new PO line.
+  /// Mapped to the old column so `db push` on Postgres renames nothing.
+  costOfGoodsCents      Int @default(0) @map("defaultCostCents")
+  /// Expected inbound freight per unit. Actual freight on a PO is the order's
+  /// shippingCents, allocated into landed cost at receipt (goods_receipt.ts).
+  supplierShippingCents Int @default(0)
+  defaultPriceCents     Int @default(0)
 
   length Float?
   width  Float?

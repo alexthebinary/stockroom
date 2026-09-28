@@ -334,7 +334,7 @@ purchaseOrdersRouter.post(
         where: { id: { in: body.lines.map((l) => l.productId) } },
       });
       const costOf = (productId: number, given?: number) =>
-        given ?? products.find((p) => p.id === productId)?.defaultCostCents ?? 0;
+        given ?? products.find((p) => p.id === productId)?.costOfGoodsCents ?? 0;
 
       const lines = body.lines.map((l) => {
         const unitCostCents = costOf(l.productId, l.unitCostCents);

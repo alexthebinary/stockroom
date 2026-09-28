@@ -36,7 +36,7 @@ async function product(cost: number) {
   sku += 1;
   return (
     await prisma.product.create({
-      data: { sku: `PARTIAL-${sku}`, name: `Partial ${sku}`, brand: "XAG", defaultCostCents: cost },
+      data: { sku: `PARTIAL-${sku}`, name: `Partial ${sku}`, brand: "XAG", costOfGoodsCents: cost },
     })
   ).id;
 }
