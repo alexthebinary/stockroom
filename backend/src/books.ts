@@ -1,7 +1,7 @@
 import { prisma } from "./db";
 import { ACCOUNT } from "./accounts";
 import { balanceOf } from "./ledger";
-import { ensureCostPools } from "./costing";
+import { ensureCostPools, shareOfPool } from "./costing";
 
 /**
  * The trial balance and the four soundness checks that can genuinely fail.
@@ -228,13 +228,13 @@ export async function inventoryValuation() {
 
   // Stock in transit has left its source layers but not yet arrived at the
   // destination, so it is owned by neither warehouse while still being an
-  // asset on the books. Counting it is the difference between a real
-  // reconciliation and one that cries wolf during every transfer.
-  const inTransit = await prisma.stockTransfer.findMany({
-    where: { status: "IN_TRANSIT" },
-    select: { costCents: true },
-  });
-  const inTransitCents = inTransit.reduce((s, t) => s + t.costCents, 0);
+  // asset. It is valued at TODAY's average, like every other unit in the pool:
+  // transfer.costCents is the average quoted at dispatch and goes stale as the
+  // pool re-averages (the senior review drove on-hand value negative with it).
+  const inTransitCents = pools.reduce((s, pool) => {
+    const moving = openTransfers.find((t) => t.productId === pool.productId)?._sum.quantity ?? 0;
+    return s + (moving > 0 && pool.qty > 0 ? shareOfPool(pool, Math.min(moving, pool.qty)) : 0);
+  }, 0);
 
   // The asset side is the cost pools: weighted average value of every unit we
   // own, in a warehouse or in flight. Transfers never leave the pool, so in

@@ -200,6 +200,12 @@ stockTransfersRouter.post(
       if (current.status !== "IN_TRANSIT")
         throw conflict(`Only IN_TRANSIT transfers can be completed (this one is ${current.status})`);
 
+      // Before the claim, for the same reason as start: a pool opened while this
+      // transfer's status and lots are changing would count its units zero
+      // times or twice. Opening it here makes a concurrent opener collide on
+      // the primary key instead.
+      await ensureCostPool(tx, current.productId);
+
       // Claim the transition atomically so two concurrent calls cannot both
       // process the same document.
       const claimed = await claimStatusTransition(
@@ -308,6 +314,9 @@ stockTransfersRouter.post(
       if (!current) throw notFound("Transfer not found");
       if (current.status === "COMPLETED") throw conflict("A completed transfer cannot be canceled");
       if (current.status === "CANCELED") throw conflict("Transfer is already canceled");
+
+      // See /complete: open the pool before the status and lots change.
+      await ensureCostPool(tx, current.productId);
 
       // Claim the transition atomically so two concurrent calls cannot both
       // process the same document.

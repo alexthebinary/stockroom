@@ -159,4 +159,49 @@ describe("cost invariants", () => {
     const got = await api.get(`/api/products/${p.id}`);
     expect(got.body).toMatchObject({ averageUnitCostCents: 2_000, stockValueCents: 8_000 });
   });
+
+  it("in-transit value follows the average, so on-hand value never goes negative", async () => {
+    // Reproduced by the 2026-09-28 senior review: in transit was valued at the
+    // average quoted at dispatch, on hand = asset − that, and the pool kept
+    // re-averaging underneath it.
+    const api = as(app, token);
+    const p = await ok(await api.post("/api/products").send({ sku: "INV-TRANSIT", name: "transit" }));
+    const adjust = (adjustmentType: string, quantity: number, unitCostCents?: number) =>
+      api.post("/api/stock-adjustments").send({
+        productId: p.id, warehouseId: a, adjustmentType, quantity, reason: "t", unitCostCents,
+      });
+    await ok(await adjust("INCREASE", 10, 10_000));
+    const t = await ok(await api.post("/api/stock-transfers").send({
+      productId: p.id, fromWarehouseId: a, toWarehouseId: b, quantity: 10,
+    }));
+    await ok(await api.post(`/api/stock-transfers/${t.id}/start`));
+    await ok(await adjust("INCREASE", 10, 0)); // 20 units worth 100_000 → avg 5_000
+    await ok(await adjust("DECREASE", 10)); // 10 left, all in transit, worth 50_000
+
+    const v = (await api.get("/api/reports/inventory-valuation")).body;
+    const others = v.rows.filter((r: { sku: string }) => r.sku !== "INV-TRANSIT");
+    const othersValue = others.reduce((s: number, r: { valueCents: number }) => s + r.valueCents, 0);
+    // Every other product here has nothing in transit, so this product owns all of it.
+    expect(v.inTransitCents).toBe(50_000);
+    expect(v.onHandValueCents).toBe(othersValue);
+    await ok(await api.post(`/api/stock-transfers/${t.id}/complete`));
+  });
+
+  it("completing a transfer opens the product's pool first", async () => {
+    const api = as(app, token);
+    const p = await ok(await api.post("/api/products").send({ sku: "INV-COMPLETE", name: "complete" }));
+    await ok(await api.post("/api/stock-adjustments").send({
+      productId: p.id, warehouseId: a, adjustmentType: "INCREASE", quantity: 2, reason: "t", unitCostCents: 700,
+    }));
+    const t = await ok(await api.post("/api/stock-transfers").send({
+      productId: p.id, fromWarehouseId: a, toWarehouseId: b, quantity: 2,
+    }));
+    await ok(await api.post(`/api/stock-transfers/${t.id}/start`));
+    await prisma.productCost.deleteMany({ where: { productId: p.id } }); // as if never opened (legacy)
+    await ok(await api.post(`/api/stock-transfers/${t.id}/complete`));
+    // Opened BEFORE the claim, from lots + in transit — not left for a later
+    // lazy open that could race a concurrent completion.
+    expect(await prisma.productCost.findUnique({ where: { productId: p.id } }))
+      .toMatchObject({ qty: 2, valueCents: 1_400 });
+  });
 });

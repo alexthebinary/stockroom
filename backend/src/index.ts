@@ -37,11 +37,16 @@ syncChartOfAccounts()
   .then((opened) => {
     if (opened) console.log(`Cost pools: opened ${opened}`);
   })
-  .catch((err) => console.error("Startup reconciliation failed:", err));
+  .catch((err) => console.error("Startup reconciliation failed:", err))
+  // Listen only once reconciliation has run (the comment above always said so;
+  // until 2026-09-28 listen raced it). A failure still starts the server, as before.
+  .finally(() => listen());
 
-app.listen(port, host, () => {
-  const gated = Boolean(process.env.BASIC_AUTH_USER && process.env.BASIC_AUTH_PASSWORD);
-  console.log(`Stockroom listening on http://${host}:${port}`);
-  console.log(`  UI:         ${servingUiFlag ? "served from frontend/dist" : "not built — API only"}`);
-  console.log(`  Basic auth: ${gated ? "ON" : "OFF (set BASIC_AUTH_USER/PASSWORD to enable)"}`);
-});
+function listen() {
+  app.listen(port, host, () => {
+    const gated = Boolean(process.env.BASIC_AUTH_USER && process.env.BASIC_AUTH_PASSWORD);
+    console.log(`Stockroom listening on http://${host}:${port}`);
+    console.log(`  UI:         ${servingUiFlag ? "served from frontend/dist" : "not built — API only"}`);
+    console.log(`  Basic auth: ${gated ? "ON" : "OFF (set BASIC_AUTH_USER/PASSWORD to enable)"}`);
+  });
+}
