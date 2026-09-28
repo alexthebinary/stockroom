@@ -51,12 +51,16 @@ export function LineEditor({
   const update = (index: number, patch: Partial<DraftLine>) =>
     onChange(lines.map((l, i) => (i === index ? { ...l, ...patch } : l)));
 
-  /** Picking a product seeds the amount from its default price or cost. */
+  /**
+   * Picking a product seeds the amount from its default price or its cost of
+   * goods. Not the total: a PO's freight is the order's own shipping field,
+   * spread into landed cost at receipt, so seeding it here would count it twice.
+   */
   const pickProduct = (index: number, value: string | null) => {
     const product = products.products.find((p) => String(p.id) === value);
     const seeded =
       amountLabel.toLowerCase().includes("cost")
-        ? product?.defaultCostCents
+        ? product?.costOfGoodsCents
         : product?.defaultPriceCents;
     update(index, { productId: value, unitAmountCents: seeded ?? 0 });
   };

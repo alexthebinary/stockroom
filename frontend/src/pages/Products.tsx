@@ -32,7 +32,8 @@ type Draft = {
   brand: string;
   barcode: string;
   weight: number | "";
-  defaultCostCents: number;
+  costOfGoodsCents: number;
+  supplierShippingCents: number;
   defaultPriceCents: number;
   length: number | "";
   width: number | "";
@@ -48,7 +49,8 @@ const emptyDraft: Draft = {
   brand: "",
   barcode: "",
   weight: "",
-  defaultCostCents: 0,
+  costOfGoodsCents: 0,
+  supplierShippingCents: 0,
   defaultPriceCents: 0,
   length: "",
   width: "",
@@ -67,7 +69,8 @@ function toPayload(draft: Draft) {
     brand: draft.brand.trim() || null,
     barcode: draft.barcode.trim() || null,
     weight: num(draft.weight),
-    defaultCostCents: draft.defaultCostCents,
+    costOfGoodsCents: draft.costOfGoodsCents,
+    supplierShippingCents: draft.supplierShippingCents,
     defaultPriceCents: draft.defaultPriceCents,
     length: num(draft.length),
     width: num(draft.width),
@@ -178,7 +181,7 @@ export default function Products() {
                   <Table.Th>Name</Table.Th>
                   <Table.Th>Category</Table.Th>
                   <Table.Th>Status</Table.Th>
-                  <Table.Th ta="right">Cost</Table.Th>
+                  <Table.Th ta="right">Total cost</Table.Th>
                   <Table.Th ta="right">Price</Table.Th>
                   <Table.Th ta="right">On hand</Table.Th>
                   <Table.Th ta="right">Available</Table.Th>
@@ -203,7 +206,7 @@ export default function Products() {
                         {p.isActive ? "Active" : "Inactive"}
                       </Badge>
                     </Table.Td>
-                    <Table.Td ta="right">{money(p.defaultCostCents)}</Table.Td>
+                    <Table.Td ta="right">{money(p.totalUnitCostCents)}</Table.Td>
                     <Table.Td ta="right">{money(p.defaultPriceCents)}</Table.Td>
                     <Table.Td ta="right">{p.totalOnHand ?? 0}</Table.Td>
                     <Table.Td ta="right">{p.totalAvailable ?? 0}</Table.Td>
@@ -282,15 +285,37 @@ export default function Products() {
           </Grid.Col>
           <Grid.Col span={6}>
             <NumberInput
-              label="Default cost"
+              label="Cost of goods (per unit)"
               prefix="$"
               min={0}
               decimalScale={2}
               fixedDecimalScale
-              value={draft.defaultCostCents / 100}
+              value={draft.costOfGoodsCents / 100}
               onChange={(v) =>
-                setDraft({ ...draft, defaultCostCents: Math.round(Number(v || 0) * 100) })
+                setDraft({ ...draft, costOfGoodsCents: Math.round(Number(v || 0) * 100) })
               }
+            />
+          </Grid.Col>
+          <Grid.Col span={6}>
+            <NumberInput
+              label="Supplier shipping (per unit)"
+              prefix="$"
+              min={0}
+              decimalScale={2}
+              fixedDecimalScale
+              value={draft.supplierShippingCents / 100}
+              onChange={(v) =>
+                setDraft({ ...draft, supplierShippingCents: Math.round(Number(v || 0) * 100) })
+              }
+            />
+          </Grid.Col>
+          <Grid.Col span={6}>
+            <TextInput
+              label="Total cost of goods (per unit)"
+              value={money(draft.costOfGoodsCents + draft.supplierShippingCents)}
+              readOnly
+              variant="filled"
+              description="Cost of goods plus supplier shipping"
             />
           </Grid.Col>
           <Grid.Col span={6}>

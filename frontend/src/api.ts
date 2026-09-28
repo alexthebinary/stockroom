@@ -145,7 +145,10 @@ export type Product = {
   height: number | null;
   weight: number | null;
   categoryId: number | null;
-  defaultCostCents: number;
+  costOfGoodsCents: number;
+  supplierShippingCents: number;
+  /** costOfGoodsCents + supplierShippingCents, derived by the API. */
+  totalUnitCostCents: number;
   defaultPriceCents: number;
   isActive: boolean;
   createdAt: string;

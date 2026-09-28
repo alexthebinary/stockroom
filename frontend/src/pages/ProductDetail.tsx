@@ -91,7 +91,15 @@ export default function ProductDetail() {
                         : null
                     }
                   />
-                  <Field label="Default cost" value={money(product.data.defaultCostCents)} />
+                  <Field label="Cost of goods (per unit)" value={money(product.data.costOfGoodsCents)} />
+                  <Field
+                    label="Supplier shipping (per unit)"
+                    value={money(product.data.supplierShippingCents)}
+                  />
+                  <Field
+                    label="Total cost of goods (per unit)"
+                    value={money(product.data.totalUnitCostCents)}
+                  />
                   <Field label="Default price" value={money(product.data.defaultPriceCents)} />
                   <Field label="Created" value={formatDate(product.data.createdAt)} />
                 </SimpleGrid>
