@@ -4,6 +4,7 @@ import { syncChartOfAccounts } from "./accounts";
 import { ensureDocumentCounters } from "./numbering";
 import { ensureCostPools } from "./costing";
 import { syncPostingRules } from "./posting";
+import { reclassHistoricalInvoices } from "./reclass";
 
 const app = createApp();
 
@@ -35,6 +36,12 @@ syncChartOfAccounts()
       console.log(`  One-time password: ${admin.password}`);
       console.log("  Change it after signing in, or set ADMIN_PASSWORD and redeploy.");
     }
+  })
+  // Revised mapping (2026-09-28): tax and shipping out of historical revenue.
+  // Once per invoice; a no-op on every later boot.
+  .then(() => reclassHistoricalInvoices())
+  .then((n) => {
+    if (n) console.log(`Reclass: ${n} invoice(s) — tax and shipping moved out of revenue`);
   })
   // Weighted average cutover: open a cost pool for every product that has none,
   // from its open layers and in-flight transfers. Idempotent.

@@ -19,33 +19,36 @@ const CREDIT_NOTE = "CREDIT_NOTE";
  *   cash     = payments − refunds (refunds are stored negative)
  *   target   = all of taxOwed once cash covers netTotal, else its paid share
  */
-export async function syncSalesTaxPayable(tx: Tx, invoiceId: number, actor: string) {
+/** Where an invoice's tax stands: what is still owed, and what should be payable now. */
+export async function taxPosition(tx: Tx, invoiceId: number) {
   const invoice = await tx.invoice.findUniqueOrThrow({ where: { id: invoiceId } });
+  if (invoice.status === "VOID") return { invoice, taxOwed: 0, target: 0 };
+  const [payments, returns] = await Promise.all([
+    tx.payment.findMany({
+      where: { invoiceId, status: { not: "VOID" } },
+      select: { amountCents: true, method: true },
+    }),
+    tx.salesReturn.findMany({ where: { invoiceId }, include: { lines: true } }),
+  ]);
+  const credits = payments.filter((p) => p.method === CREDIT_NOTE).reduce((s, p) => s + p.amountCents, 0);
+  const cash = payments.filter((p) => p.method !== CREDIT_NOTE).reduce((s, p) => s + p.amountCents, 0);
+  const taxReturned = returns.reduce(
+    (s, r) => s + r.creditCents - r.lines.reduce((g, l) => g + l.quantity * l.unitPriceCents, 0),
+    0
+  );
+  const taxOwed = invoice.taxCents - taxReturned;
+  const netTotal = invoice.totalCents - credits;
+  const target =
+    netTotal <= 0 || taxOwed <= 0
+      ? 0
+      : cash >= netTotal
+        ? taxOwed
+        : Math.round((taxOwed * Math.max(cash, 0)) / netTotal);
+  return { invoice, taxOwed, target };
+}
 
-  let target = 0;
-  if (invoice.status !== "VOID") {
-    const [payments, returns] = await Promise.all([
-      tx.payment.findMany({
-        where: { invoiceId, status: { not: "VOID" } },
-        select: { amountCents: true, method: true },
-      }),
-      tx.salesReturn.findMany({ where: { invoiceId }, include: { lines: true } }),
-    ]);
-    const credits = payments.filter((p) => p.method === CREDIT_NOTE).reduce((s, p) => s + p.amountCents, 0);
-    const cash = payments.filter((p) => p.method !== CREDIT_NOTE).reduce((s, p) => s + p.amountCents, 0);
-    const taxReturned = returns.reduce(
-      (s, r) => s + r.creditCents - r.lines.reduce((g, l) => g + l.quantity * l.unitPriceCents, 0),
-      0
-    );
-    const taxOwed = invoice.taxCents - taxReturned;
-    const netTotal = invoice.totalCents - credits;
-    target =
-      netTotal <= 0 || taxOwed <= 0
-        ? 0
-        : cash >= netTotal
-          ? taxOwed
-          : Math.round((taxOwed * Math.max(cash, 0)) / netTotal);
-  }
+export async function syncSalesTaxPayable(tx: Tx, invoiceId: number, actor: string) {
+  const { invoice, target } = await taxPosition(tx, invoiceId);
 
   // What earlier syncs moved, read from their own entries: independent of
   // which accounts the rules point at today.
