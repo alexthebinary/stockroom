@@ -177,7 +177,7 @@ export type ConsumptionSlice = {
   quantity: number;
   unitCostCents: number;
   costCents: number;
-  /** The original receipt date, so a transfer can preserve FIFO age. */
+  /** The original receipt date, so a transfer keeps the pick order (oldest first). */
   receivedAt: Date;
 };
 

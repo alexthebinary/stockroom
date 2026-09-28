@@ -127,7 +127,7 @@ export default function Reports() {
     <>
       <PageHeader
         title="Reports"
-        subtitle="Margin comes from the FIFO cost actually consumed, not an estimate."
+        subtitle="Margin comes from the weighted average cost at the moment each unit shipped."
         action={
           <Group gap="xs">
             <TextInput
@@ -167,7 +167,7 @@ export default function Reports() {
                         : "goods value"
                     }
                   />
-                  <Stat label="Cost of goods sold" value={money(sales.data.cogsCents)} hint="FIFO" />
+                  <Stat label="Cost of goods sold" value={money(sales.data.cogsCents)} hint="weighted average" />
                   <Stat
                     label="Gross profit"
                     value={money(sales.data.grossProfitCents)}

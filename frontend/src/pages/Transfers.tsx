@@ -96,7 +96,7 @@ export default function Transfers() {
     <>
       <PageHeader
         title="Stock transfers"
-        subtitle="Start pulls stock out of the source at its FIFO cost; complete lands it at the destination with that cost and age intact."
+        subtitle="Start pulls stock out of the source; complete lands it at the destination with its receipt dates intact. No value moves: the average cost is company-wide."
       />
 
       <Card withBorder radius="md" p="md" mb="lg">

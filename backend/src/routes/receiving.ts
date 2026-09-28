@@ -149,7 +149,7 @@ receivingRouter.post(
      * This used to increment onHandQty and receivedQty and stop: no incoming
      * decrement, no goods receipt, no movement, no cost layer for
      * non-serialised goods, and no journal entry. Stock appeared on the shelf
-     * that the books knew nothing about, and it had no FIFO layer to consume
+     * that the books knew nothing about, and it had no cost layer to draw
      * when it later shipped.
      */
     const result = await prisma.$transaction(async (tx) => {

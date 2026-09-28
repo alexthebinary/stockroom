@@ -33,7 +33,7 @@ export default function Dashboard() {
     staleTime: 30_000,
   });
 
-  // Stock value comes from the FIFO layers, not a quantity times a guess.
+  // Stock value comes from the weighted average cost pools, reconciled with the ledger.
   const valuation = useQuery({
     queryKey: ["report-valuation"],
     queryFn: () => api.get<ValuationReport>("/reports/inventory-valuation"),

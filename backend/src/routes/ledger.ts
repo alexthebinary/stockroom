@@ -183,7 +183,7 @@ ledgerRouter.post(
  *
  * This endpoint has done no such thing. A GL-only mirror of a shipment entry
  * credits COGS and re-debits Inventory for stock that has physically left,
- * leaving the ledger overstating inventory against unchanged FIFO layers.
+ * leaving the ledger overstating inventory against an unchanged cost pool.
  */
 ledgerRouter.post(
   "/journal-entries/:id/reverse",

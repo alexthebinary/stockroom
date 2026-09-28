@@ -409,7 +409,7 @@ export type GoodsReceiptRow = {
   grnNumber: string;
   receivedAt: string;
   status: string;
-  /** Landed cost — what the FIFO layers were created at, not order value. */
+  /** Landed cost — what these units joined the average at, not order value. */
   totalCostCents: number;
   warehouseId: number | null;
   warehouse?: { id: number; name: string; code: string } | null;

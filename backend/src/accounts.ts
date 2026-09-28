@@ -184,9 +184,9 @@ export const JOURNAL_TEMPLATES: {
   },
   {
     // Client sheet 3.3: the shipment relieves on-hand Inventory into the
-    // outbound clearing account at FIFO cost.
+    // outbound clearing account at weighted average cost.
     transactionType: TRANSACTION_TYPE.GOODS_ISSUE,
-    description: "Goods issue: stock leaves on a shipment (FIFO cost)",
+    description: "Goods issue: stock leaves on a shipment (weighted average cost)",
     debitAccountCode: ACCOUNT.INVENTORY_CLEARING_OUTBOUND,
     creditAccountCode: ACCOUNT.INVENTORY,
   },
@@ -243,7 +243,7 @@ export const JOURNAL_TEMPLATES: {
   },
   {
     transactionType: TRANSACTION_TYPE.ADJUSTMENT_DECREASE,
-    description: "Write stock off at FIFO cost",
+    description: "Write stock off at weighted average cost",
     debitAccountCode: ACCOUNT.INVENTORY_SHRINKAGE,
     creditAccountCode: ACCOUNT.INVENTORY,
   },

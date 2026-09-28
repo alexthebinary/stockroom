@@ -47,7 +47,7 @@ export default function Adjustments() {
         adjustmentType,
         quantity: Number(quantity),
         reason: reason.trim(),
-        // Only read on an increase; a decrease is valued at FIFO cost.
+        // Only read on an increase; a decrease is valued at the weighted average.
         ...(adjustmentType === "INCREASE" ? { unitCostCents } : {}),
       }),
     onSuccess: () => {

@@ -161,7 +161,7 @@ export async function recordMovement(
     reason?: string | null;
     referenceType?: string | null;
     referenceId?: number | null;
-    /// Cost of the goods that moved, from the FIFO layers they came out of.
+    /// Cost of the goods that moved: the weighted average at the time, or the receipt cost coming in.
     totalCostCents?: number;
     actor: string;
   }

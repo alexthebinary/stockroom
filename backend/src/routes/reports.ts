@@ -36,7 +36,7 @@ function groupSum<T>(rows: T[], key: (row: T) => string, value: (row: T) => numb
 
 /**
  * GET /api/reports/sales?from=&to=&groupBy=employee|customer|category|channel
- * Revenue is taken from shipped/invoiced orders, and COGS from the FIFO cost
+ * Revenue is taken from shipped/invoiced orders, and COGS from the weighted average cost
  * actually consumed — so the margin here is real, not estimated.
  */
 reportsRouter.get(
@@ -241,7 +241,7 @@ reportsRouter.get(
 
 /**
  * GET /api/reports/inventory-valuation
- * Current stock value from the open FIFO layers, reconciled against the
+ * Current stock value from the weighted average cost pools, reconciled against the
  * Inventory account in the ledger. A gap means costing and accounting have
  * drifted, which is exactly what you want a report to tell you.
  */

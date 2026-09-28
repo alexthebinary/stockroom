@@ -25,7 +25,7 @@ type Example = {
 const ACCOUNT_NOTES: Record<string, string> = {
   "1000": "Cash and bank: customer payments in, supplier payments and refunds out.",
   "1100": "What customers owe on invoices not yet paid, less anything paid ahead at checkout.",
-  "1200": "Stock on the shelves at FIFO cost. Equals the stock valuation report.",
+  "1200": "Stock on the shelves at weighted average cost. Equals the stock valuation report.",
   "1210": "Goods billed by a supplier but not yet received into stock.",
   "1220": "Goods shipped whose cost is not yet matched to an invoice.",
   "1230": "Retired: transfers no longer post. Holds only transfers despatched before the change until they arrive.",

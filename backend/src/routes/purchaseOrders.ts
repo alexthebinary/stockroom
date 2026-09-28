@@ -202,7 +202,7 @@ purchaseOrdersRouter.get(
 
 /**
  * Goods receipts across every purchase order — the inbound mirror of
- * GET /sales-orders/shipments. Posting one is what creates the FIFO cost
+ * GET /sales-orders/shipments. Posting one is what creates the cost
  * layers, so `totalCostCents` here is landed cost, not order value.
  */
 purchaseOrdersRouter.get(
@@ -536,7 +536,7 @@ purchaseOrdersRouter.post(
 );
 
 /**
- * DELIVERED creates the GRN, the FIFO cost layers, and posts
+ * DELIVERED creates the GRN, adds the stock to the weighted average, and posts
  * Dr Inventory / Cr Inventory Clearing – Inbound.
  *
  * This is the only place stock acquires a cost from a purchase, which is why

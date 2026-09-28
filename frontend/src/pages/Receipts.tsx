@@ -21,7 +21,7 @@ import { useWarehouseOptions } from "../hooks";
  * Deliveries.
  *
  * The figure here is LANDED COST, not order value: posting a receipt is what
- * creates the FIFO layers, and this is what they were created at.
+ * adds the stock to the average, and this is the landed cost it joined at.
  */
 export default function Receipts() {
   const [warehouseId, setWarehouseId] = useState<string | null>(null);
@@ -49,7 +49,7 @@ export default function Receipts() {
     <>
       <PageHeader
         title="Goods receipts"
-        subtitle="Everything that has arrived on a dock. Posting a receipt is what creates the FIFO cost layers, so these figures are landed cost."
+        subtitle="Everything that has arrived on a dock. Posting a receipt adds its landed cost to the weighted average, so these figures are landed cost."
       />
 
       <Group grow mb="lg" align="stretch">
@@ -57,7 +57,7 @@ export default function Receipts() {
         <Stat
           label="Landed cost on this page"
           value={money(landed)}
-          hint="What the cost layers were created at"
+          hint="Landed cost the stock joined the average at"
         />
         <Stat
           label="Orders still short"

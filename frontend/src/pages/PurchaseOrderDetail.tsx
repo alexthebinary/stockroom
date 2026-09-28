@@ -391,7 +391,7 @@ export default function PurchaseOrderDetail() {
               {receivingTotal} unit{receivingTotal === 1 ? "" : "s"} arriving
             </Text>
             <Text size="xs" c="dimmed">
-              Posting creates a goods receipt and its FIFO cost layers.
+              Posting creates a goods receipt and adds the stock to the weighted average.
             </Text>
           </div>
           <Group gap="xs">

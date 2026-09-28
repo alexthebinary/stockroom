@@ -35,7 +35,7 @@ type Template = {
 
 /** Every physical stock change, and what it does. Mirrors the API contract. */
 const MOVEMENT_EFFECTS: [string, string, string][] = [
-  ["PURCHASE_RECEIPT", "Goods arrive from a vendor", "on hand ↑, incoming ↓, a cost layer is created"],
+  ["PURCHASE_RECEIPT", "Goods arrive from a vendor", "on hand ↑, incoming ↓, the value joins the average cost"],
   ["SALE_SHIP", "Goods leave for a customer", "on hand ↓, reserved ↓, layers consumed, COGS booked"],
   ["TRANSFER_OUT", "Goods leave the source warehouse", "source on hand ↓, layers consumed"],
   ["TRANSFER_IN", "Goods arrive at the destination", "destination on hand ↑, layers rebuilt at original cost and age"],
@@ -142,7 +142,7 @@ export default function About() {
 
       <Section
         title="What this is"
-        subtitle="A single-tenant warehouse management demo, built to a scope whose first principles are double-entry bookkeeping and FIFO costing."
+        subtitle="A single-tenant warehouse management demo, built to a scope whose first principles are double-entry bookkeeping and perpetual inventory costing (weighted average since 2026-09-28)."
       >
         <Text size="sm">
           Stock is tracked by quantity <em>and</em> by cost. Every physical movement writes an
@@ -301,30 +301,33 @@ export default function About() {
       <Grid>
         <Grid.Col span={{ base: 12, lg: 6 }}>
           <Section
-            title="FIFO costing"
-            subtitle="Why cost layers exist instead of an average cost field."
+            title="Weighted average costing"
+            subtitle="One running average per product, updated on every receipt."
           >
             <Text size="sm" mb="sm">
-              A single average-cost number cannot answer “what did the units we just shipped
-              cost?”. Each receipt creates an <Code>InventoryLot</Code> with a unit cost and a
-              remaining quantity. Each issue consumes the <strong>oldest layer first</strong> and
-              writes <Code>LotConsumption</Code> rows recording exactly which layers it drew from.
+              Each product has one <Code>ProductCost</Code> row: the units the company owns and
+              their total value, across every warehouse. A receipt adds its landed value and
+              re-averages; an issue is costed at the current average, and the last unit out takes
+              whatever value is left, so the books never keep a stray cent. Receipts still create
+              an <Code>InventoryLot</Code> and issues still write <Code>LotConsumption</Code> rows
+              — the physical trail, drawn <strong>oldest first</strong> — each carrying its share
+              of the cost.
             </Text>
             <Card withBorder radius="sm" p="sm" bg="var(--surface-sunken)" mb="sm">
               <Text size="xs" fw={700} mb={4}>
                 Worked example
               </Text>
               <Text size="xs" c="dimmed">
-                480 units at $2.05 arrive, then 100 at $3.00. A sale of 60 consumes the $2.05
-                layer first, so COGS is 60 × $2.05 = <strong>$123.00</strong> — not
-                60 × the $2.21 blended average. The $3.00 layer is untouched and stays whole for
-                the next sale.
+                480 units at $2.05 arrive, then 100 at $3.00: 580 units worth $1,284.00, an
+                average of about $2.2138. A sale of 60 costs 60 × $1,284.00 ÷ 580 ={" "}
+                <strong>$132.83</strong>, leaving 520 units worth $1,151.17 — the same average
+                for the next sale.
               </Text>
             </Card>
             <Text size="sm">
-              A transfer preserves both the unit cost <em>and</em> the original receipt date, so
-              old stock does not become artificially young and jump the queue at its new
-              warehouse. See the live layers on any{" "}
+              A transfer moves no value — the average is company-wide — and keeps each receipt's
+              original date, so old stock is still picked first at its new warehouse. See the
+              average and the receipts on hand on any{" "}
               <Anchor component={Link} to="/products">
                 product page
               </Anchor>
@@ -345,7 +348,7 @@ export default function About() {
             </Text>
             <Text size="xs" c="dimmed" mb="sm">
               Most entries are a simple pair. A goods receipt is the exception and carries three
-              lines: Inventory takes exactly what the new cost layers are worth, Prepaid
+              lines: Inventory takes exactly what the received units are worth at landed cost, Prepaid
               Inventory is cleared by exactly what the bill put there, and any rounding
               difference between the two is posted to Rounding Variance rather than stranded in
               either.

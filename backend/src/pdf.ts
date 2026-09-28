@@ -589,7 +589,7 @@ export type GoodsReceiptForPdf = {
  * Carries landed cost, unlike the outbound packing slip which deliberately
  * carries none. This document faces inward: the person checking a pallet in is
  * the person who needs to know what it cost, and posting this receipt is what
- * created the FIFO layers those numbers came from.
+ * added those units to stock at these landed costs.
  */
 export function renderGoodsReceipt(
   res: Response,
@@ -694,7 +694,7 @@ export function renderGoodsReceipt(
      .text(money(grn.totalCostCents), cols.cost, y - 1, { width: 62, align: "right" });
 
   doc.font("Helvetica").fontSize(8).fillColor(MUTED)
-     .text("This is the cost the FIFO layers were created at.", left, y + 16, { width: width * 0.55 });
+     .text("Landed cost of these units; stock is valued at the weighted average.", left, y + 16, { width: width * 0.55 });
 
   // Two signatures, because a receipt nobody signed is an assertion, not a record.
   const sigY = y + 54;

@@ -254,7 +254,7 @@ export async function runCloseChecks(period: string, now = new Date()): Promise<
       {
         id: "layers-match-on-hand",
         title: "Every unit on hand has a cost behind it",
-        why: "FIFO cost of goods sold is only right if the units you count and the units you have costs for are the same units.",
+        why: "Cost of goods sold is only right if the units you count and the units the cost pool holds are the same units.",
         blocking: true,
         fix: { label: "Open stock on hand", to: "/inventory" },
       },

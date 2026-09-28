@@ -98,7 +98,7 @@ export default function PurchaseOrders() {
     <>
       <PageHeader
         title="Purchase orders"
-        subtitle="Saved books incoming stock. Posted creates the bill, paid settles it, delivered creates the GRN and the FIFO cost layers."
+        subtitle="Saved books incoming stock. Posted creates the bill, paid settles it, delivered creates the GRN and adds the stock to the weighted average cost."
         action={<Button onClick={open}>New purchase order</Button>}
       />
 

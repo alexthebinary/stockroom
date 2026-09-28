@@ -2,7 +2,7 @@
  * Push available stock to Shopify. OUTBOUND QUANTITY ONLY.
  *
  * 🔴 SHOPIFY NEVER WRITES OUR QUANTITY. Stockroom owns stock, because every
- * quantity here has a FIFO cost layer behind it and a Shopify payload does not.
+ * quantity here has a cost layer behind it and a Shopify payload does not.
  * Letting an inbound number set `InventoryBalance` would produce stock with no
  * cost trail — the same silent failure as receiving an unknown item at zero
  * cost. Orders come inbound as real SalesOrders through the normal path;

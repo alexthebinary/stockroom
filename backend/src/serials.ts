@@ -132,7 +132,7 @@ export async function receiveSerials(
 }
 
 /**
- * Consume named serials, bypassing FIFO ordering entirely.
+ * Consume named serials, bypassing oldest-first picking entirely (cost still comes from the pool).
  *
  * Cost still comes from each unit's own layer, so valuation is unchanged — what
  * changes is WHICH layer, and that it is chosen by the operator rather than by

@@ -839,7 +839,7 @@ salesOrdersRouter.post(
 type ShipInput = z.infer<typeof shipSchema>;
 
 /**
- * Ship a packed order: stock leaves, FIFO layers are consumed, COGS is booked,
+ * Ship a packed order: stock leaves at the weighted average cost, COGS is booked,
  * and the invoice is raised. Shared by /ship and the showroom counter sale, so
  * a sale made at the counter is costed exactly like one that left in a van.
  */
@@ -954,7 +954,7 @@ async function shipPacked(tx: Prisma.TransactionClient, current: LoadedOrder, sh
   await tx.shipment.update({ where: { id: shipment.id }, data: { cogsCents } });
 
   // Client sheet 3.3 — goods issue: on-hand Inventory into outbound clearing
-  // at the FIFO cost of the exact layers consumed.
+  // at the weighted average cost of the units that left.
   const entry = await postSimple(tx, {
     transactionType: TRANSACTION_TYPE.GOODS_ISSUE,
     amountCents: cogsCents,
@@ -981,7 +981,7 @@ async function shipPacked(tx: Prisma.TransactionClient, current: LoadedOrder, sh
 }
 
 /**
- * SHIP is where inventory and the ledger meet: stock leaves, FIFO layers are
+ * SHIP is where inventory and the ledger meet: stock leaves, receipt layers are
  * consumed, and the cost of those exact layers is booked as COGS.
  */
 salesOrdersRouter.post(
@@ -1026,7 +1026,7 @@ const counterSaleSchema = createSchema.omit({ channel: true, customerName: true 
  *
  * One request, one transaction, and every step is the ordinary one — the
  * order is created on the SHOWROOM channel, reserved, paid (a checkout
- * deposit), shipped (FIFO cost, COGS, and the invoice that applies the
+ * deposit), shipped (average cost, COGS, and the invoice that applies the
  * deposit), and marked delivered because the client carried it out. Nothing
  * here is a shortcut through the books, so the counter sale reconciles exactly
  * like an order that left in a van. The response carries the invoice, whose
