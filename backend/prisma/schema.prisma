@@ -59,6 +59,7 @@ model Product {
   vendorAliases      VendorProductAlias[]
   productCategory    ProductCategory?     @relation(fields: [categoryId], references: [id])
   lots               InventoryLot[]
+  cost               ProductCost?
   balances           InventoryBalance[]
   movements          InventoryMovement[]
   salesOrderLines    SalesOrderLine[]
@@ -523,6 +524,20 @@ model JournalTemplate {
 /// One receipt of stock at a known unit cost. FIFO consumes the oldest
 /// remaining layer first. A quantity balance cannot answer "what did this
 /// cost" — these rows can.
+/// Perpetual weighted average cost, one row per product across ALL warehouses.
+/// THIS is the valuation. InventoryLot is the physical trail only.
+/// Invariant: qty == Σ open lot remainingQty + Σ IN_TRANSIT transfer quantity.
+model ProductCost {
+  productId  Int      @id
+  qty        Int      @default(0)
+  valueCents Int      @default(0)
+  /// Bumped on every write; an issue updates only the version it read.
+  version    Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id])
+}
+
 model InventoryLot {
   id            Int      @id @default(autoincrement())
   productId     Int
@@ -549,7 +564,11 @@ model LotConsumption {
   id            Int      @id @default(autoincrement())
   lotId         Int
   quantity      Int
+  /// This slice's share of the issue's cost, per unit and rounded — for display.
   unitCostCents Int
+  /// This slice's share of the pool cost. The slices of one issue sum exactly
+  /// to its total; legacy FIFO rows are backfilled as quantity × unitCostCents.
+  costCents     Int      @default(0)
   movementId    Int?
   sourceType    String
   sourceId      Int?

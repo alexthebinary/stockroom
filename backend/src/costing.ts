@@ -1,14 +1,25 @@
+import { prisma } from "./db";
 import { badRequest, conflict } from "./errors";
 import type { Tx } from "./inventory";
 
 /**
- * FIFO cost layers.
+ * Perpetual weighted average cost (client approved 2026-09-28; replaced FIFO).
  *
- * A quantity balance cannot answer "what did this cost". Every receipt of
- * stock creates a layer with a unit cost and a remaining quantity; every issue
- * consumes the oldest layer first and records exactly which layers it drew
- * from. That consumption trail is the audit behind every COGS figure.
+ * VALUE lives in one ProductCost row per product, across every warehouse: a
+ * receipt adds its value and re-averages, an issue takes round(value × q / qty),
+ * and the last units out take whatever value is left so the pool drains to 0.
+ *
+ * InventoryLot / LotConsumption are the PHYSICAL trail — which receipt, which
+ * warehouse, which serial, drawn oldest-first — and each consumption records
+ * its share of the pool cost. They no longer decide what anything cost.
  */
+
+/**
+ * POOL: the stock is new to the company (receipt, return, found stock) and its
+ * value joins the average. CARRY: the stock is already in the pool and is only
+ * changing warehouse (transfers), so the pool must not see it again.
+ */
+export type CostingMode = "POOL" | "CARRY";
 
 export type LotSource = {
   sourceType: string;
@@ -24,10 +35,17 @@ export async function createLot(
     quantity: number;
     unitCostCents: number;
     receivedAt?: Date;
+    costing?: CostingMode;
   } & LotSource
 ) {
   if (input.quantity <= 0) throw badRequest("A cost layer needs a positive quantity");
   if (input.unitCostCents < 0) throw badRequest("A unit cost cannot be negative");
+
+  // Before the lot exists: a pool opened lazily after the insert would count
+  // this lot from the layers AND again from the increment.
+  if (input.costing === "POOL") {
+    await addToPool(tx, input.productId, input.quantity, input.quantity * input.unitCostCents);
+  }
 
   return tx.inventoryLot.create({
     data: {
@@ -43,6 +61,103 @@ export async function createLot(
   });
 }
 
+/**
+ * The product's cost pool, created on first touch from what already exists:
+ * open layers plus transfers in flight (their value lives on the transfer, not
+ * in any lot). This IS the FIFO → average cutover, and it is idempotent.
+ */
+export async function ensureCostPool(tx: Tx, productId: number) {
+  const existing = await tx.productCost.findUnique({ where: { productId } });
+  if (existing) return existing;
+  const [lots, transfers] = await Promise.all([
+    tx.inventoryLot.findMany({
+      where: { productId, remainingQty: { gt: 0 } },
+      select: { remainingQty: true, unitCostCents: true },
+    }),
+    tx.stockTransfer.findMany({
+      where: { productId, status: "IN_TRANSIT" },
+      select: { quantity: true, costCents: true },
+    }),
+  ]);
+  const qty =
+    lots.reduce((s, l) => s + l.remainingQty, 0) + transfers.reduce((s, t) => s + t.quantity, 0);
+  const valueCents =
+    lots.reduce((s, l) => s + l.remainingQty * l.unitCostCents, 0) +
+    transfers.reduce((s, t) => s + t.costCents, 0);
+  return tx.productCost.upsert({
+    where: { productId },
+    create: { productId, qty, valueCents },
+    update: {},
+  });
+}
+
+/** Boot: open a pool for every product that has none. Returns how many were opened. */
+export async function ensureCostPools() {
+  const missing = await prisma.product.findMany({ where: { cost: null }, select: { id: true } });
+  for (const { id } of missing) await prisma.$transaction((tx) => ensureCostPool(tx, id));
+  return missing.length;
+}
+
+export async function addToPool(tx: Tx, productId: number, quantity: number, valueCents: number) {
+  await ensureCostPool(tx, productId);
+  await tx.productCost.update({
+    where: { productId },
+    data: {
+      qty: { increment: quantity },
+      valueCents: { increment: valueCents },
+      version: { increment: 1 },
+    },
+  });
+}
+
+/** The cost of `quantity` units at the pool's average; the last units take whatever value remains. */
+export function shareOfPool(pool: { qty: number; valueCents: number }, quantity: number) {
+  if (quantity === pool.qty) return pool.valueCents;
+  return Math.round((pool.valueCents * quantity) / pool.qty);
+}
+
+/** Take `quantity` units' worth out of the pool; returns what they cost. */
+export async function takeFromPool(tx: Tx, productId: number, quantity: number, context: string) {
+  const pool = await ensureCostPool(tx, productId);
+  if (pool.qty < quantity) {
+    throw badRequest(`${context}: only ${pool.qty} unit(s) are costed for this product, need ${quantity}.`);
+  }
+  const costCents = shareOfPool(pool, quantity);
+  const written = await tx.productCost.updateMany({
+    where: { productId, version: pool.version },
+    data: { qty: pool.qty - quantity, valueCents: pool.valueCents - costCents, version: pool.version + 1 },
+  });
+  if (written.count === 0) {
+    throw conflict(`${context}: the average cost changed while this request was running, please retry`);
+  }
+  return costCents;
+}
+
+/** What `quantity` would cost now, without taking it (transfers). */
+export async function quotePoolCost(tx: Tx, productId: number, quantity: number) {
+  const pool = await ensureCostPool(tx, productId);
+  return pool.qty === 0 ? 0 : shareOfPool(pool, Math.min(quantity, pool.qty));
+}
+
+export async function averageUnitCostCents(tx: Tx, productId: number) {
+  const pool = await ensureCostPool(tx, productId);
+  return pool.qty > 0 ? Math.round(pool.valueCents / pool.qty) : null;
+}
+
+/** Split a total over quantities by cumulative rounding, so the parts sum exactly. */
+export function allocate(totalCents: number, quantities: number[]) {
+  const all = quantities.reduce((s, q) => s + q, 0);
+  let seen = 0;
+  let given = 0;
+  return quantities.map((q, i) => {
+    seen += q;
+    const upTo = i === quantities.length - 1 ? totalCents : Math.round((totalCents * seen) / all);
+    const part = upTo - given;
+    given = upTo;
+    return part;
+  });
+}
+
 export type ConsumptionSlice = {
   lotId: number;
   quantity: number;
@@ -52,23 +167,25 @@ export type ConsumptionSlice = {
   receivedAt: Date;
 };
 
+export type DrawInput = {
+  productId: number;
+  warehouseId: number;
+  quantity: number;
+  movementId?: number | null;
+  context: string;
+} & LotSource;
+
 /**
- * Stock leaving: draw `quantity` from the oldest layers first.
+ * Physical draw: take `quantity` from this warehouse's layers, oldest receipt
+ * first (the pick order, not the cost rule). The returned cost is the layers'
+ * RECEIPT cost — right only for CARRY (transfers); issues use `issueStock`.
  *
- * Returns the total cost and the per-layer breakdown. Refuses to consume more
- * than the layers hold — which is the costing-side mirror of the quantity rule
- * that on-hand may never go negative. If the two ever disagree, this throws
- * rather than inventing a cost.
+ * Refuses to draw more than the layers hold — the mirror of the quantity rule
+ * that on-hand may never go negative.
  */
-export async function consumeFifo(
+export async function drawLots(
   tx: Tx,
-  input: {
-    productId: number;
-    warehouseId: number;
-    quantity: number;
-    movementId?: number | null;
-    context: string;
-  } & LotSource
+  input: DrawInput
 ): Promise<{ totalCostCents: number; slices: ConsumptionSlice[]; consumptionIds: number[] }> {
   if (input.quantity <= 0) throw badRequest("Cannot consume a non-positive quantity");
 
@@ -78,7 +195,7 @@ export async function consumeFifo(
       warehouseId: input.warehouseId,
       remainingQty: { gt: 0 },
     },
-    // Oldest first — this ordering IS the FIFO rule.
+    // Oldest first: the physical pick order. Cost comes from the pool.
     orderBy: [{ receivedAt: "asc" }, { id: "asc" }],
   });
 
@@ -118,6 +235,7 @@ export async function consumeFifo(
         lotId: lot.id,
         quantity: take,
         unitCostCents: lot.unitCostCents,
+        costCents,
         movementId: input.movementId ?? null,
         sourceType: input.sourceType,
         sourceId: input.sourceId ?? null,
@@ -138,6 +256,39 @@ export async function consumeFifo(
 
   return { totalCostCents, slices, consumptionIds };
 }
+
+/**
+ * Stock leaving the company (sale, write-off, count loss, repair): draw the
+ * physical units, cost them at the pool's average, and price each consumption
+ * row with its exact share so the trail sums to the COGS figure.
+ */
+export async function issueStock(tx: Tx, input: DrawInput) {
+  const drawn = await drawLots(tx, input);
+  const totalCostCents = await takeFromPool(tx, input.productId, input.quantity, input.context);
+  const slices = await priceConsumptions(tx, drawn.consumptionIds, drawn.slices, totalCostCents);
+  return { totalCostCents, slices, consumptionIds: drawn.consumptionIds };
+}
+
+/** Spread an issue's pool cost over its consumption rows, exactly. */
+export async function priceConsumptions(
+  tx: Tx,
+  consumptionIds: number[],
+  slices: ConsumptionSlice[],
+  totalCostCents: number
+) {
+  const parts = allocate(totalCostCents, slices.map((s) => s.quantity));
+  const priced: ConsumptionSlice[] = [];
+  for (const [i, id] of consumptionIds.entries()) {
+    const costCents = parts[i];
+    const unitCostCents = Math.round(costCents / slices[i].quantity);
+    await tx.lotConsumption.update({ where: { id }, data: { costCents, unitCostCents } });
+    priced.push({ ...slices[i], costCents, unitCostCents });
+  }
+  return priced;
+}
+
+/** @deprecated Task-3 cutover shim: callers move to issueStock / drawLots. */
+export const consumeFifo = drawLots;
 
 /**
  * Link consumption rows to the movement they belong to.
@@ -174,7 +325,7 @@ export async function transferLots(
     context: string;
   } & LotSource
 ) {
-  const consumed = await consumeFifo(tx, {
+  const consumed = await drawLots(tx, {
     productId: input.productId,
     warehouseId: input.fromWarehouseId,
     quantity: input.quantity,
