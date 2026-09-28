@@ -1,14 +1,39 @@
 # Stockroom — handoff
 
-**As of 2026-09-22.** Live at https://stockroom-axlo.onrender.com, `master` at `695e427`
-deployed and verified in a browser in both colour schemes. Local dev may still be running
-on 4000/5173.
+**As of 2026-09-28.** Live at https://stockroom-axlo.onrender.com, `master` at `84e42c4`
+deployed (dep-datejg6k1f9s73fvh400) and verified live: trial balance sound, valuation
+variance 0, product page and Account assignment checked in a browser.
+
+## 2026-09-28 release — read first
+
+- **Costing is perpetual weighted average**, one average per product across all
+  warehouses (client approved; replaced FIFO). `ProductCost` is the valuation;
+  `InventoryLot`/`LotConsumption` are the physical trail. Transfers move no value.
+- **Product cost lines:** Cost of goods, Supplier shipping, Total (derived). Supplier
+  freight is capitalized into landed cost / the average (operator decision).
+- **Chart of accounts = client's revised sheet** (screenshots 2026-09-28, supersede the
+  09-23 PDF): 2100 Sales Tax Payable, 2150 Customer Deposits (retired, was 2100), 2200
+  Sales Tax Transition, 4100 Shipping Income, 4200 Adjustment Gain (was 4100), 5100
+  Freight-In, 6000 Adjustment Loss (was 5100), 6100 Freight-Out, 9000/9100 off-balance.
+- **Account assignment** (Settings): admins repoint posting lines; audited; linked lines
+  move together; 1200/1210/1220/1230 locked and reserved. **Chart of accounts** screen
+  adds/renames/deactivates accounts. Boot never overwrites names or rules.
+- **Invoices split** goods → 4000, tax → 2200, shipping → 4100; **sales tax is cash
+  basis** (paid share → 2100). Pre-split invoices reclassed once at deploy (2 invoices,
+  $590.34 tax, all paid → 2100). Marker in `DocumentCounter` `RECLASS_2026_09_28_*`.
+- **Rollback = restore** `.backups/stockroom-prod-pgdump-20260928-181443.sql`. Never
+  redeploy 0dbc84a or earlier: its boot would rename/deactivate the new accounts.
+- **Deferred:** Sales Tax Remittance, Freight-Out bills, third-party freight-in bills
+  (next branch); three minor review findings in the vault plan logs.
+- Plans/specs: vault `specs/PLAN-2026-09-28-stockroom-weighted-average-cost.md`,
+  `specs/2026-09-28-stockroom-account-assignment-design.md`,
+  `specs/PLAN-2026-09-28-stockroom-account-assignment.md`.
 
 > **What this is.** An inventory and warehouse management system with a real general
 > ledger, built for the AI age — not a reinvention of accounting. The operator's line,
 > stated 2026-09-22: *"we're not looking to reinvent the wheel here, just creating an
 > inventory management system fit for the AI age."* Read that before proposing anything
-> structural. Where a convention exists (double-entry, FIFO, three-way match), adopt it;
+> structural. Where a convention exists (double-entry, weighted average cost, three-way match), adopt it;
 > the novelty budget belongs in the operator's experience — camera receiving, the
 > attention list, search — not in the books.
 
