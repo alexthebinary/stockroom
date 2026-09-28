@@ -95,4 +95,14 @@ describe("revised chart of accounts", () => {
     await syncChartOfAccounts();
     expect((await byCode("1000"))!.name).toBe("Operating Bank");
   });
+
+  it("refuses to boot when a renumber was skipped and an old account still holds a new code", async () => {
+    // e.g. 2100 still "Customer Deposits" because its new code was taken: the
+    // new Sales Tax Payable would never be created and tax would post onto
+    // the old deposits account. Fail loudly instead.
+    const payable = await byCode("2100");
+    await prisma.account.update({ where: { id: payable!.id }, data: { name: "Customer Deposits" } });
+    await expect(syncChartOfAccounts()).rejects.toThrow(/2100.*Customer Deposits/);
+    await prisma.account.update({ where: { id: payable!.id }, data: { name: "Sales Tax Payable" } });
+  });
 });

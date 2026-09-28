@@ -95,6 +95,15 @@ describe("account assignment", () => {
     expect(res.body.error).toMatch(/inactive/i);
   });
 
+  it("refuses to point an unlocked role at an inventory or clearing account", async () => {
+    // SALES_PAYMENT debit accepts ASSET accounts, but 1200 is reconciled
+    // against the cost pools: a payment posted there is a permanent variance.
+    const r = await rule("SALES_PAYMENT", "debit");
+    const res = await as(app, token).put(`/api/posting-rules/${r.id}`).send({ accountId: await accountId("1200") });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/reserved|locked/i);
+  });
+
   it("refuses anyone but an admin", async () => {
     const r = await rule("ADJUSTMENT_DECREASE", "debit");
     const res = await request(app)
@@ -130,6 +139,16 @@ describe("chart of accounts editing", () => {
     const res = await as(app, token).put(`/api/accounts/${await accountId("1100")}`).send({ isActive: false });
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/SALES_INVOICE/);
+  });
+
+  it("refuses to change the type of an account a rule uses", async () => {
+    const api = as(app, token);
+    const created = (await api.post("/api/accounts").send({ code: "6400", name: "Shrinkage", accountType: "EXPENSE" })).body;
+    const r = await rule("ADJUSTMENT_DECREASE", "debit");
+    expect((await api.put(`/api/posting-rules/${r.id}`).send({ accountId: created.id })).status).toBe(200);
+    const res = await api.put(`/api/accounts/${created.id}`).send({ accountType: "OFF_BALANCE" });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/ADJUSTMENT_DECREASE/);
   });
 
   it("refuses to change the type of an account with postings", async () => {

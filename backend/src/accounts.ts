@@ -330,6 +330,21 @@ export async function syncChartOfAccounts() {
     }
   }
 
+  // A renumber that did not happen (its target taken, or the name not the one
+  // expected) leaves an OLD account on a code the chart now uses for a new one.
+  // Creating nothing and posting to it would put, say, sales tax on the old
+  // Customer Deposits account. Stop the boot instead.
+  for (const r of RENUMBER) {
+    const stuck = await prisma.account.findUnique({ where: { code: r.from } });
+    const wanted = CHART_OF_ACCOUNTS.find((a) => a.code === r.from);
+    if (stuck && wanted && r.ifNamed.includes(stuck.name) && stuck.name !== wanted.name) {
+      throw new Error(
+        `Chart of accounts: ${r.from} is still "${stuck.name}" but should now be "${wanted.name}" ` +
+          `(could not move it to ${r.to}). Resolve by hand before starting.`
+      );
+    }
+  }
+
   // Create what is missing; never overwrite an existing account's name or
   // active flag. Since 2026-09-28 the chart is edited in the app (Settings →
   // Chart of accounts), so the database, not this file, owns those fields.

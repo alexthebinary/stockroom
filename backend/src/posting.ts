@@ -32,7 +32,7 @@ export type PostingRole = {
  * pools with 1200 (+ legacy 1230), and the close checks 1210/1220 empty out;
  * pointing a role elsewhere would make both lie without an error.
  */
-const LOCKED_CODES = new Set<string>([
+export const LOCKED_CODES = new Set<string>([
   ACCOUNT.INVENTORY,
   ACCOUNT.INVENTORY_CLEARING_INBOUND,
   ACCOUNT.INVENTORY_CLEARING_OUTBOUND,

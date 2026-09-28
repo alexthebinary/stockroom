@@ -4,7 +4,7 @@ import { prisma } from "../db";
 import { badRequest, conflict, notFound } from "../errors";
 import { actorOf, asyncHandler, intParam, parseBody } from "../http";
 import { requireUsers } from "../auth";
-import { POSTING_ROLES, assignedRoles, type AccountType } from "../posting";
+import { LOCKED_CODES, POSTING_ROLES, assignedRoles, type AccountType } from "../posting";
 import type { TransactionType } from "../accounts";
 
 /**
@@ -85,6 +85,12 @@ accountingRouter.put(
       const account = await tx.account.findUnique({ where: { id: body.accountId } });
       if (!account) throw notFound("Account not found");
       if (!account.isActive) throw badRequest(`${account.code} ${account.name} is inactive`);
+      // The reverse of a locked role: other transactions must not post INTO
+      // the accounts the valuation and close reconcile, or a payment lands in
+      // Inventory with no stock behind it and the books never agree again.
+      if (LOCKED_CODES.has(account.code)) {
+        throw conflict(`${account.code} ${account.name} is reserved for stock postings (valuation and close reconcile it)`);
+      }
       if (!role.allowedTypes.includes(account.accountType as AccountType)) {
         throw badRequest(
           `${rule.transactionType} ${role.label.toLowerCase()} needs an account of type ${role.allowedTypes.join(" or ")}; ` +
@@ -155,6 +161,14 @@ accountingRouter.put(
       if (body.accountType !== undefined && body.accountType !== current.accountType) {
         const lines = await tx.journalLine.count({ where: { accountId: id } });
         if (lines > 0) throw conflict(`${current.code} has ${lines} posted line(s); its type cannot change`);
+        // A rule chose this account for its type; changing it underneath would
+        // post e.g. an expense into an off-balance account.
+        const using = await tx.postingRule.findMany({ where: { accountId: id } });
+        if (using.length) {
+          throw conflict(
+            `${current.code} is assigned to ${using.map((r) => `${r.transactionType} ${r.role}`).join(", ")} — reassign before changing its type`
+          );
+        }
         data.accountType = body.accountType;
         if (body.accountType !== "OFF_BALANCE") {
           data.normalSide = DEBIT_NORMAL.has(body.accountType) ? "DEBIT" : "CREDIT";
