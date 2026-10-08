@@ -140,10 +140,10 @@ Statements show 1201 and 1202 rolled up as "Inventory Asset", exactly as in the 
 | **Bill posted** (inventory kind, freight on bill allocated by value) | Pending receipts for this PO auto-post: `held → onHand` | Dr 1202 landed total / Cr 2000 AP; then for the held units Dr 1201 / Cr 1202 |
 | **Freight-In bill posted** (carrier vendor, allocated to PO/bill lines) | none | Cr 2000 AP. Per target line: Dr 1202 for the unreceived share; Dr 1201 (pool value +) for the share still on hand (by lot `remainingQty`); **Dr 5000 COGS for the share already sold** |
 | Price discount on a line (guide #8) | none | Dr 2000. Credits mirror freight: Cr 1202 / 1201 / 5000 |
-| Purchase return, received goods (guide #3/#4/#6/#7) | `onHand −= qty` | Dr 2000 / Cr 1201 at the credit amount (default = the bill line's landed unit cost × qty; the pool absorbs it, and if the pool empties the residual goes to COGS) |
+| Purchase return, received goods (guide #3/#4/#6/#7) | `onHand −= qty` (WH-OUT) | Dr 2000 at the vendor's credit amount (default = the bill line's landed unit cost × qty) / Cr 1201 at **average cost** of the units returned; any difference goes to 5000 COGS (`returnVariance` role). In the guide's examples credit = average, so the entry is exactly Dr AP / Cr Inventory |
 | Return of goods never received | open qty reduced | Dr 2000 / Cr 1202 |
 | Payment / vendor refund | none | Dr 2000 / Cr 1000; refund Dr 1000 / Cr 2000 |
-| Void bill (posted, nothing received or paid) | none | Reversal entry. Once anything is received or paid, use a return or credit instead |
+| Void bill | landed units go back to `held` | Mirror reversal of the bill entry and its landings. Refused while a payment or credit is applied, or once any of its landed units have left stock (use a vendor credit instead) |
 | Opening stock (setup wizard) | `onHand += qty` | Dr 1201 / Cr 3000 |
 
 The guide's examples become golden tests:
@@ -233,3 +233,14 @@ The guide's examples become golden tests:
 
 ## Hosting
 v2 is host-agnostic: one Docker image plus any Postgres 16. Per the user (2026-10-08), the old Render deployment may expire; v2 does not depend on it.
+
+## Design review amendments (2026-10-08)
+An independent architecture review of this spec was folded in:
+- **Unit registers are real.** `StockMovement` is the append-only WH-IN / WH-OUT / ADJ register: item, warehouse, bucket ON_HAND|HELD, signed qty, document number and its counter-document (BILL, VENDOR_CREDIT, OPENING, or PO for held stock). Invariant: StockBalance == Σ movements per bucket.
+- **Journal lines carry dimensions** (itemId, vendorId, poLineId), so the inventory invariant holds **per item** (GL 1201 by item == that item's pool value) and AP reconciles per vendor.
+- **Vendor items:** `VendorItem` (vendor SKU, last cost) replaces the barcode kind VENDOR_SKU. `ItemBarcode.packQty` lets a case barcode count 12.
+- **Bills:** duplicate vendor invoice # per vendor is refused at post. The bill entry is dated the bill date; a landing is dated the later of bill date and receipt date.
+- **Freight / discount split** uses expected units E = max(ordered, billed, received) on the line.
+- **Session close** carries `expectedEventCount`; if the server holds fewer events, the device re-flushes its outbox first.
+- **Later phases noted:** a period-end reversing accrual for held stock (received, not billed) if the client wants it; held-stock aging with "accept at estimate" / "reject"; period lock date.
+- **Risk accepted by the operator:** no sign-in and no passcode for now. The README says so plainly.
