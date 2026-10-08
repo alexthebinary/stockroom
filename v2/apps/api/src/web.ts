@@ -24,7 +24,7 @@ export async function serveWeb(app: FastifyInstance, root: string) {
     },
   });
   app.setNotFoundHandler((request, reply) => {
-    if (request.method === "GET" && !request.url.startsWith("/api/")) return reply.header("Cache-Control", "no-cache").sendFile("index.html");
+    if ((request.method === "GET" || request.method === "HEAD") && !request.url.startsWith("/api/")) return reply.header("Cache-Control", "no-cache").sendFile("index.html");
     return reply.status(404).send({ error: "Not found" });
   });
 }

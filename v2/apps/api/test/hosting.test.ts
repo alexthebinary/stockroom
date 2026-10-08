@@ -54,6 +54,8 @@ describe("serving the app on the open internet", () => {
     expect(route.statusCode).toBe(200);
     expect(route.body).toContain("ProfitIndex");
     expect(route.headers["cache-control"]).toBe("no-cache");
+    // Uptime monitors check with HEAD.
+    expect((await app.inject({ method: "HEAD", url: "/bills/12" })).statusCode).toBe(200);
     const api = await app.inject({ method: "GET", url: "/api/nope" });
     expect(api.statusCode).toBe(404);
     expect(api.json()).toEqual({ error: "Not found" });

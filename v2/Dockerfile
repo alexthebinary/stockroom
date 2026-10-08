@@ -2,7 +2,7 @@
 # with Docker and a Postgres 16 (docker compose up gives you both).
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/domain/package.json packages/domain/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
