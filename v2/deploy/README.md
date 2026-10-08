@@ -37,12 +37,21 @@ Ubuntu 24.04 LTS. Then:
   ```bash
   sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
   ```
-  On a laptop, also set `HandleLidSwitch=ignore` in `/etc/systemd/logind.conf`.
+  On a laptop, also ignore the lid:
+  ```bash
+  sudo mkdir -p /etc/systemd/logind.conf.d
+  printf '[Login]\nHandleLidSwitch=ignore\n' | sudo tee /etc/systemd/logind.conf.d/profitindex.conf
+  ```
+  It applies on the next reboot. With the sleep targets masked, the Dell can't
+  suspend in the meantime anyway.
 - **Security updates install themselves:**
   ```bash
   sudo apt install -y unattended-upgrades && sudo dpkg-reconfigure -plow unattended-upgrades
   ```
-- **Docker Engine and the compose plugin** (Docker's own apt repository):
+- **Docker Engine and the compose plugin.** If `docker compose version` already
+  works (Ubuntu's own `docker.io` and `docker-compose-v2` packages work fine),
+  keep it: this step is only for a machine without Docker. From Docker's own
+  apt repository:
   ```bash
   sudo apt-get update && sudo apt-get install -y ca-certificates curl git
   sudo install -m 0755 -d /etc/apt/keyrings
