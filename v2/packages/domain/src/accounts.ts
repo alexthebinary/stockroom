@@ -53,6 +53,8 @@ export const ROLES = {
   openingEquity: { label: "Opening balance equity", locked: false },
   outboundShipping: { label: "Outbound shipping expense", locked: false },
   returnVariance: { label: "Vendor return variance", locked: false },
+  adjustmentGain: { label: "Inventory adjustment gain", locked: false },
+  adjustmentLoss: { label: "Inventory adjustment loss", locked: false },
 } as const;
 
 export type Role = keyof typeof ROLES;
@@ -70,4 +72,6 @@ export const DEFAULT_ROLE_ACCOUNTS: Record<Role, string> = {
   openingEquity: "3000",
   outboundShipping: "6100",
   returnVariance: "5000",
+  adjustmentGain: "4900",
+  adjustmentLoss: "6900",
 };

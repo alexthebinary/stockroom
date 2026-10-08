@@ -35,8 +35,9 @@ const billPatch = z.object({
   notes: z.string().max(2000).nullish(),
   attachment: z.string().startsWith("data:").max(8_000_000).nullish(),
   lines: z
-    .array(z.object({ id: z.number().int().positive(), qty: z.number().int().min(0), unitCostCents: z.number().int().min(0), discountCents: z.number().int().min(0).default(0), amountCents: z.number().int().min(0).optional() }))
+    .array(z.object({ id: z.number().int().positive(), qty: z.number().int().min(0).default(0), unitCostCents: z.number().int().min(0).default(0), discountCents: z.number().int().min(0).default(0), amountCents: z.number().int().min(0).optional() }))
     .optional(),
+  targetPoIds: z.array(z.number().int().positive()).optional(),
 });
 
 export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
@@ -330,6 +331,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
           allocationBasis: body.allocationBasis,
           notes: body.notes === undefined ? undefined : body.notes,
           attachment: body.attachment === undefined ? undefined : body.attachment,
+          targetPoIds: body.targetPoIds,
           version: { increment: 1 },
         },
       });

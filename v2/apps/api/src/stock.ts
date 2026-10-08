@@ -16,7 +16,7 @@ export type StockCtx = { tx: Tx; actor: string };
 
 type Register = "WH_IN" | "WH_OUT" | "ADJ";
 type Bucket = "ON_HAND" | "HELD";
-export type Counter = { type: "BILL" | "PO" | "VENDOR_CREDIT" | "OPENING"; id: number };
+export type Counter = { type: "BILL" | "PO" | "VENDOR_CREDIT" | "OPENING" | "ADJUSTMENT"; id: number };
 
 async function ensureRows(tx: Tx, itemId: number, warehouseId: number) {
   await tx.$executeRaw`INSERT INTO "StockBalance" ("itemId", "warehouseId") VALUES (${itemId}, ${warehouseId}) ON CONFLICT DO NOTHING`;
@@ -111,6 +111,7 @@ export async function landUnits(
       sourceId: input.counter.id,
       qtyIn: input.qty,
       qtyRemaining: input.qty,
+      valueCents: input.valueCents,
     },
   });
 }
@@ -129,7 +130,7 @@ async function lockPool(tx: Tx, itemId: number) {
  */
 export async function issueUnits(
   ctx: StockCtx,
-  input: { itemId: number; warehouseId: number; qty: number; docNumber: string; counter: Counter; preferPoLineId?: number },
+  input: { itemId: number; warehouseId: number; qty: number; docNumber: string; counter: Counter; preferPoLineId?: number; register?: Register },
 ): Promise<number> {
   const { tx } = ctx;
   const pool = await lockPool(tx, input.itemId);
@@ -151,7 +152,7 @@ export async function issueUnits(
     left -= take;
   }
   if (left > 0) throw new DomainError(`The lot trail for item ${input.itemId} is short by ${left}; run the books check`, 409);
-  await record(ctx, { register: "WH_OUT", bucket: "ON_HAND", qtyDelta: -input.qty, valueCents: costCents, ...input });
+  await record(ctx, { bucket: "ON_HAND", qtyDelta: -input.qty, valueCents: costCents, ...input, register: input.register ?? "WH_OUT" });
   return costCents;
 }
 
@@ -174,4 +175,25 @@ export async function revaluePool(tx: Tx, itemId: number, deltaCents: number): P
 export async function onHandFromLine(tx: Tx, poLineId: number): Promise<number> {
   const result = await tx.inventoryLot.aggregate({ where: { poLineId }, _sum: { qtyRemaining: true } });
   return result._sum.qtyRemaining ?? 0;
+}
+
+/**
+ * Undo a landing whose units are all still on the shelf (a voided bill): they
+ * go back to held, and exactly the value they brought leaves the pool.
+ */
+export async function unlandLot(ctx: StockCtx, lotId: number, input: { docNumber: string; poId: number; billId: number }) {
+  const { tx } = ctx;
+  const lot = await tx.inventoryLot.findUniqueOrThrow({ where: { id: lotId } });
+  if (lot.qtyRemaining !== lot.qtyIn) throw new DomainError("Some of these units have already left stock", 409);
+  const pool = await lockPool(tx, lot.itemId);
+  if (pool.qty < lot.qtyIn || pool.valueCents < lot.valueCents) throw new DomainError("The average cost has moved on since these units landed", 409);
+  await bump(tx, lot.itemId, lot.warehouseId, -lot.qtyIn, lot.qtyIn);
+  await tx.$executeRaw`
+    UPDATE "CostPool" SET "qty" = "qty" - ${lot.qtyIn}, "valueCents" = "valueCents" - ${lot.valueCents}, "version" = "version" + 1
+     WHERE "itemId" = ${lot.itemId}`;
+  await tx.inventoryLot.update({ where: { id: lot.id }, data: { qtyRemaining: 0 } });
+  const base = { itemId: lot.itemId, warehouseId: lot.warehouseId, docNumber: input.docNumber };
+  await record(ctx, { ...base, register: "WH_IN", bucket: "ON_HAND", qtyDelta: -lot.qtyIn, counter: { type: "BILL", id: input.billId }, valueCents: -lot.valueCents });
+  await record(ctx, { ...base, register: "WH_IN", bucket: "HELD", qtyDelta: lot.qtyIn, counter: { type: "PO", id: input.poId } });
+  return lot;
 }

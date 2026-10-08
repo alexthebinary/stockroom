@@ -149,6 +149,24 @@ describe("GAAP guide §II.3 — Opening balance", () => {
   });
 });
 
+describe("GAAP guide §II.3 — Inventory adjustments", () => {
+  it("2. Gain (overage / found stock): Dr Inventory Asset 300 / Cr Inventory Adjustment Gain 300", () => {
+    const gain = planEntry("INVENTORY_ADJUSTMENT_GAIN", [
+      { role: "inventoryOnHand", amountCents: 30000, itemId: 1 },
+      { role: "adjustmentGain", amountCents: 30000 },
+    ]);
+    expect(asTheGuideReadsIt(gain)).toEqual({ "Inventory Asset": dr(300), "Inventory Adjustment Gain": cr(300) });
+  });
+
+  it("3. Loss (shortage / shrinkage): Dr Inventory Adjustment Loss 250 / Cr Inventory Asset 250", () => {
+    const loss = planEntry("INVENTORY_ADJUSTMENT_LOSS", [
+      { role: "adjustmentLoss", amountCents: 25000 },
+      { role: "inventoryOnHand", amountCents: 25000, itemId: 1 },
+    ]);
+    expect(asTheGuideReadsIt(loss)).toEqual({ "Inventory Adjustment Loss": dr(250), "Inventory Asset": cr(250) });
+  });
+});
+
 describe("planEntry", () => {
   it("puts a negative amount on the opposite side (return variance either way)", () => {
     const lines = planEntry("PURCHASE_RETURN", [

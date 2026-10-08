@@ -246,6 +246,8 @@ model InventoryLot {
   sourceId      Int
   qtyIn         Int
   qtyRemaining  Int
+  /// What the units cost when they landed (so a voided bill can take back exactly that).
+  valueCents    Int      @default(0)
   createdAt     DateTime @default(now())
 
   @@index([itemId, qtyRemaining])
@@ -326,6 +328,7 @@ model PurchaseOrderLine {
   qtyBilled     Int     @default(0)
   billedCents   Int     @default(0)
   inboundCents  Int     @default(0)
+  qtyReturned   Int     @default(0)
   addedAtDock   Boolean @default(false)
 
   po PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
@@ -353,6 +356,8 @@ model VendorBill {
   creditedCents       Int       @default(0)
   attachment          String?
   notes               String?
+  /// FREIGHT_IN: the purchase orders this freight is spread over.
+  targetPoIds         Int[]     @default([])
   version             Int       @default(0)
   postedAt            DateTime?
   postedBy            String?
