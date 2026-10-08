@@ -9,6 +9,11 @@ read -r answer
 [ "$answer" = "WIPE" ] || { echo "cancelled"; exit 1; }
 
 docker compose --profile backup run --rm backup
-docker compose down --volumes     # the database volume; backups/ is kept
+# Only the app and its database go: the tunnel keeps running, so a temporary
+# address stays the same for testers.
+ids=$(docker compose ps -aq app db)
+[ -z "$ids" ] || docker rm -f $ids >/dev/null
+docker volume rm --force profitindex_pgdata >/dev/null
 docker compose up -d --wait
 echo "wiped: open the app to run the setup wizard again"
+./url.sh

@@ -44,8 +44,9 @@ to wipe a non-local database unless `FRESH_CONFIRM=yes`.
 
 **For the shop, use [`deploy/`](deploy/README.md):** the app and its database on
 the Dell, behind a Cloudflare Tunnel for HTTPS, with nightly backups to
-Cloudflare R2. `deploy/demo.sh` tries it in one command with a temporary
-https address, before any Cloudflare setup.
+Cloudflare R2. `deploy/start.sh` starts it in one command on a temporary
+https link; adding a tunnel token later moves it to your own domain, keeping
+the data.
 
 Anywhere else Docker runs:
 

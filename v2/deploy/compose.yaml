@@ -2,8 +2,12 @@
 # HTTPS, and an on-demand backup job. Nothing listens on the LAN: the only way
 # in is the tunnel (and 127.0.0.1:4100 on the Dell itself, for debugging).
 #
-#   cp .env.example .env   # fill it in
-#   docker compose up -d --build
+#   ./start.sh             # writes .env on the first run, starts, prints the address
+#
+# With no TUNNEL_TOKEN in .env the tunnel is a temporary
+# https://….trycloudflare.com address (./url.sh prints it). With a token it is
+# your own domain. Switching is one line in .env and `docker compose up -d`;
+# the database stays.
 #
 # See README.md in this folder for the whole runbook.
 name: profitindex
@@ -47,9 +51,9 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:2026.9.3
     restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env (Cloudflare Zero Trust, Networks, Tunnels)}
+    # No token: a quick tunnel to the app. A token: your named tunnel, whose
+    # hostname and route (app:4100) are set in the Cloudflare dashboard.
+    command: tunnel --no-autoupdate ${TUNNEL_TOKEN:+run --token }${TUNNEL_TOKEN:---url http://app:4100}
     depends_on:
       app:
         condition: service_healthy
