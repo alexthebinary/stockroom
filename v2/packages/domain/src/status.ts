@@ -18,8 +18,15 @@ export function billingStatus(bills: { status: string }[]): BillingStatus {
   return "NOT_BILLED";
 }
 
+/**
+ * For one posted bill: what is still owed after credits, against what was paid
+ * (net of refunds). A bill fully credited back owes nothing and reads PAID —
+ * settled. A purchase order with no posted bill is UNPAID; the caller decides
+ * that, because there is no bill to ask.
+ */
 export function paymentStatus(owedCents: number, paidCents: number): PaymentStatus {
-  if (owedCents <= 0 || paidCents <= 0) return "UNPAID";
+  if (owedCents <= 0) return "PAID";
+  if (paidCents <= 0) return "UNPAID";
   return paidCents >= owedCents ? "PAID" : "PARTIAL";
 }
 

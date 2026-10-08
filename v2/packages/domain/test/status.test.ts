@@ -10,7 +10,7 @@ describe("purchase order axes (WMS doc: created, billed, paid/unpaid, received/p
   });
 
   it("payment follows what is owed and what was paid", () => {
-    expect(paymentStatus(0, 0)).toBe("UNPAID");
+    expect(paymentStatus(0, 0), "a bill credited back in full owes nothing").toBe("PAID");
     expect(paymentStatus(110000, 0)).toBe("UNPAID");
     expect(paymentStatus(110000, 60000)).toBe("PARTIAL");
     expect(paymentStatus(110000, 110000)).toBe("PAID");

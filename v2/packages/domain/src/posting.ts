@@ -12,28 +12,37 @@ import { assertCents, type Cents } from "./money";
  * is still one event.
  */
 export const EVENTS = {
-  OPENING_STOCK: { label: "Opening stock", sides: { inventoryOnHand: "DEBIT", openingEquity: "CREDIT" }, itemRoles: ["inventoryOnHand"] },
-  BILL_POSTED: { label: "Vendor bill – inventory", sides: { inventoryInbound: "DEBIT", payable: "CREDIT" }, itemRoles: [] },
-  RECEIPT_LANDED: { label: "Warehouse receipt", sides: { inventoryOnHand: "DEBIT", inventoryInbound: "CREDIT" }, itemRoles: [] },
+  OPENING_STOCK: { label: "Opening stock", sides: { inventoryOnHand: "DEBIT", openingEquity: "CREDIT" } },
+  BILL_POSTED: { label: "Vendor bill – inventory", sides: { inventoryInbound: "DEBIT", payable: "CREDIT" } },
+  RECEIPT_LANDED: { label: "Warehouse receipt", sides: { inventoryOnHand: "DEBIT", inventoryInbound: "CREDIT" } },
   FREIGHT_IN_POSTED: {
     label: "Vendor bill – freight-in",
     sides: { inventoryInbound: "DEBIT", inventoryOnHand: "DEBIT", cogs: "DEBIT", payable: "CREDIT" },
-    itemRoles: [],
   },
-  FREIGHT_OUT_POSTED: { label: "Vendor bill – freight-out", sides: { outboundShipping: "DEBIT", payable: "CREDIT" }, itemRoles: [] },
+  FREIGHT_OUT_POSTED: { label: "Vendor bill – freight-out", sides: { outboundShipping: "DEBIT", payable: "CREDIT" } },
   VENDOR_PRICE_ALLOWANCE: {
     label: "Vendor price discount",
     sides: { payable: "DEBIT", inventoryInbound: "CREDIT", inventoryOnHand: "CREDIT", cogs: "CREDIT" },
-    itemRoles: [],
   },
   PURCHASE_RETURN: {
     label: "Purchase return",
     sides: { payable: "DEBIT", inventoryOnHand: "CREDIT", inventoryInbound: "CREDIT", returnVariance: "CREDIT" },
-    itemRoles: [],
   },
-  BILL_PAYMENT: { label: "Vendor payment", sides: { payable: "DEBIT", bank: "CREDIT" }, itemRoles: [] },
-  VENDOR_REFUND: { label: "Vendor refund", sides: { bank: "DEBIT", payable: "CREDIT" }, itemRoles: [] },
-} as const satisfies Record<string, { label: string; sides: Partial<Record<Role, Side>>; itemRoles: readonly Role[] }>;
+  BILL_PAYMENT: { label: "Vendor payment", sides: { payable: "DEBIT", bank: "CREDIT" } },
+  VENDOR_REFUND: { label: "Vendor refund", sides: { bank: "DEBIT", payable: "CREDIT" } },
+} as const satisfies Record<string, { label: string; sides: Partial<Record<Role, Side>> }>;
+
+/**
+ * "An individual item must be selected for every type of transaction" (GAAP
+ * guide §II.3): every inventory line names its item, so stock value
+ * reconciles item by item. Every payables line names its vendor, so AP
+ * reconciles vendor by vendor.
+ */
+export const REQUIRED_DIMENSION: Partial<Record<Role, keyof Dimensions>> = {
+  inventoryOnHand: "itemId",
+  inventoryInbound: "itemId",
+  payable: "vendorId",
+};
 
 export type EventType = keyof typeof EVENTS;
 
@@ -53,8 +62,9 @@ export function planEntry(event: EventType, amounts: AmountLine[]): PlannedLine[
     if (!side) throw refuse(`${definition.label} does not use the ${role} role`);
     assertCents(amountCents, `${role} amount`);
     if (amountCents === 0) continue;
-    if ((definition.itemRoles as readonly Role[]).includes(role) && rest.itemId == null) {
-      throw refuse(`${definition.label}: every ${role} line must name its item`);
+    const dimension = REQUIRED_DIMENSION[role];
+    if (dimension && rest[dimension] == null) {
+      throw refuse(`${definition.label}: every ${role} line must name its ${dimension === "itemId" ? "item" : "vendor"}`);
     }
     lines.push({ role, side: amountCents > 0 ? side : flip(side), amountCents: Math.abs(amountCents), ...rest });
   }

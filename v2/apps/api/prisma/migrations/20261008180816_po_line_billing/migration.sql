@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "PurchaseOrderLine" ADD COLUMN     "billedCents" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "inboundCents" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "qtyBilled" INTEGER NOT NULL DEFAULT 0;

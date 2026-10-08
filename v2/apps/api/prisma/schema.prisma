@@ -1,0 +1,518 @@
+// ProfitIndex v2. Postgres everywhere: development, tests and production.
+// Money is integer cents. Quantities are whole units. Financial records are
+// never deleted: a mistake is reversed by another entry.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Company, people, audit ──────────────────────────────────────────────
+
+/// One row: this install's company. setupCompletedAt null means the first-run
+/// wizard has not finished, and the app opens it.
+model Company {
+  id                   Int       @id @default(1)
+  name                 String    @default("")
+  address              String?
+  homeState            String?
+  fiscalYearStartMonth Int       @default(1)
+  currency             String    @default("USD")
+  setupStep            Int       @default(0)
+  setupCompletedAt     DateTime?
+  sampleDataLoadedAt   DateTime?
+  createdAt            DateTime  @default(now())
+}
+
+/// "Who's working". No sign-in yet (operator decision 2026-10-08): a profile
+/// picks the home screen and is stamped on everything the person does.
+/// job: CLERK | ACCOUNTING | ADMIN
+model Profile {
+  id        Int      @id @default(autoincrement())
+  name      String
+  job       String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model AuditEvent {
+  id          Int      @id @default(autoincrement())
+  actor       String
+  action      String
+  subjectType String
+  subjectId   Int?
+  detail      Json?
+  at          DateTime @default(now())
+
+  @@index([subjectType, subjectId])
+}
+
+model DocumentCounter {
+  kind String @id
+  next Int    @default(1)
+}
+
+// ─── Ledger ──────────────────────────────────────────────────────────────
+
+model Account {
+  id         Int     @id @default(autoincrement())
+  code       String  @unique
+  name       String
+  type       String
+  normalSide String
+  isHeader   Boolean @default(false)
+  parentId   Int?
+  purpose    String?
+  isActive   Boolean @default(true)
+
+  parent   Account?      @relation("AccountTree", fields: [parentId], references: [id])
+  children Account[]     @relation("AccountTree")
+  lines    JournalLine[]
+  rules    PostingRule[]
+}
+
+/// A role ("payable") points at an account. Admins may repoint unlocked roles.
+model PostingRule {
+  id        Int    @id @default(autoincrement())
+  role      String @unique
+  accountId Int
+
+  account Account             @relation(fields: [accountId], references: [id])
+  changes PostingRuleChange[]
+}
+
+model PostingRuleChange {
+  id            Int      @id @default(autoincrement())
+  ruleId        Int
+  fromAccountId Int
+  toAccountId   Int
+  actor         String
+  at            DateTime @default(now())
+
+  rule PostingRule @relation(fields: [ruleId], references: [id])
+}
+
+model JournalEntry {
+  id         Int      @id @default(autoincrement())
+  number     String   @unique
+  event      String
+  date       DateTime
+  memo       String?
+  sourceType String
+  sourceId   Int
+  reversesId Int?     @unique
+  actor      String
+  createdAt  DateTime @default(now())
+
+  reverses   JournalEntry? @relation("Reversal", fields: [reversesId], references: [id])
+  reversedBy JournalEntry? @relation("Reversal")
+  lines      JournalLine[]
+
+  @@index([sourceType, sourceId])
+}
+
+/// One-sided (side + positive amount). Dimensions let the inventory accounts
+/// reconcile per item and AP per vendor.
+model JournalLine {
+  id          Int     @id @default(autoincrement())
+  entryId     Int
+  accountId   Int
+  role        String
+  side        String
+  amountCents Int
+  itemId      Int?
+  vendorId    Int?
+  poLineId    Int?
+  memo        String?
+
+  entry   JournalEntry @relation(fields: [entryId], references: [id])
+  account Account      @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+  @@index([itemId])
+}
+
+// ─── Catalog, places, parties ────────────────────────────────────────────
+
+model Warehouse {
+  id       Int     @id @default(autoincrement())
+  code     String  @unique
+  name     String
+  isActive Boolean @default(true)
+  isSample Boolean @default(false)
+}
+
+/// kind: SUPPLIER | CARRIER (a carrier bills freight-in / freight-out)
+model Vendor {
+  id               Int      @id @default(autoincrement())
+  name             String
+  kind             String   @default("SUPPLIER")
+  email            String?
+  phone            String?
+  address          String?
+  paymentTermsDays Int      @default(30)
+  isActive         Boolean  @default(true)
+  isSample         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  vendorItems VendorItem[]
+}
+
+/// trackingMode: NONE | SERIAL. conditionOfId: an open-box (or other
+/// condition) variant points at its regular item; it has its own SKU and its
+/// own average cost (GAAP guide §II.3 #4, Inventory Conversion).
+model Item {
+  id              Int      @id @default(autoincrement())
+  sku             String   @unique
+  name            String
+  trackingMode    String   @default("NONE")
+  condition       String   @default("NEW")
+  conditionOfId   Int?
+  defaultVendorId Int?
+  lastCostCents   Int      @default(0)
+  isActive        Boolean  @default(true)
+  isSample        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  conditionOf Item?         @relation("Condition", fields: [conditionOfId], references: [id])
+  variants    Item[]        @relation("Condition")
+  barcodes    ItemBarcode[]
+  vendorItems VendorItem[]
+}
+
+/// code is the normalised lookup key (barcodeKey()); raw is what was printed.
+model ItemBarcode {
+  id      Int    @id @default(autoincrement())
+  code    String @unique
+  raw     String
+  packQty Int    @default(1)
+  itemId  Int
+
+  item Item @relation(fields: [itemId], references: [id])
+}
+
+model VendorItem {
+  id            Int    @id @default(autoincrement())
+  vendorId      Int
+  itemId        Int
+  vendorSku     String
+  lastCostCents Int?
+
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+  item   Item   @relation(fields: [itemId], references: [id])
+
+  @@unique([vendorId, vendorSku])
+}
+
+// ─── Stock ───────────────────────────────────────────────────────────────
+
+/// Written ONLY by src/stock.ts. held = received at the dock, awaiting a
+/// posted bill: counted, never available, never valued.
+model StockBalance {
+  id          Int @id @default(autoincrement())
+  itemId      Int
+  warehouseId Int
+  onHand      Int @default(0)
+  held        Int @default(0)
+  reserved    Int @default(0)
+  version     Int @default(0)
+
+  @@unique([itemId, warehouseId])
+}
+
+/// Average cost (AVCO), one pool per item across all warehouses. valueCents is
+/// that item's slice of Inventory – On Hand.
+model CostPool {
+  itemId     Int @id
+  qty        Int @default(0)
+  valueCents Int @default(0)
+  version    Int @default(0)
+}
+
+/// The physical trail behind the pool: which landing the units came from and
+/// how many of them are still on the shelf (drawn oldest-first). Used to split
+/// a late freight bill between units on hand and units already gone.
+model InventoryLot {
+  id            Int      @id @default(autoincrement())
+  itemId        Int
+  warehouseId   Int
+  poLineId      Int?
+  receiptLineId Int?
+  sourceType    String
+  sourceId      Int
+  qtyIn         Int
+  qtyRemaining  Int
+  createdAt     DateTime @default(now())
+
+  @@index([itemId, qtyRemaining])
+  @@index([poLineId])
+}
+
+/// The unit registers of the WMS doc (WH-IN, WH-OUT, ADJ), append-only.
+/// bucket: ON_HAND | HELD. counterType names the document that justifies the
+/// movement: BILL for landed stock, PO for held stock, VENDOR_CREDIT, OPENING.
+model StockMovement {
+  id          Int      @id @default(autoincrement())
+  register    String
+  docNumber   String
+  itemId      Int
+  warehouseId Int
+  bucket      String
+  qtyDelta    Int
+  counterType String
+  counterId   Int
+  valueCents  Int?
+  actor       String
+  createdAt   DateTime @default(now())
+
+  @@index([itemId, warehouseId])
+}
+
+model SerialUnit {
+  id            Int      @id @default(autoincrement())
+  itemId        Int
+  serial        String
+  warehouseId   Int
+  receiptLineId Int?
+  state         String   @default("HELD")
+  createdAt     DateTime @default(now())
+
+  @@unique([itemId, serial])
+}
+
+// ─── Purchasing ──────────────────────────────────────────────────────────
+
+/// Three independent status axes (WMS doc), derived by refreshPoStatus() and
+/// stored so lists can filter on them. A purchase order never posts money.
+model PurchaseOrder {
+  id              Int      @id @default(autoincrement())
+  number          String   @unique
+  vendorId        Int?
+  warehouseId     Int
+  source          String   @default("MANUAL")
+  lifecycle       String   @default("OPEN")
+  billingStatus   String   @default("NOT_BILLED")
+  paymentStatus   String   @default("UNPAID")
+  receivingStatus String   @default("NOT_RECEIVED")
+  notes           String?
+  createdBy       String
+  version         Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  lines    PurchaseOrderLine[]
+  bills    VendorBill[]
+  receipts WarehouseReceipt[]
+}
+
+/// qtyReceived counts physical arrival (held included); qtyHeld is the part
+/// still awaiting a bill; qtyLanded is the part valued and on hand.
+/// qtyBilled / billedCents are what posted bills charged for this line
+/// (landed: goods − discount + freight); inboundCents is the part of that
+/// value not yet landed — this line's slice of Inventory – Inbound.
+model PurchaseOrderLine {
+  id            Int     @id @default(autoincrement())
+  poId          Int
+  itemId        Int
+  qtyOrdered    Int
+  unitCostCents Int
+  qtyReceived   Int     @default(0)
+  qtyHeld       Int     @default(0)
+  qtyLanded     Int     @default(0)
+  qtyBilled     Int     @default(0)
+  billedCents   Int     @default(0)
+  inboundCents  Int     @default(0)
+  addedAtDock   Boolean @default(false)
+
+  po PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+}
+
+/// kind: INVENTORY | FREIGHT_IN | FREIGHT_OUT. status: DRAFT | POSTED | VOID.
+/// paidCents is net of refunds; creditedCents is vendor credits against it.
+model VendorBill {
+  id                  Int       @id @default(autoincrement())
+  number              String    @unique
+  kind                String    @default("INVENTORY")
+  status              String    @default("DRAFT")
+  source              String    @default("MANUAL")
+  vendorId            Int?
+  poId                Int?
+  vendorInvoiceNumber String?
+  billDate            DateTime
+  termsDays           Int       @default(30)
+  dueDate             DateTime
+  freightCents        Int       @default(0)
+  allocationBasis     String    @default("VALUE")
+  subtotalCents       Int       @default(0)
+  totalCents          Int       @default(0)
+  paidCents           Int       @default(0)
+  creditedCents       Int       @default(0)
+  attachment          String?
+  notes               String?
+  version             Int       @default(0)
+  postedAt            DateTime?
+  postedBy            String?
+  voidedAt            DateTime?
+  voidedBy            String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  po          PurchaseOrder?         @relation(fields: [poId], references: [id])
+  lines       VendorBillLine[]
+  allocations LandedCostAllocation[]
+
+  @@index([status, kind])
+}
+
+/// INVENTORY bills: one line per PO line (item, qty, cost, discount); freight
+/// and landed cost are filled in when the bill posts. FREIGHT bills: one line
+/// with the amount.
+model VendorBillLine {
+  id            Int     @id @default(autoincrement())
+  billId        Int
+  poLineId      Int?
+  itemId        Int?
+  description   String?
+  qty           Int     @default(0)
+  unitCostCents Int     @default(0)
+  discountCents Int     @default(0)
+  amountCents   Int     @default(0)
+  freightCents  Int     @default(0)
+  landedCents   Int     @default(0)
+
+  bill VendorBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+}
+
+/// A freight-in bill's share for one PO line, frozen at post with where it went.
+model LandedCostAllocation {
+  id            Int      @id @default(autoincrement())
+  freightBillId Int
+  poLineId      Int
+  amountCents   Int
+  inboundCents  Int      @default(0)
+  onHandCents   Int      @default(0)
+  soldCents     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  freightBill VendorBill @relation(fields: [freightBillId], references: [id])
+}
+
+/// The WH-IN document. state: PENDING_BILL | PARTIAL | POSTED (receiptState()).
+model WarehouseReceipt {
+  id            Int      @id @default(autoincrement())
+  number        String   @unique
+  poId          Int
+  warehouseId   Int
+  scanSessionId Int?
+  state         String   @default("PENDING_BILL")
+  receivedAt    DateTime @default(now())
+  receivedBy    String
+  notes         String?
+
+  po    PurchaseOrder @relation(fields: [poId], references: [id])
+  lines ReceiptLine[]
+}
+
+model ReceiptLine {
+  id         Int @id @default(autoincrement())
+  receiptId  Int
+  poLineId   Int
+  itemId     Int
+  qty        Int
+  landedQty  Int @default(0)
+  valueCents Int @default(0)
+
+  receipt WarehouseReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+}
+
+// ─── Scanning ────────────────────────────────────────────────────────────
+
+/// status: OPEN | SUBMITTED | ABANDONED. clientId makes "start" idempotent.
+model ScanSession {
+  id          Int       @id @default(autoincrement())
+  clientId    String    @unique
+  warehouseId Int
+  vendorId    Int?
+  poId        Int?
+  status      String    @default("OPEN")
+  startedBy   String
+  startedAt   DateTime  @default(now())
+  submittedAt DateTime?
+  slipRead    Json?
+  notes       String?
+  result      Json?
+
+  events ScanEvent[]
+}
+
+/// clientId is the device-generated idempotency key: a replay is a no-op.
+/// qty is signed so a correction is another event, never a delete.
+/// source: BARCODE | AI | MANUAL
+model ScanEvent {
+  id          Int      @id @default(autoincrement())
+  sessionId   Int
+  clientId    String   @unique
+  code        String?
+  itemId      Int?
+  qty         Int
+  source      String
+  serial      String?
+  unknownName String?
+  photo       String?
+  needsReview Boolean  @default(false)
+  capturedAt  DateTime
+  receivedAt  DateTime @default(now())
+
+  session ScanSession @relation(fields: [sessionId], references: [id])
+}
+
+// ─── Money out ───────────────────────────────────────────────────────────
+
+/// direction: OUT (we pay a vendor) | IN (a vendor refunds us). status: POSTED | VOID
+model Payment {
+  id          Int      @id @default(autoincrement())
+  number      String   @unique
+  direction   String
+  vendorId    Int
+  billId      Int
+  amountCents Int
+  method      String   @default("BANK")
+  paidAt      DateTime
+  memo        String?
+  status      String   @default("POSTED")
+  actor       String
+  createdAt   DateTime @default(now())
+}
+
+/// kind: RETURN | PRICE_ALLOWANCE. Against one bill; every line names its item.
+model VendorCredit {
+  id          Int      @id @default(autoincrement())
+  number      String   @unique
+  kind        String
+  vendorId    Int
+  billId      Int
+  date        DateTime
+  totalCents  Int
+  memo        String?
+  actor       String
+  createdAt   DateTime @default(now())
+
+  lines VendorCreditLine[]
+}
+
+model VendorCreditLine {
+  id          Int @id @default(autoincrement())
+  creditId    Int
+  billLineId  Int
+  poLineId    Int
+  itemId      Int
+  qty         Int @default(0)
+  amountCents Int
+  costCents   Int @default(0)
+
+  credit VendorCredit @relation(fields: [creditId], references: [id], onDelete: Cascade)
+}
