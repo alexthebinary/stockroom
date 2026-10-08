@@ -51,6 +51,8 @@ const SECURITY_HEADERS: Record<string, string> = {
   "Referrer-Policy": "same-origin",
   "Permissions-Policy": "camera=(self), microphone=(), geolocation=()",
   "X-Frame-Options": "DENY",
+  // An open, login-free app: keep its address out of search results.
+  "X-Robots-Tag": "noindex, nofollow",
 };
 
 export function buildApp(deps: Deps): FastifyInstance {

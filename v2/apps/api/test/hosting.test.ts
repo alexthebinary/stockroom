@@ -32,6 +32,7 @@ describe("serving the app on the open internet", () => {
       expect(res.headers["content-security-policy"], url).toBe(CONTENT_SECURITY_POLICY);
       expect(res.headers["x-content-type-options"]).toBe("nosniff");
       expect(res.headers["x-frame-options"]).toBe("DENY");
+      expect(res.headers["x-robots-tag"]).toBe("noindex, nofollow");
       expect(res.headers["permissions-policy"]).toContain("camera=(self)");
     }
     expect(CONTENT_SECURITY_POLICY).toContain("'wasm-unsafe-eval'");

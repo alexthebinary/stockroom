@@ -1,7 +1,7 @@
 # ProfitIndex on the Dell, behind Cloudflare
 
 The Dell runs the app and its database. Cloudflare sits in front: a
-**Cloudflare Tunnel** gives a real `https://app.<your-domain>` address with no
+**Cloudflare Tunnel** gives a real `https://beta.<your-domain>` address with no
 router port-forwarding and no certificates to manage, and **R2** keeps the
 nightly backups off the machine. HTTPS isn't optional: phones only open the
 camera on a secure site, so a plain `http://192.168.x.x` on the shop Wi-Fi
@@ -19,6 +19,7 @@ Nothing listens on the LAN. The database has no published port. The app is on
 | `restore.sh` | replace the live database from a backup, then prove the books |
 | `drill.sh` | restore a backup into a scratch copy and prove it, leaving live data alone |
 | `update.sh` | back up, pull, rebuild |
+| `reset.sh` | wipe the beta back to a fresh install (backs up first) |
 | `systemd/` | the nightly backup timer |
 
 ## 0. Try it first (5 minutes)
@@ -88,9 +89,10 @@ dashboards call it a *published application route*):
 
 | Subdomain | Domain | Service |
 |---|---|---|
-| `app` | your domain | `HTTP` · `app:4100` |
+| `beta` | your domain | `HTTP` · `app:4100` |
 
 `app:4100` is the app's name on the compose network, which cloudflared shares.
+The subdomain is yours to choose (see *Sharing the beta* below).
 
 **Abuse filtering** (free):
 
@@ -129,7 +131,7 @@ The repository path matters only for the backup timer (`systemd/`). If the
 repository is private, clone with a GitHub token or a read-only deploy key.
 Once v2 is merged, clone `main` instead of the branch.
 
-Open `https://app.<your-domain>` on a phone. It works over mobile data too,
+Open `https://beta.<your-domain>` on a phone. It works over mobile data too,
 not just the shop Wi-Fi. The setup wizard opens; then *Share → Add to Home
 Screen* (iPhone) or *Install app* (Android).
 
@@ -170,6 +172,33 @@ It asks you to type `RESTORE`. Then it stops the app, replaces the database,
 starts the app, and prints the books check. On a new machine, do sections 1 to 3
 first, then restore from R2.
 
+## Sharing the beta
+
+The address for testers is `https://beta.<your-domain>`. It's a plain browser
+link, with nothing to install and no account.
+
+1. **Set it up once yourself.** Open the link and go through the setup wizard
+   (company, a few team names such as *Demo Clerk* and *Demo Accounting*, then
+   **Add minimal sample data**). The wizard runs only once, so testers land on
+   *Who's working?* instead. There they tap a name or add themselves.
+2. **Send testers the link, plus `https://beta.<your-domain>/test-sheet`.**
+   They open the test sheet on a laptop (or print it) and scan it with their
+   phone. On a phone they can also *Add to Home Screen*.
+3. **Wipe it between rounds of testing:** `./reset.sh` (it backs up first),
+   then do step 1 again.
+
+The link isn't listed by search engines (the app sends `noindex`), but anyone
+who has it can use the beta, and change its data. That's fine for test data.
+**Before real stock and real bills go in,** pick one of these:
+
+- `./reset.sh` and keep using the same link (simplest; installed phones keep
+  working);
+- or move to a separate `app.` address with its own database (ask for it then;
+  the beta can keep running beside it).
+
+Either way, the 5-minute email login under *Plainly stated* is worth turning
+on at that point.
+
 ## 5. Updates
 
 ```bash
@@ -192,7 +221,7 @@ they open the app.
 
   **To add an email login later, in about 5 minutes, with no code change:**
   Zero Trust → Access → Applications → *Add an application* → *Self-hosted* →
-  `app.<your-domain>`. Add a policy that allows your team's email addresses,
+  `beta.<your-domain>`. Add a policy that allows your team's email addresses,
   and set the session to 30 days. Each person then gets a one-time code by
   email, about once a month. The app already loads its install manifest with
   credentials, so *Add to Home Screen* keeps working behind it.
