@@ -6,6 +6,7 @@ import type { Profile } from "./generated/prisma/client";
 import { sendError } from "./http";
 import { registerAccounting } from "./routes/accounting";
 import { registerCatalog } from "./routes/catalog";
+import { registerPurchasing } from "./routes/purchasing";
 import { registerSetup } from "./routes/setup";
 
 declare module "fastify" {
@@ -67,5 +68,6 @@ export function buildApp(deps: Deps): FastifyInstance {
   registerSetup(app, deps);
   registerCatalog(app, deps);
   registerAccounting(app, deps);
+  registerPurchasing(app, deps);
   return app;
 }
