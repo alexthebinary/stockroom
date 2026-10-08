@@ -7,7 +7,7 @@ const PIXEL = "data:image/png;base64,iVBORw0KGgo=";
 const image = imageFromDataUrl(PIXEL)!;
 
 function stubClient(respond: () => unknown) {
-  const parse = vi.fn(async () => respond());
+  const parse = vi.fn(async (_params: unknown) => respond());
   return { client: { beta: { messages: { parse } } } as unknown as ParseClient, parse };
 }
 
@@ -17,7 +17,7 @@ describe("the Claude reader", () => {
     const { client: c, parse } = stubClient(() => ({ stop_reason: "end_turn", parsed_output: slip, model: MODEL }));
     const result = await createClaudeReader(c).readPackingSlip(image);
     expect(result).toEqual({ ok: true, data: slip, model: MODEL });
-    const params = parse.mock.calls[0]![0] as Record<string, any>;
+    const params = (parse.mock.calls as unknown as Record<string, any>[][])[0]![0]!;
     expect(params.model).toBe("claude-opus-5-5");
     expect(params.betas).toContain("server-side-fallback-2026-07-01");
     expect(params.fallbacks).toBe("default");

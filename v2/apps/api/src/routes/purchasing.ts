@@ -16,13 +16,13 @@ const eventBody = z.object({
   clientId: z.string().min(8).max(64),
   code: z.string().max(200).nullish(),
   itemId: z.number().int().positive().nullish(),
-  qty: z.number().int().refine((n) => n !== 0, "a scan counts at least one unit"),
+  qty: z.number().int(),
   source: z.enum(["BARCODE", "AI", "MANUAL"]),
   serial: z.string().trim().max(80).nullish(),
   unknownName: z.string().trim().max(120).nullish(),
   photo: z.string().startsWith("data:image/").max(2_000_000).nullish(),
   capturedAt: z.coerce.date(),
-});
+}).refine((e) => e.qty !== 0 || e.unknownName || e.photo, "a scan counts at least one unit (a zero only carries a name or photo for an unknown box)");
 const billPatch = z.object({
   version: z.number().int().min(0),
   vendorId: z.number().int().positive().nullish(),

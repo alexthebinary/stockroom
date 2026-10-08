@@ -1,0 +1,74 @@
+/* Tokens. Light first; dark follows Mantine's own scheme attribute. */
+:root {
+  --surface: #fafaf7;
+  --surface-sunken: #f0f1ec;
+  --surface-border: #dcded6;
+  --ink: #111210;
+  --signal: #c6d55a;
+  --signal-ink: #111210;
+  --text-strong: #111210;
+  --text: #2b2d28;
+  --text-muted: #4a4d45;
+  --line: #e6e7e1;
+  --ok-fg: #3f4a0e;
+  --ok-bg: rgba(198, 213, 90, 0.22);
+  --warn-fg: #9a3412;
+  --warn-bg: rgba(255, 170, 60, 0.16);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --mantine-color-body: var(--surface);
+}
+:root[data-mantine-color-scheme="dark"] {
+  --surface: #121311;
+  --surface-sunken: #0c0d0b;
+  --surface-border: #2a2c27;
+  --ink: #eeefe9;
+  --signal: #c6d55a;
+  --signal-ink: #121311;
+  --text-strong: #eeefe9;
+  --text: #d9dbd3;
+  --text-muted: #b0b3a8;
+  --line: #2a2c27;
+  --ok-fg: #c6d55a;
+  --ok-bg: rgba(198, 213, 90, 0.14);
+  --warn-fg: #ffb877;
+  --warn-bg: rgba(249, 115, 22, 0.16);
+  --mantine-color-body: var(--surface);
+}
+
+html, body { background: var(--surface); color: var(--text); }
+body { font-variant-numeric: tabular-nums; -webkit-tap-highlight-color: transparent; }
+#root { min-height: 100dvh; }
+
+/* A figure: tracked caps label above, large tabular value, one hairline rule. */
+.stat { border-top: 1px solid var(--ink); padding-top: 8px; min-width: 0; }
+.stat-label { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.stat-value { font-size: 28px; font-weight: 600; color: var(--text-strong); line-height: 1.15; overflow-wrap: anywhere; }
+.stat-value[data-signal="true"]::after { content: ""; display: inline-block; width: 9px; height: 9px; margin-left: 8px; border-radius: 50%; background: var(--signal); vertical-align: middle; }
+
+/* Phone: the bottom tab bar, thumb-sized, above the home indicator. */
+.tabbar { position: fixed; inset: auto 0 0 0; z-index: 200; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  background: var(--surface); border-top: 1px solid var(--surface-border); padding-bottom: env(safe-area-inset-bottom); }
+.tabbar a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0 6px; min-height: 56px;
+  color: var(--text-muted); text-decoration: none; font-size: 11px; }
+.tabbar a[aria-current="page"] { color: var(--text-strong); }
+.tabbar a[aria-current="page"] svg { color: var(--ink); }
+.tabbar a[aria-current="page"]::before { content: ""; position: absolute; transform: translateY(-8px); width: 28px; height: 3px; border-radius: 2px; background: var(--signal); }
+
+/* The one authored moment: a lime rule draws under a finished figure. */
+@keyframes rule-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.rule-in { position: relative; }
+.rule-in::after { content: ""; position: absolute; left: 0; right: 0; bottom: -6px; height: 3px; background: var(--signal); transform-origin: left; animation: rule-in 480ms var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) { .rule-in::after { animation: none; } }
+
+/* Scanner overlay. */
+.scanner { position: fixed; inset: 0; z-index: 400; background: #000; display: flex; flex-direction: column; }
+.scanner video { flex: 1; width: 100%; min-height: 0; object-fit: cover; }
+.scanner-frame { position: absolute; left: 8%; right: 8%; top: 30%; height: 22%; border: 3px solid rgba(255,255,255,0.85); border-radius: 14px; pointer-events: none; transition: border-color 150ms var(--ease-out); }
+.scanner-frame[data-state="ok"] { border-color: #c6d55a; box-shadow: 0 0 0 9999px rgba(198, 213, 90, 0.12); }
+.scanner-frame[data-state="warn"] { border-color: #f59f00; }
+.scanner-bar { background: rgba(10, 11, 9, 0.92); color: #eeefe9; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; }
+}
