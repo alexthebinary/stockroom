@@ -244,3 +244,11 @@ An independent architecture review of this spec was folded in:
 - **Session close** carries `expectedEventCount`; if the server holds fewer events, the device re-flushes its outbox first.
 - **Later phases noted:** a period-end reversing accrual for held stock (received, not billed) if the client wants it; held-stock aging with "accept at estimate" / "reject"; period lock date.
 - **Risk accepted by the operator:** no sign-in and no passcode for now. The README says so plainly.
+
+## Implementation notes (as built, 2026-10-08)
+- **Setup wizard order:** Welcome → Company → Team → *Sample data or empty* → Warehouses → Accounts → Vendors → Items → Opening stock → Done. Sample data comes before the catalog steps because it is only offered to an empty company.
+- **Posting and voiding** use a press-and-hold control (kitchen `HoldToConfirmButton`); a short tap does nothing. The clerk's big actions are tactile keys; finishing a delivery prints the WH-IN receipt. See `../../DESIGN.md`.
+- **Person switch** on a shared device clears every cached screen except the company's setup state.
+- **Average-cost races** never surface as errors: the pool and lots are row-locked for the transaction, so concurrent issues queue rather than fail.
+- **Global posting roles** (not per-event): repointing `bank` or `payable` moves every event together, so AP can't drift between bills and payments.
+- **Adjustments** (GAAP guide §II.3 #2/#3, gain/loss) were pulled forward from Phase 3: a clerk needs "damaged on arrival", and late-freight tests need units that have left stock.

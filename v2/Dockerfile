@@ -1,0 +1,21 @@
+# ProfitIndex v2: one image, the API serving the built PWA. Runs on any host
+# with Docker and a Postgres 16 (docker compose up gives you both).
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY packages/domain/package.json packages/domain/
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+COPY e2e/package.json e2e/
+RUN npm ci --workspace=@pi/domain --workspace=@pi/api --workspace=@pi/web --include-workspace-root
+COPY packages packages
+COPY apps apps
+RUN npm run build -w @pi/web && npm run build -w @pi/api
+
+FROM node:22-bookworm-slim
+WORKDIR /app
+ENV NODE_ENV=production PORT=4100
+COPY --from=build /app /app
+EXPOSE 4100
+# Apply any new migrations, then serve. A brand-new database opens the setup wizard.
+CMD ["sh", "-c", "npm run migrate -w @pi/api && node apps/api/dist/server.js"]

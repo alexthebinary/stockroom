@@ -1,0 +1,7 @@
+**/node_modules
+**/dist
+**/.env
+apps/api/src/generated
+e2e/test-results
+e2e/screenshots
+e2e/fixtures/*.y4m
