@@ -1,4 +1,5 @@
 import { expect } from "vitest";
+import type { Reader } from "../src/ai/reader";
 import { buildApp } from "../src/app";
 import { checkBooks } from "../src/books";
 import { createDb, type Db } from "../src/db";
@@ -24,8 +25,8 @@ export async function resetDb(): Promise<Db> {
 export type Client = ReturnType<typeof client>;
 
 /** An HTTP client against the in-process app, acting as `profileId` when given. */
-export function client(profileId?: number) {
-  const app = buildApp({ db: testDb(), reader: null });
+export function client(profileId?: number, reader: Reader | null = null) {
+  const app = buildApp({ db: testDb(), reader });
   const call = async (method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", url: string, payload?: unknown) => {
     const response = await app.inject({
       method,

@@ -6,6 +6,7 @@ import type { Profile } from "./generated/prisma/client";
 import { sendError } from "./http";
 import { registerAccounting } from "./routes/accounting";
 import { registerAdjustments } from "./routes/adjustments";
+import { registerAi } from "./routes/ai";
 import { registerCatalog } from "./routes/catalog";
 import { registerPayables } from "./routes/payables";
 import { registerPurchasing } from "./routes/purchasing";
@@ -75,5 +76,6 @@ export function buildApp(deps: Deps): FastifyInstance {
   registerPayables(app, deps);
   registerReports(app, deps);
   registerAdjustments(app, deps);
+  registerAi(app, deps);
   return app;
 }
