@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { Ruled, RuledRow } from "../../components/Ruled";
 import { formatDate, Loading, Money, PageHeader, ReceivingBadge, StatusBadge, toastErr, toastOk, usd } from "../../components/ui";
 import { get, post } from "../../lib/api";
 import type { Item, PurchaseOrder, Vendor, Warehouse } from "../../lib/types";
@@ -32,28 +33,29 @@ export function Orders() {
           </Button>
         }
       />
-      <Stack gap="sm">
-        {orders.data.length === 0 ? <Text c="dimmed">No orders yet. Create one, or let the dock open one by scanning a delivery.</Text> : null}
+      <Ruled label="Purchase orders" empty="No orders yet. Create one, or let the dock open one by scanning a surprise delivery.">
         {orders.data.map((po) => (
-          <Card key={po.id} withBorder component={Link} to={`/orders/${po.id}`} style={{ textDecoration: "none", color: "inherit" }}>
-            <Group justify="space-between" wrap="nowrap" align="flex-start">
-              <Stack gap={4} style={{ minWidth: 0 }}>
-                <Text fw={600}>
-                  {po.number} · {po.vendor?.name ?? "Vendor not set"}
-                </Text>
-                <Text size="sm" c="dimmed">
+          <RuledRow
+            key={po.id}
+            to={`/orders/${po.id}`}
+            title={`${po.number} · ${po.vendor?.name ?? "Vendor not set"}`}
+            meta={
+              <Stack gap={6} mt={4}>
+                <span>
                   {po.source === "SCAN" ? "Opened at the dock" : `By ${po.createdBy}`} · {formatDate(po.createdAt)}
                   {po.lifecycle !== "OPEN" ? ` · ${po.lifecycle.toLowerCase()}` : ""}
-                </Text>
+                </span>
                 <Axes po={po} />
               </Stack>
+            }
+            aside={
               <Text fw={600}>
                 <Money cents={po.totalEstimateCents} />
               </Text>
-            </Group>
-          </Card>
+            }
+          />
         ))}
-      </Stack>
+      </Ruled>
     </>
   );
 }

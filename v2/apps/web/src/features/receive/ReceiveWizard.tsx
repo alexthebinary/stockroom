@@ -23,7 +23,11 @@ import { IconAlertTriangle, IconBarcode, IconCheck, IconCloudOff, IconFileText, 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Coach } from "../../components/Coach";
-import { toastErr } from "../../components/ui";
+import { type PrinterStage, ReceiptPrinter } from "../../components/kitchen/ReceiptPrinter";
+import { TactileButton } from "../../components/kitchen/TactileButton";
+import { useProfile } from "../../lib/profile";
+import type { Setup } from "../../lib/types";
+import { plural, toastErr } from "../../components/ui";
 import { ApiError, get, patch, post } from "../../lib/api";
 import type { Item, Vendor, Warehouse } from "../../lib/types";
 import { type ScanFeedback, Scanner } from "../scan/Scanner";
@@ -31,7 +35,7 @@ import { enqueue, eventsFor, flush, forget, outbox, type QueuedEvent } from "./o
 
 type Expected = { id: number; number: string; billingStatus: string; vendor: Vendor | null; lines: { id: number; itemId: number; item: Item; outstanding: number }[] }[];
 type Session = { id: number; clientId: string; warehouseId: number; vendorId: number | null; poId: number | null; status: string };
-type Result = { poIds: number[]; receiptIds: number[]; draftBillIds: number[]; landedUnits: number; heldUnits: number; unknown: { code: string | null; name: string | null; qty: number }[] };
+type Result = { poIds: number[]; receiptIds: number[]; receiptNumbers: string[]; draftBillIds: number[]; landedUnits: number; heldUnits: number; unknown: { code: string | null; name: string | null; qty: number }[] };
 type SlipRead = {
   available: boolean;
   ok?: boolean;
@@ -78,7 +82,7 @@ export function ReceiveWizard() {
   const [step, setStep] = useState(resume?.step ?? 0);
   const [sessionId, setSessionId] = useState<number | null>(resume?.sessionId ?? null);
   const [warehouseId, setWarehouseId] = useState<number | null>(lastWarehouse());
-  const [result, setResult] = useState<Result | null>(null);
+  const [result, setResult] = useState<{ result: Result; lines: Line[] } | null>(null);
   const session = useQuery({ queryKey: ["session", sessionId], queryFn: () => get<Session>(`/scan-sessions/${sessionId}`), enabled: sessionId != null });
   const warehouses = useQuery({ queryKey: ["warehouses"], queryFn: () => get<Warehouse[]>("/warehouses") });
 
@@ -122,7 +126,7 @@ export function ReceiveWizard() {
           Step {Math.min(step + 1, 5)} of 5
         </Badge>
       </Group>
-      <Progress value={(Math.min(step + 1, 5) / 5) * 100} color="lime" size="sm" />
+      <Progress value={(Math.min(step + 1, 5) / 5) * 100} color="lime.4" size="sm" />
       {step === 0 && (
         <WhereStep
           warehouses={warehouses.data ?? []}
@@ -144,8 +148,8 @@ export function ReceiveWizard() {
           session={session.data}
           step={step}
           onStep={setStep}
-          onDone={(r) => {
-            setResult(r);
+          onDone={(r, lines) => {
+            setResult({ result: r, lines });
             setStep(4);
             remember(null);
           }}
@@ -156,7 +160,7 @@ export function ReceiveWizard() {
           }}
         />
       )}
-      {step === 4 && result && <DoneStep result={result} onAnother={finishOver} onHome={() => navigate("/")} />}
+      {step === 4 && result && <DoneStep result={result.result} lines={result.lines} warehouseName={warehouses.data?.find((w) => w.id === warehouseId)?.name ?? ""} onAnother={finishOver} onHome={() => navigate("/")} />}
     </Stack>
   );
 }
@@ -248,7 +252,7 @@ function WhoStep({ warehouseId, onStart, onBack }: { warehouseId: number; onStar
 
 type Line = { key: string; itemId: number | null; item: Item | null; code: string | null; name: string | null; qty: number; serials: string[] };
 
-function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: Session; step: number; onStep: (n: number) => void; onDone: (r: Result) => void; onAbandon: () => void }) {
+function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: Session; step: number; onStep: (n: number) => void; onDone: (r: Result, lines: Line[]) => void; onAbandon: () => void }) {
   const items = useQuery({ queryKey: ["items"], queryFn: () => get<Item[]>("/items") });
   const expected = useQuery({ queryKey: ["expected", session.warehouseId], queryFn: () => get<Expected>(`/receiving/expected?warehouseId=${session.warehouseId}`) });
   const ai = useQuery({ queryKey: ["ai"], queryFn: () => get<{ available: boolean }>("/ai/status") });
@@ -372,15 +376,21 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
       const total = await outbox.events.where({ sessionId: session.id }).count();
       const result = await post<Result>(`/scan-sessions/${session.id}/submit`, { expectedEventCount: total });
       await forget(session.id);
-      onDone(result);
+      onDone(result, lines);
     } catch (error) {
       toastErr(error);
-    } finally {
       setFinishing(false);
     }
   };
 
   const missingSerials = lines.filter((l) => l.item?.trackingMode === "SERIAL" && l.serials.length < l.qty);
+  if (finishing) {
+    return (
+      <ReceiptPrinter stage="processing">
+        <ReceiptBody lines={lines} numbers={[]} landed={0} held={0} warehouseName="" />
+      </ReceiptPrinter>
+    );
+  }
   const unknown = lines.filter((l) => !l.itemId);
   const counted = lines.reduce((s, l) => s + (l.itemId ? l.qty : 0), 0);
 
@@ -415,9 +425,10 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
               })}
             </Card>
           ) : null}
-          <Button size="xl" h={72} leftSection={<IconBarcode size={28} />} onClick={() => setScanning(true)}>
+          <TactileButton size="xl" fullWidth onClick={() => setScanning(true)}>
+            <IconBarcode size={28} aria-hidden="true" />
             {counted ? "Scan more" : "Open scanner"}
-          </Button>
+          </TactileButton>
           {reading ? (
             <Group>
               <Loader size="sm" />
@@ -457,9 +468,10 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
             <Button variant="subtle" onClick={() => onStep(2)}>
               Back to scanning
             </Button>
-            <Button size="lg" color="lime" leftSection={<IconCheck />} loading={finishing} disabled={missingSerials.length > 0} onClick={finish}>
+            <TactileButton tone="signal" disabled={finishing || missingSerials.length > 0} onClick={finish}>
+              <IconCheck size={22} aria-hidden="true" />
               Finish delivery
-            </Button>
+            </TactileButton>
           </Group>
         </>
       )}
@@ -498,7 +510,7 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
                   <div>
                     <Text fw={600}>{l.item?.name ?? l.description}</Text>
                     <Text size="sm" c={l.itemId ? "dimmed" : "orange"}>
-                      {l.itemId ? `${l.quantity} unit(s)` : "Not matched to an item — scan these boxes instead"}
+                      {l.itemId ? plural(l.quantity, "unit") : "Not matched to an item — scan these boxes instead"}
                       {l.serials.length ? ` · S/N ${l.serials.join(", ")}` : ""}
                     </Text>
                   </div>
@@ -612,30 +624,91 @@ function NameUnknown({ line, onClose, onSave }: { line: Line | null; onClose: ()
   );
 }
 
-function DoneStep({ result, onAnother, onHome }: { result: Result; onAnother: () => void; onHome: () => void }) {
+/** The WH-IN receipt as printed: what came in, where, by whom, and where it stands. */
+function ReceiptBody({ lines, numbers, landed, held, warehouseName, unknown = [] }: { lines: Line[]; numbers: string[]; landed: number; held: number; warehouseName: string; unknown?: Result["unknown"] }) {
+  const { profile } = useProfile();
+  const setup = useQuery({ queryKey: ["setup"], queryFn: () => get<Setup>("/setup") });
+  const now = new Date();
   return (
-    <Stack align="stretch">
-      <Card withBorder padding="xl">
-        <Stack gap="xs">
-          <IconCheck size={40} color="var(--mantine-color-lime-7)" />
-          <Title order={2} className="rule-in" style={{ alignSelf: "flex-start" }}>
-            Delivery received
-          </Title>
-          {result.landedUnits > 0 ? <Text size="lg">{result.landedUnits} unit(s) are in stock now — their bill was already posted.</Text> : null}
-          {result.heldUnits > 0 ? (
-            <Text size="lg">
-              {result.heldUnits} unit(s) are counted and waiting for accounting to post the bill. They become sellable stock then — nothing more for you to do.
-            </Text>
-          ) : null}
-          {result.unknown.length > 0 ? <Text>{result.unknown.length} unknown item(s) were set aside for accounting to match.</Text> : null}
-        </Stack>
-      </Card>
-      <Button size="xl" onClick={onAnother}>
+    <>
+      <div className="receipt-head">
+        <b>{(setup.data?.company.name || "Warehouse").toUpperCase()}</b>
+        Warehouse receipt
+      </div>
+      <div>{numbers.join(", ") || "WH-IN —"}</div>
+      <div>
+        {now.toLocaleDateString("en-US")} {now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+      </div>
+      <div>
+        {warehouseName}
+        {profile ? ` · ${profile.name}` : ""}
+      </div>
+      <hr className="receipt-rule" />
+      {lines
+        .filter((l) => l.itemId)
+        .map((l) => (
+          <div className="receipt-line" key={l.key}>
+            <span>{l.qty}</span>
+            <span>
+              {l.item?.name}
+              <small>
+                {l.item?.sku}
+                {l.serials.length ? ` · ${l.serials.join(", ")}` : ""}
+              </small>
+            </span>
+          </div>
+        ))}
+      {unknown.map((u, i) => (
+        <div className="receipt-line" key={`u${i}`}>
+          <span>{u.qty}</span>
+          <span>
+            {u.name ?? "Unknown item"}
+            <small>set aside · code {u.code ?? "—"}</small>
+          </span>
+        </div>
+      ))}
+      <hr className="receipt-rule" />
+      <div className="receipt-total">
+        <span>In stock now</span>
+        <b>{landed}</b>
+      </div>
+      <div className="receipt-total">
+        <span>Awaiting the bill</span>
+        <b>{held}</b>
+      </div>
+      <hr className="receipt-rule" />
+      <div>{held > 0 ? "Accounting has the draft bill. Nothing more to do here." : "Booked against the vendor's bill. Stock is live."}</div>
+    </>
+  );
+}
+
+function DoneStep({ result, lines, warehouseName, onAnother, onHome }: { result: Result; lines: Line[]; warehouseName: string; onAnother: () => void; onHome: () => void }) {
+  const [stage, setStage] = useState<PrinterStage>("printing");
+  useEffect(() => {
+    const t = setTimeout(() => setStage("complete"), 1800);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <Stack align="stretch" gap="lg">
+      <ReceiptPrinter stage={stage}>
+        <ReceiptBody lines={lines} numbers={result.receiptNumbers} landed={result.landedUnits} held={result.heldUnits} warehouseName={warehouseName} unknown={result.unknown} />
+      </ReceiptPrinter>
+      <Text ta="center" size="lg" fw={500}>
+        {result.heldUnits > 0
+          ? `${plural(result.heldUnits, "unit")} ${result.heldUnits === 1 ? "is" : "are"} counted and waiting for accounting to post the bill.`
+          : `${plural(result.landedUnits, "unit")} ${result.landedUnits === 1 ? "is" : "are"} in stock now.`}
+      </Text>
+      <TactileButton size="xl" fullWidth onClick={onAnother} className="no-print">
         Receive another delivery
-      </Button>
-      <Button variant="subtle" onClick={onHome} component={Link} to="/">
-        Back to home
-      </Button>
+      </TactileButton>
+      <Group justify="center" className="no-print">
+        <Button variant="subtle" onClick={() => window.print()}>
+          Print receipt
+        </Button>
+        <Button variant="subtle" onClick={onHome} component={Link} to="/">
+          Back to home
+        </Button>
+      </Group>
     </Stack>
   );
 }

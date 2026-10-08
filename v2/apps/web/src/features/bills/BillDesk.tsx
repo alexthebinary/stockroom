@@ -4,7 +4,8 @@ import { IconPlus, IconTruck } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Coach } from "../../components/Coach";
-import { formatDate, Loading, Money, PageHeader, StatusBadge, toastErr, toastOk } from "../../components/ui";
+import { Ruled, RuledRow } from "../../components/Ruled";
+import { plural, formatDate, Loading, Money, PageHeader, StatusBadge, toastErr, toastOk } from "../../components/ui";
 import { get, post } from "../../lib/api";
 import type { Bill, Item } from "../../lib/types";
 
@@ -13,7 +14,7 @@ const days = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) 
 
 /** The accounting inbox: what the dock received that needs a bill, then what's posted and unpaid. */
 export function BillDesk() {
-  const bills = useQuery({ queryKey: ["bills"], queryFn: () => get<Bill[]>("/bills") });
+  const bills = useQuery({ queryKey: ["bills"], queryFn: () => get<Bill[]>("/bills"), refetchInterval: 30_000 });
   const unknown = useQuery({ queryKey: ["unknown"], queryFn: () => get<{ sessionId: number; code: string | null; name: string | null; qty: number; startedBy: string; submittedAt: string }[]>("/receiving/unknown") });
   const [tab, setTab] = useState<string | null>("review");
   if (!bills.data) return <Loading />;
@@ -51,36 +52,39 @@ export function BillDesk() {
       {tab === "unknown" ? (
         <UnknownItems rows={unknown.data ?? []} />
       ) : (
-        <Stack gap="sm">
-          {shown.length === 0 ? <Text c="dimmed">{tab === "review" ? "Nothing to review. New deliveries will appear here." : "Nothing here."}</Text> : null}
+        <Ruled label="Bills" empty={tab === "review" ? "Nothing to review. When the dock receives a delivery that isn't billed yet, its draft bill appears here." : "Nothing here."}>
           {shown.map((b) => (
-            <Card key={b.id} withBorder padding="md" component={Link} to={`/bills/${b.id}`} style={{ textDecoration: "none", color: "inherit" }}>
-              <Group justify="space-between" wrap="nowrap" align="flex-start">
-                <Stack gap={2} style={{ minWidth: 0 }}>
-                  <Group gap="xs">
-                    <Text fw={600}>{b.vendor?.name ?? "Vendor not set"}</Text>
-                    <Badge color="gray" variant="outline">
-                      {KIND[b.kind]}
-                    </Badge>
-                    {b.source === "SCAN" && b.status === "DRAFT" ? <Badge color="blue">From the dock</Badge> : null}
-                  </Group>
-                  <Text size="sm" c="dimmed">
-                    {b.number}
-                    {b.vendorInvoiceNumber ? ` · invoice ${b.vendorInvoiceNumber}` : ""}
-                    {b.status === "DRAFT" ? ` · ${days(b.createdAt)} day(s) old` : ` · due ${formatDate(b.dueDate)}`}
-                    {b.heldUnits ? ` · ${b.heldUnits} unit(s) waiting` : ""}
+            <RuledRow
+              key={b.id}
+              to={`/bills/${b.id}`}
+              title={
+                <>
+                  {b.vendor?.name ?? "Vendor not set"}
+                  <Text span c="dimmed" fw={400} size="sm">
+                    {" "}
+                    · {KIND[b.kind]}
                   </Text>
-                </Stack>
-                <Stack gap={4} align="flex-end">
+                </>
+              }
+              meta={
+                <>
+                  {b.number}
+                  {b.vendorInvoiceNumber ? ` · invoice ${b.vendorInvoiceNumber}` : ""}
+                  {b.status === "DRAFT" ? ` · ${b.source === "SCAN" ? "from the dock, " : ""}${plural(days(b.createdAt), "day")} old` : ` · due ${formatDate(b.dueDate)}`}
+                  {b.heldUnits ? ` · ${plural(b.heldUnits, "unit")} waiting` : ""}
+                </>
+              }
+              aside={
+                <>
                   <Text fw={600}>
                     <Money cents={b.status === "POSTED" ? b.openCents : b.totalCents} />
                   </Text>
                   <StatusBadge status={b.status} />
-                </Stack>
-              </Group>
-            </Card>
+                </>
+              }
+            />
           ))}
-        </Stack>
+        </Ruled>
       )}
     </>
   );
@@ -110,7 +114,7 @@ function UnknownItems({ rows }: { rows: { sessionId: number; code: string | null
         <Card key={i} withBorder>
           <Text fw={600}>{r.name ?? "No description"}</Text>
           <Text size="sm" c="dimmed">
-            Code {r.code ?? "—"} · {r.qty} unit(s) · scanned by {r.startedBy} {formatDate(r.submittedAt)}
+            Code {r.code ?? "—"} · {plural(r.qty, "unit")} · scanned by {r.startedBy} {formatDate(r.submittedAt)}
           </Text>
           <Button mt="sm" variant="light" onClick={() => setMapping(r)} leftSection={<IconPlus size={16} />}>
             Match to an item

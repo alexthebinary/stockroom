@@ -1,0 +1,14 @@
+{
+  "name": "@pi/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fixtures": "node fixtures/make-video.mjs",
+    "test": "npm run fixtures && playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "zxing-wasm": "^3.1.5"
+  }
+}

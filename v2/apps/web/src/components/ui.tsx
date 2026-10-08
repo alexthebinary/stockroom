@@ -6,6 +6,9 @@ import type { ReactNode } from "react";
 
 export const usd = (cents: number | null | undefined) => (cents == null ? "—" : formatUsd(cents));
 
+/** "1 unit", "2 units" — counts read as words, not "unit(s)". */
+export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
 export function Money({ cents, strong }: { cents: number | null | undefined; strong?: boolean }) {
   return (
     <Text span inherit fw={strong ? 600 : undefined} style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
@@ -33,8 +36,8 @@ export function Stat({ label, value, signal, hint }: { label: string; value: Rea
 
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: ReactNode; action?: ReactNode }) {
   return (
-    <Group justify="space-between" align="flex-start" mb="lg" wrap="nowrap" gap="sm">
-      <Stack gap={4} style={{ minWidth: 0 }}>
+    <Group justify="space-between" align="flex-start" mb="lg" gap="sm">
+      <Stack gap={4} style={{ minWidth: 0, flex: "1 1 260px" }}>
         <Title order={1}>{title}</Title>
         {subtitle ? (
           <Text c="dimmed" size="sm">
@@ -106,7 +109,7 @@ export function Problem({ error, retry }: { error: unknown; retry?: () => void }
   );
 }
 
-export const toastOk = (message: string) => notifications.show({ message, color: "lime", autoClose: 3000 });
+export const toastOk = (message: string) => notifications.show({ message, color: "lime.4", autoClose: 3000 });
 export const toastErr = (error: unknown) => notifications.show({ title: "Not saved", message: error instanceof Error ? error.message : String(error), color: "orange", autoClose: 7000 });
 
 export const formatDate = (iso: string | Date | null | undefined) =>

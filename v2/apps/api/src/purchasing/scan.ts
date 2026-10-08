@@ -125,7 +125,7 @@ export async function submitSession(ctx: StockCtx, sessionId: number, expectedEv
   const result =
     arrivals.length > 0
       ? await receive(ctx, { warehouseId: session.warehouseId, vendorId: session.vendorId, poId: session.poId, arrivals, scanSessionId: session.id })
-      : { poIds: [], receiptIds: [], draftBillIds: [], landedUnits: 0, heldUnits: 0 };
+      : { poIds: [], receiptIds: [], receiptNumbers: [], draftBillIds: [], landedUnits: 0, heldUnits: 0 };
   const summary = { ...result, unknown: counted.unknown.map(({ photo: _photo, ...u }) => u) };
   await tx.scanSession.update({ where: { id: sessionId }, data: { result: summary as unknown as Prisma.InputJsonValue } });
   return summary;

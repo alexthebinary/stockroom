@@ -26,7 +26,8 @@ import { IconPaperclip } from "@tabler/icons-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Coach } from "../../components/Coach";
-import { formatDate, Loading, Money, PageHeader, Problem, Stat, StatusBadge, toInputDate, toastErr, toastOk, usd } from "../../components/ui";
+import { HoldToConfirmButton } from "../../components/kitchen/HoldToConfirmButton";
+import { plural, formatDate, Loading, Money, PageHeader, Problem, Stat, StatusBadge, toInputDate, toastErr, toastOk, usd } from "../../components/ui";
 import { del, get, patch, post } from "../../lib/api";
 import type { Bill, PurchaseOrder, Vendor } from "../../lib/types";
 
@@ -126,7 +127,7 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
       const saved = await save();
       if (what === "post") {
         await post(`/bills/${bill.id}/post`, { version: saved.version });
-        toastOk(`${bill.number} posted${landingNow ? ` — ${landingNow} unit(s) are now in stock` : ""}`);
+        toastOk(`${bill.number} posted${landingNow ? ` — ${plural(landingNow, "unit")} now in stock` : ""}`);
       } else toastOk("Saved");
       await queryClient.invalidateQueries();
     } catch (error) {
@@ -201,7 +202,7 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
             const f = form.lines.find((x) => x.id === l.id)!;
             const p = !(priced instanceof Error) ? priced.find((x) => x.key === String(l.id)) : undefined;
             return (
-              <Card key={l.id} withBorder padding="sm" bg="var(--surface-sunken)">
+              <div key={l.id} style={{ borderTop: "1px solid var(--line)", paddingTop: 12 }}>
                 <Group justify="space-between" mb={6} wrap="nowrap">
                   <Text fw={600} truncate>
                     {l.item?.name}
@@ -225,7 +226,7 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
                     {usd(p.goodsCents)} + {usd(p.freightCents)} freight = <b>{usd(p.landedCents)}</b> · lands at <b>{formatUsd(Math.round(p.landedUnitCents))}</b> each
                   </Text>
                 ) : null}
-              </Card>
+              </div>
             );
           })}
         </Stack>
@@ -275,7 +276,7 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
         )}
         {landingNow > 0 ? (
           <Text size="sm" mt="xs">
-            Then {landingNow} unit(s) waiting at the dock land: Dr {account("inventoryOnHand")} / Cr {account("inventoryInbound")}.
+            Then {plural(landingNow, "unit")} waiting at the dock {landingNow === 1 ? "lands" : "land"}: Dr {account("inventoryOnHand")} / Cr {account("inventoryInbound")}.
           </Text>
         ) : null}
       </Card>
@@ -299,9 +300,9 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
               <Money cents={total} />
             </Text>
           </div>
-          <Button size="lg" color="lime" onClick={() => run("post")} loading={busy} disabled={!form.vendorId || !form.vendorInvoiceNumber || priced instanceof Error || total <= 0}>
-            Post bill
-          </Button>
+          <HoldToConfirmButton onConfirm={() => run("post")} busy={busy} disabled={!form.vendorId || !form.vendorInvoiceNumber || priced instanceof Error || total <= 0} confirmed="Posting…">
+            Hold to post bill
+          </HoldToConfirmButton>
         </Group>
       </Card>
     </Stack>
@@ -392,9 +393,9 @@ function DraftFreightBill({ bill }: { bill: FullBill }) {
         <Button variant="default" onClick={() => run("save")} loading={busy}>
           Save
         </Button>
-        <Button color="lime" onClick={() => run("post")} loading={busy} disabled={!form.vendorId || !form.invoice || cents(form.amount) <= 0 || (bill.kind === "FREIGHT_IN" && form.targets.length === 0)}>
-          Post
-        </Button>
+        <HoldToConfirmButton onConfirm={() => run("post")} busy={busy} disabled={!form.vendorId || !form.invoice || cents(form.amount) <= 0 || (bill.kind === "FREIGHT_IN" && form.targets.length === 0)} confirmed="Posting…">
+          Hold to post
+        </HoldToConfirmButton>
       </Group>
     </Stack>
   );
@@ -432,7 +433,8 @@ export function NewFreightBill() {
 function PostedBill({ bill }: { bill: FullBill }) {
   const queryClient = useQueryClient();
   const journal = useQuery({ queryKey: ["journal", bill.id], queryFn: () => get<{ id: number; number: string; event: string; date: string; lines: { side: string; amountCents: number; account: { code: string; name: string } }[] }[]>(`/journal?sourceType=BILL&sourceId=${bill.id}`) });
-  const [modal, setModal] = useState<"pay" | "refund" | "credit" | "void" | null>(null);
+  const [modal, setModal] = useState<"pay" | "refund" | "credit" | null>(null);
+  const [voiding, setVoiding] = useState(false);
   const open = bill.openCents ?? 0;
   const refresh = () => queryClient.invalidateQueries();
   const act = async (fn: () => Promise<unknown>, message: string) => {
@@ -467,10 +469,20 @@ function PostedBill({ bill }: { bill: FullBill }) {
               Vendor credit
             </Button>
           ) : null}
-          <Button variant="subtle" color="red" onClick={() => setModal("void")}>
-            Void
+          <Button variant="subtle" color="red" onClick={() => setVoiding((v) => !v)}>
+            Void…
           </Button>
         </Group>
+      ) : null}
+      {voiding && bill.status === "POSTED" ? (
+        <Card withBorder>
+          <Text size="sm" mb="sm" maw="68ch">
+            Voiding reverses the bill's entry. Stock it brought in goes back to "awaiting a bill" and a fresh draft is made for it. Not possible once it's paid, credited, or its stock has been used — use a vendor credit then.
+          </Text>
+          <HoldToConfirmButton tone="danger" duration={1400} onConfirm={() => act(() => post(`/bills/${bill.id}/void`), `${bill.number} voided`)} confirmed="Voiding…">
+            Hold to void {bill.number}
+          </HoldToConfirmButton>
+        </Card>
       ) : null}
 
       <Card withBorder>
@@ -562,16 +574,6 @@ function PostedBill({ bill }: { bill: FullBill }) {
 
       <PayModal opened={modal === "pay" || modal === "refund"} refund={modal === "refund"} max={Math.abs(open)} onClose={() => setModal(null)} onSave={(body) => act(() => post(`/bills/${bill.id}/${modal === "refund" ? "refunds" : "payments"}`, body), modal === "refund" ? "Refund recorded" : "Payment recorded")} />
       <CreditModal opened={modal === "credit"} bill={bill} onClose={() => setModal(null)} onSave={(body) => act(() => post(`/bills/${bill.id}/credits`, body), "Vendor credit posted")} />
-      <Modal opened={modal === "void"} onClose={() => setModal(null)} title={`Void ${bill.number}?`}>
-        <Stack>
-          <Text size="sm">
-            The bill's entry is reversed. Stock it brought in goes back to "awaiting a bill" and a fresh draft is made for it. Not possible once it's paid, credited, or its stock has been used — use a vendor credit then.
-          </Text>
-          <Button color="red" onClick={() => act(() => post(`/bills/${bill.id}/void`), `${bill.number} voided`)}>
-            Void the bill
-          </Button>
-        </Stack>
-      </Modal>
     </Stack>
   );
 }

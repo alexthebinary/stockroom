@@ -65,7 +65,7 @@ export function SetupWizard() {
             {STEPS[step]}
           </Text>
         </Group>
-        <Progress value={((step + 1) / STEPS.length) * 100} color="lime" size="sm" />
+        <Progress value={((step + 1) / STEPS.length) * 100} color="lime.4" size="sm" />
       </Stack>
       {step === 0 && <Welcome onNext={next} />}
       {step === 1 && <CompanyStep setup={s} onNext={next} refresh={refresh} />}
@@ -167,13 +167,16 @@ function TeamStep({ onNext, onBack }: { onNext: () => void; onBack: () => void }
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: () => get<Profile[]>("/profiles") });
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
-  const [job, setJob] = useState<Job>(profiles.data?.length ? "CLERK" : "ADMIN");
+  // The first person is the admin doing setup; everyone after defaults to the dock, unless picked.
+  const [picked, setPicked] = useState<Job | null>(null);
+  const job: Job = picked ?? (profiles.data?.length ? "CLERK" : "ADMIN");
+  const setJob = (j: Job) => setPicked(j);
   const add = async () => {
     try {
       const created = await post<Profile>("/profiles", { name, job });
       if (!profile) choose(created); // the first person added is the one doing setup
       setName("");
-      setJob("CLERK");
+      setPicked(null);
       await queryClient.invalidateQueries({ queryKey: ["profiles"] });
     } catch (error) {
       toastErr(error);
@@ -506,7 +509,7 @@ function DoneStep({ setup, onBack, refresh }: { setup: Setup; onBack: () => void
           "Watch the widgets land at $550 each, then pay the bill.",
         ].map((t, i) => (
           <Group key={t} gap="sm" wrap="nowrap" align="flex-start">
-            <Badge circle color="lime" variant="filled">
+            <Badge circle color="lime.4" variant="filled">
               {i + 1}
             </Badge>
             <Text>{t}</Text>

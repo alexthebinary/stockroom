@@ -1,4 +1,4 @@
-import { Card, Group, Stack, Text, ThemeIcon } from "@mantine/core";
+import { Anchor, Card, Group, Stack, Text, ThemeIcon } from "@mantine/core";
 import { IconCheck } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -20,14 +20,14 @@ export function Checklist({ title = "Getting started", tasks }: { title?: string
       <Stack gap="xs">
         {tasks.map((t) => (
           <Group key={t.label} gap="sm" wrap="nowrap" align="flex-start">
-            <ThemeIcon size={22} radius="xl" color={t.done ? "lime" : "gray"} variant={t.done ? "filled" : "light"}>
+            <ThemeIcon size={22} radius="xl" color={t.done ? "lime.4" : "gray"} variant={t.done ? "filled" : "light"}>
               {t.done ? <IconCheck size={14} /> : <span />}
             </ThemeIcon>
             <div>
               {t.to && !t.done ? (
-                <Text component={Link} to={t.to} td="underline" inherit>
+                <Anchor component={Link} to={t.to}>
                   {t.label}
-                </Text>
+                </Anchor>
               ) : (
                 <Text td={t.done ? "line-through" : undefined} c={t.done ? "dimmed" : undefined}>
                   {t.label}

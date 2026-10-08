@@ -1,4 +1,5 @@
 import { Center, Loader } from "@mantine/core";
+import { lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Shell } from "./components/Shell";
@@ -10,13 +11,21 @@ import { ProfilePicker } from "./features/home/ProfilePicker";
 import { NewOrder, OrderDetail, Orders } from "./features/orders/Orders";
 import { Payables } from "./features/payables/Payables";
 import { ReceiveWizard } from "./features/receive/ReceiveWizard";
-import { Reports } from "./features/reports/Reports";
-import { Practice } from "./features/scan/Practice";
 import { Items } from "./features/settings/Items";
-import { Settings } from "./features/settings/Settings";
-import { SetupWizard } from "./features/setup/SetupWizard";
-import { TestSheet } from "./features/setup/TestSheet";
 import { get } from "./lib/api";
+
+// Screens a clerk's phone rarely or never opens load on demand.
+const Reports = lazy(() => import("./features/reports/Reports").then((m) => ({ default: m.Reports })));
+const Practice = lazy(() => import("./features/scan/Practice").then((m) => ({ default: m.Practice })));
+const Settings = lazy(() => import("./features/settings/Settings").then((m) => ({ default: m.Settings })));
+const SetupWizard = lazy(() => import("./features/setup/SetupWizard").then((m) => ({ default: m.SetupWizard })));
+const TestSheet = lazy(() => import("./features/setup/TestSheet").then((m) => ({ default: m.TestSheet })));
+
+const spinner = (
+  <Center h="60dvh">
+    <Loader />
+  </Center>
+);
 import { useProfile } from "./lib/profile";
 import type { Setup } from "./lib/types";
 
@@ -35,11 +44,12 @@ export function App() {
       </Center>
     );
   }
-  if (pathname === "/test-sheet") return <TestSheet />;
-  if (setup.data.required || pathname === "/setup") return <SetupWizard />;
+  if (pathname === "/test-sheet") return <Suspense fallback={spinner}><TestSheet /></Suspense>;
+  if (setup.data.required || pathname === "/setup") return <Suspense fallback={spinner}><SetupWizard /></Suspense>;
   if (!profile) return <ProfilePicker />;
   return (
     <Shell>
+      <Suspense fallback={spinner}>
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/receive" element={<ReceiveWizard />} />
@@ -57,6 +67,7 @@ export function App() {
         <Route path="/guide" element={<Guide />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
     </Shell>
   );
 }

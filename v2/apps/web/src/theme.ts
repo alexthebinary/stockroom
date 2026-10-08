@@ -23,5 +23,7 @@ export const theme = createTheme({
     Button: { defaultProps: { radius: "xl" } },
     ActionIcon: { defaultProps: { radius: "xl" } },
     Badge: { defaultProps: { radius: "sm", variant: "light" } },
+    Anchor: { defaultProps: { c: "var(--text-strong)", underline: "always" } },
+    Progress: { defaultProps: { color: "lime.4" } },
   },
 });

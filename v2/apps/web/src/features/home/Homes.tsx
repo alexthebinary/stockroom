@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { IconAlertTriangle, IconBarcode, IconCircleCheck, IconFileInvoice, IconPlus, IconTruckDelivery } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
 import { Checklist } from "../../components/Checklist";
+import { TactileButton } from "../../components/kitchen/TactileButton";
+import { Ruled, RuledRow } from "../../components/Ruled";
 import { Coach } from "../../components/Coach";
 import { Loading, Money, Stat, usd } from "../../components/ui";
 import { get } from "../../lib/api";
@@ -11,7 +13,7 @@ import type { Bill, Home, PurchaseOrder, Setup } from "../../lib/types";
 
 const useHome = () => useQuery({ queryKey: ["home"], queryFn: () => get<Home>("/home"), refetchInterval: 30_000 });
 const useOrders = () => useQuery({ queryKey: ["orders", "ALL"], queryFn: () => get<PurchaseOrder[]>("/purchase-orders?lifecycle=ALL") });
-const useBills = () => useQuery({ queryKey: ["bills"], queryFn: () => get<Bill[]>("/bills") });
+const useBills = () => useQuery({ queryKey: ["bills"], queryFn: () => get<Bill[]>("/bills"), refetchInterval: 30_000 });
 
 function Greeting() {
   const { profile } = useProfile();
@@ -36,9 +38,10 @@ function ClerkHome() {
       <Coach id="clerk-home" title="Your job here is short">
         When a truck arrives: tap Receive, scan every box, finish. You never deal with prices or bills — accounting does that from what you scanned.
       </Coach>
-      <Button component={Link} to="/receive" size="xl" h={88} leftSection={<IconBarcode size={32} />} styles={{ label: { fontSize: 22 } }}>
+      <TactileButton to="/receive" size="xl" fullWidth>
+        <IconBarcode size={30} aria-hidden="true" />
         Receive a delivery
-      </Button>
+      </TactileButton>
       {home.data?.clerk.openDeliveries ? (
         <Alert color="blue" icon={<IconTruckDelivery size={18} />}>
           A delivery is still open on {home.data.clerk.openDeliveries === 1 ? "a phone" : `${home.data.clerk.openDeliveries} phones`}. Tap Receive to carry on with yours.
@@ -46,15 +49,11 @@ function ClerkHome() {
       ) : null}
       <Stack gap="xs">
         <Text fw={600}>Expected deliveries</Text>
-        {(expected.data ?? []).length === 0 ? <Text c="dimmed">Nothing on order right now. Surprise deliveries are fine — just scan them.</Text> : null}
-        {(expected.data ?? []).slice(0, 8).map((po) => (
-          <Card key={po.id} withBorder padding="sm">
-            <Text fw={600}>{po.vendor?.name ?? "Vendor not set"}</Text>
-            <Text size="sm" c="dimmed">
-              {po.number} · {po.lines.map((l) => `${l.outstanding} × ${l.item.name}`).join(", ")}
-            </Text>
-          </Card>
-        ))}
+        <Ruled label="Expected deliveries" empty="Nothing on order right now. Surprise deliveries are fine — just scan them.">
+          {(expected.data ?? []).slice(0, 8).map((po) => (
+            <RuledRow key={po.id} title={po.vendor?.name ?? "Vendor not set"} meta={`${po.number} · ${po.lines.map((l) => `${l.outstanding} × ${l.item.name}`).join(", ")}`} />
+          ))}
+        </Ruled>
       </Stack>
       <Checklist
         tasks={[

@@ -11,6 +11,8 @@ export type Arrival = { itemId: number; qty: number; serials: string[]; slipPric
 export type ReceiveResult = {
   poIds: number[];
   receiptIds: number[];
+  /** WH-IN document numbers, for the printed receipt. */
+  receiptNumbers: string[];
   draftBillIds: number[];
   landedUnits: number;
   heldUnits: number;
@@ -112,7 +114,7 @@ export async function receive(
     }
   }
 
-  const result: ReceiveResult = { poIds: [], receiptIds: [], draftBillIds: [], landedUnits: 0, heldUnits: 0 };
+  const result: ReceiveResult = { poIds: [], receiptIds: [], receiptNumbers: [], draftBillIds: [], landedUnits: 0, heldUnits: 0 };
   for (const { poId, planned } of touched) {
     const docNumber = await nextNumber(tx, "WH_IN");
     const receipt = await tx.warehouseReceipt.create({
@@ -183,6 +185,7 @@ export async function receive(
     await refreshPoStatus(tx, poId);
     result.poIds.push(poId);
     result.receiptIds.push(receipt.id);
+    result.receiptNumbers.push(docNumber);
   }
   return result;
 }

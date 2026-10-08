@@ -1,5 +1,4 @@
-import { Alert, Button, Group, Text } from "@mantine/core";
-import { IconBulb } from "@tabler/icons-react";
+import { Button, Text } from "@mantine/core";
 import { type ReactNode, useState } from "react";
 
 const seen = (key: string) => {
@@ -11,8 +10,9 @@ const seen = (key: string) => {
 };
 
 /**
- * First-use coaching: a tip shown the first time someone reaches a screen on
- * this device, gone for good once they tap "Got it".
+ * First-use coaching: a quiet aside the first time someone reaches a screen
+ * on this device, gone for good once they tap "Got it". The lime dot marks it
+ * as new; the rest stays out of the work's way.
  */
 export function Coach({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   const [hidden, setHidden] = useState(() => seen(id));
@@ -26,16 +26,15 @@ export function Coach({ id, title, children }: { id: string; title: string; chil
     setHidden(true);
   };
   return (
-    <Alert icon={<IconBulb size={18} />} color="lime" variant="light" title={title} mb="md" className="no-print">
-      <Text size="sm" mb="xs">
+    <aside className="coach no-print" aria-label={`Tip: ${title}`}>
+      <div className="coach-title">{title}</div>
+      <Text size="sm" mt={6} mb="xs" maw="68ch">
         {children}
       </Text>
-      <Group>
-        <Button size="xs" variant="light" color="lime" onClick={dismiss}>
-          Got it
-        </Button>
-      </Group>
-    </Alert>
+      <Button size="compact-sm" variant="default" onClick={dismiss}>
+        Got it
+      </Button>
+    </aside>
   );
 }
 

@@ -2,7 +2,7 @@ import { Alert, Card, Group, Stack, Table, Tabs, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
-import { formatDate, Loading, Money, PageHeader, usd } from "../../components/ui";
+import { plural, formatDate, Loading, Money, PageHeader, usd } from "../../components/ui";
 import { get } from "../../lib/api";
 
 type Books = { sound: boolean; problems: string[]; figures: Record<string, number> };
@@ -187,7 +187,7 @@ function HeldStock() {
               </Text>
             </div>
             <Text c={h.days > 7 ? "orange" : undefined} fw={600}>
-              {h.days} day(s)
+              {plural(h.days, "day")}
             </Text>
           </Group>
         </Card>

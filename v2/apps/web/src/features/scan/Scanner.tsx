@@ -22,8 +22,8 @@ type Detector = { detect: (source: CanvasImageSource) => Promise<{ rawValue: str
  * The camera, full screen, open between scans: aim, it reads, it buzzes, aim
  * at the next box. Decodes ~8 frames a second from the aiming frame only,
  * using the phone's own BarcodeDetector where there is one (Android) and the
- * bundled WebAssembly decoder everywhere else (iPhone). The same code seen
- * again within 1.5 s is the same box, not a second one.
+ * bundled WebAssembly decoder everywhere else (iPhone). A code that stays in
+ * view counts once; it counts again only after leaving the frame.
  */
 export function Scanner({ onScan, onClose, children, prompt, onPhoto }: Props) {
   const video = useRef<HTMLVideoElement>(null);
@@ -41,9 +41,12 @@ export function Scanner({ onScan, onClose, children, prompt, onPhoto }: Props) {
   const [typed, setTyped] = useState("");
 
   const deliver = useCallback(async (code: string) => {
+    // One box held in view is one scan: the same code counts again only after
+    // it has been out of view for 1.5 s (the clerk moved to the next box).
     const now = Date.now();
-    if (last.current && last.current.code === code && now - last.current.at < 1500) return;
+    const seenRecently = last.current && last.current.code === code && now - last.current.at < 1500;
     last.current = { code, at: now };
+    if (seenRecently) return;
     const result = await handler.current(code);
     setState(result);
     signal(result);
@@ -215,7 +218,7 @@ export function Scanner({ onScan, onClose, children, prompt, onPhoto }: Props) {
                 Photo
               </Button>
             ) : null}
-            <Button size="lg" color="lime" onClick={onClose}>
+            <Button size="lg" color="lime.4" onClick={onClose}>
               Done scanning
             </Button>
           </Group>

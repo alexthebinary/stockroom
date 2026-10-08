@@ -1,4 +1,4 @@
-import { Card, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
+import { Anchor, Card, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Coach } from "../../components/Coach";
@@ -44,9 +44,9 @@ export function Payables() {
                   {v.bills.map((b) => (
                     <Table.Tr key={b.id}>
                       <Table.Td>
-                        <Text component={Link} to={`/bills/${b.id}`} td="underline" inherit>
+                        <Anchor component={Link} to={`/bills/${b.id}`}>
                           {b.number}
-                        </Text>
+                        </Anchor>
                         {b.vendorInvoiceNumber ? (
                           <Text span c="dimmed" size="sm">
                             {" "}
