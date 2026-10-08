@@ -1,0 +1,11 @@
+[Unit]
+Description=ProfitIndex nightly database backup to Cloudflare R2
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Where the repository is cloned on the Dell; change if you cloned elsewhere.
+WorkingDirectory=/opt/stockroom/v2/deploy
+ExecStart=/usr/bin/docker compose --profile backup run --rm backup

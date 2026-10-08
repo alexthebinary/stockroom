@@ -42,6 +42,13 @@ to wipe a non-local database unless `FRESH_CONFIRM=yes`.
 
 ## Run it anywhere
 
+**For the shop, use [`deploy/`](deploy/README.md):** the app and its database on
+the Dell, behind a Cloudflare Tunnel for HTTPS, with nightly backups to
+Cloudflare R2. `deploy/demo.sh` tries it in one command with a temporary
+https address, before any Cloudflare setup.
+
+Anywhere else Docker runs:
+
 ```bash
 docker compose up -d --build      # app on :4100 + Postgres, migrations applied at start
 ```
@@ -106,11 +113,21 @@ v2/
 
 ## Security posture — by decision, for now
 
-There is **no sign-in and no passcode** (operator decision, 2026-10-08): each
-person taps their name on their device, and it is stamped on everything they
-do. Anyone who can reach the app can read and change the books. Keep it on a
-private network or behind your own access layer until real sign-in and roles
-(planned) are in.
+There is **no sign-in and no passcode**, and the app is open to anyone on the
+internet. Both are operator decisions (2026-10-08). Each person taps their name
+on their device, and it is stamped on everything they do. Anyone who can reach
+the app can read and change the books.
+
+What stands in front of it:
+
+- Cloudflare bot filtering and a write rate limit;
+- strict security headers (CSP, no framing);
+- a database that isn't on the network;
+- nightly off-site backups.
+
+[`deploy/README.md`](deploy/README.md#plainly-stated) has the 5-minute,
+no-code switch to a Cloudflare Access email login, for when that's wanted.
+Real sign-in and roles are planned.
 
 ## Not yet (next phases)
 

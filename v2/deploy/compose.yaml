@@ -1,0 +1,84 @@
+# ProfitIndex on the Dell: the app, its database, a Cloudflare Tunnel for
+# HTTPS, and an on-demand backup job. Nothing listens on the LAN: the only way
+# in is the tunnel (and 127.0.0.1:4100 on the Dell itself, for debugging).
+#
+#   cp .env.example .env   # fill it in
+#   docker compose up -d --build
+#
+# See README.md in this folder for the whole runbook.
+name: profitindex
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: profitindex
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: profitindex
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U profitindex -d profitindex"]
+      interval: 10s
+      retries: 12
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://profitindex:${POSTGRES_PASSWORD}@db:5432/profitindex
+      PORT: "4100"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "127.0.0.1:4100:4100"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4100/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.3
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env (Cloudflare Zero Trust, Networks, Tunnels)}
+    depends_on:
+      app:
+        condition: service_healthy
+
+  # Run by the systemd timer (systemd/profitindex-backup.timer), or by hand:
+  #   docker compose --profile backup run --rm backup
+  backup:
+    build: ./backup
+    profiles: ["backup"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: profitindex
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: profitindex
+      KEEP_LOCAL: ${KEEP_LOCAL:-14}
+      R2_BUCKET: ${R2_BUCKET:-}
+      HEALTHCHECK_URL: ${HEALTHCHECK_URL:-}
+      # rclone reads its whole "r2" remote from these; no config file.
+      RCLONE_CONFIG_R2_TYPE: s3
+      RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_R2_ENDPOINT: https://${R2_ACCOUNT_ID:-unset}.r2.cloudflarestorage.com
+      RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+    volumes:
+      - ./backups:/backups
+
+volumes:
+  pgdata:

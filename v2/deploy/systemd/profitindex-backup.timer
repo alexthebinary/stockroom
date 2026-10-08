@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the ProfitIndex backup every night
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+# If the Dell was off at 02:30, run as soon as it is back.
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

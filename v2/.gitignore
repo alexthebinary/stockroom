@@ -8,3 +8,7 @@ apps/api/src/generated/
 e2e/fixtures/*.y4m
 e2e/fixtures/*.png
 screenshots/
+
+# Dell deployment: secrets and local backups never go in git.
+deploy/.env
+deploy/backups/
