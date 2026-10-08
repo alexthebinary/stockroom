@@ -23,8 +23,49 @@ export type Deps = { db: Db; reader: Reader | null };
 
 const OPEN_WITHOUT_PROFILE = ["/api/setup", "/api/profiles", "/api/health"];
 
+/**
+ * Sent with every response. The app is reachable from the open internet with
+ * no login (operator decision), so the browser is told exactly what the page
+ * may do: run its own scripts and its WebAssembly barcode decoder, open the
+ * camera on this origin only, talk only to this origin, and never be framed.
+ */
+export const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "worker-src 'self' blob:",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+const SECURITY_HEADERS: Record<string, string> = {
+  "Content-Security-Policy": CONTENT_SECURITY_POLICY,
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "same-origin",
+  "Permissions-Policy": "camera=(self), microphone=(), geolocation=()",
+  "X-Frame-Options": "DENY",
+};
+
 export function buildApp(deps: Deps): FastifyInstance {
-  const app = Fastify({ logger: process.env.LOG_LEVEL ? { level: process.env.LOG_LEVEL } : false, bodyLimit: 15 * 1024 * 1024 });
+  const app = Fastify({
+    logger: process.env.LOG_LEVEL ? { level: process.env.LOG_LEVEL } : false,
+    bodyLimit: 15 * 1024 * 1024,
+    // Behind Cloudflare Tunnel: the client's address comes from X-Forwarded-For.
+    trustProxy: true,
+  });
+
+  app.addHook("onSend", async (_request, reply, payload) => {
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) reply.header(name, value);
+    if (!reply.hasHeader("Cache-Control")) reply.header("Cache-Control", "no-store");
+    return payload;
+  });
 
   app.decorateRequest("profile", null);
 

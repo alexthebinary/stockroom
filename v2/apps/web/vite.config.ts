@@ -7,6 +7,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      // The manifest is fetched with cookies, so turning on a Cloudflare Access
+      // login in front of the app later does not break "Add to Home Screen".
+      useCredentials: true,
       includeAssets: ["icon.svg"],
       manifest: {
         name: "ProfitIndex",

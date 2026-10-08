@@ -1,6 +1,13 @@
 import { resolve } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 
+/** Anything the Content-Security-Policy blocks shows up as a console error; collect them all. */
+const blocked: string[] = [];
+const watch = (page: Page) =>
+  page.on("console", (message) => {
+    if (message.type() === "error" && /Content Security Policy|Refused to/i.test(message.text())) blocked.push(message.text());
+  });
+
 const shot = (page: Page, name: string) => page.screenshot({ path: resolve(import.meta.dirname, "../screenshots", `${name}.png`) });
 
 /**
@@ -13,6 +20,7 @@ const shot = (page: Page, name: string) => page.screenshot({ path: resolve(impor
 test("fresh install to a paid bill, with the books proved sound", async ({ browser }) => {
   const desk = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await desk.newPage();
+  watch(page);
 
   // ── First-run setup ──
   await page.goto("/");
@@ -52,6 +60,7 @@ test("fresh install to a paid bill, with the books proved sound", async ({ brows
   // ── The clerk, on a phone at the dock ──
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const clerk = await phone.newPage();
+  watch(clerk);
   await clerk.goto("/");
   await clerk.getByRole("button", { name: "Cal Clerk, Warehouse" }).click();
   await shot(clerk, "04-clerk-home");
@@ -131,9 +140,15 @@ test("fresh install to a paid bill, with the books proved sound", async ({ brows
   await phone.close();
   const night = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, colorScheme: "dark" });
   const dark = await night.newPage();
+  watch(dark);
   await dark.goto("/");
   await dark.getByRole("button", { name: "Cal Clerk, Warehouse" }).click();
   await shot(dark, "11-clerk-home-dark");
   await dark.goto("/bills");
   await shot(dark, "12-bills-dark");
+
+  // Test sheet: the barcode writer's WebAssembly must also run under the policy.
+  await dark.goto("/test-sheet");
+  await expect(dark.locator("svg").first()).toBeVisible();
+  expect(blocked, "nothing blocked by the Content-Security-Policy").toEqual([]);
 });
