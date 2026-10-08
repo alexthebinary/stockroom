@@ -16,4 +16,5 @@ if [ ! -f .env ]; then
 fi
 
 docker compose up -d --build
+docker compose --profile backup build --quiet backup
 ./url.sh

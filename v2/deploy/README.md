@@ -29,7 +29,9 @@ Nothing listens on the LAN. The database has no published port. The app is on
 
 ## 1. The machine
 
-Ubuntu 24.04 LTS. Then:
+Ubuntu 24.04 LTS. **For a demo, only Docker (the last item) is needed.** The
+rest keeps the app up unattended through power cuts and updates, which matters
+once the business depends on it.
 
 - **BIOS:** set *AC Recovery* (Power Management) to **Power On**, so the Dell
   comes back after a power cut.

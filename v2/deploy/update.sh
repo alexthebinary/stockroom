@@ -7,5 +7,6 @@ cd "$(dirname "$0")"
 docker compose --profile backup run --rm backup
 git pull --ff-only
 docker compose up -d --build
+docker compose --profile backup build --quiet backup
 docker compose ps
 ./url.sh

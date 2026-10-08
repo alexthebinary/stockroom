@@ -25,11 +25,14 @@ echo "dumped $(basename "$file") ($(du -h "$file" | cut -f1))"
 # Keep the newest KEEP_LOCAL dumps on this machine.
 ls -1t "$BACKUP_DIR"/profitindex-*.dump 2>/dev/null | tail -n +"$((KEEP_LOCAL + 1))" | while read -r old; do rm -f "$old"; done
 
-if [ -n "${R2_BUCKET:-}" ]; then
+# R2 counts as set up once its access key is in .env (the bucket name comes
+# pre-filled, so it can't be the signal). Half set up is an error, not a skip.
+if [ -n "${RCLONE_CONFIG_R2_ACCESS_KEY_ID:-}" ]; then
+  : "${R2_BUCKET:?the R2 keys are set but R2_BUCKET is empty}"
   rclone copyto "$file" "r2:$R2_BUCKET/$(basename "$file")"
   echo "copied to r2:$R2_BUCKET"
 else
-  echo "warning: R2_BUCKET is not set, so this backup exists only on this machine" >&2
+  echo "warning: R2 isn't set up yet (no R2_ACCESS_KEY_ID in .env), so this backup exists only on this machine" >&2
 fi
 
 ping_health ""
