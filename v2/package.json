@@ -1,0 +1,21 @@
+{
+  "name": "profitindex-v2",
+  "private": true,
+  "description": "ProfitIndex v2 — mobile-first scan-to-bill WMS with a US GAAP ledger.",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "e2e"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @pi/api & npm run dev -w @pi/web & wait",
+    "build": "npm run build -w @pi/domain && npm run build -w @pi/api && npm run build -w @pi/web",
+    "test": "npm test -w @pi/domain && npm test -w @pi/api",
+    "fresh": "npm run fresh -w @pi/api",
+    "e2e": "npm test -w @pi/e2e",
+    "start": "npm start -w @pi/api"
+  }
+}

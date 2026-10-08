@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+*.log
+test-results/
+playwright-report/
+apps/api/src/generated/
+e2e/fixtures/*.y4m
+e2e/fixtures/*.png
