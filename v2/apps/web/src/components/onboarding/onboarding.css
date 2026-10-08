@@ -1,0 +1,190 @@
+/* ── Onboarding: setup and "Who's working?" ──
+   Phone: one column, a big question, the action pinned at the thumb.
+   Laptop: the question on the left, a live picture of what you're building on
+   an ink plate to the right. */
+
+.ob { min-height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr); background: var(--surface); }
+.ob-main { display: flex; flex-direction: column; min-height: 100dvh; min-width: 0; padding: 12px 20px 0; }
+
+/* Top bar: back, progress. */
+.ob-top { display: grid; grid-template-columns: 40px minmax(0, 1fr) 40px; align-items: center; gap: 12px; min-height: 48px; }
+.ob-back { display: grid; place-items: center; width: 40px; height: 40px; margin-left: -8px; border: 0; border-radius: 999px; background: transparent;
+  color: var(--text-strong); cursor: pointer; transition: background-color 150ms var(--ease-out); }
+.ob-back:hover { background: var(--surface-sunken); }
+.ob-mark { display: inline-flex; align-items: center; gap: 10px; font-weight: 650; font-size: 15px; color: var(--text-strong); white-space: nowrap; }
+.ob-mark img { width: 28px; height: 28px; border-radius: 8px; }
+.ob-segments { display: flex; gap: 4px; width: 100%; max-width: 280px; justify-self: center; }
+.ob-segment { position: relative; flex: 1; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.ob-segment::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--ink); transform: scaleX(0); transform-origin: left;
+  transition: transform 320ms var(--ease-out); }
+.ob-segment[data-state="done"]::after { transform: scaleX(1); }
+.ob-segment[data-state="current"]::after { transform: scaleX(1); background: var(--signal); }
+
+/* Body: the step, then its actions. */
+.ob-body { flex: 1; display: flex; flex-direction: column; width: 100%; max-width: 460px; margin: 0 auto; }
+.ob-step { display: flex; flex-direction: column; flex: 1; padding-top: 28px; }
+.ob-content { min-width: 0; }
+.ob-foot { position: sticky; bottom: 0; z-index: 2; display: grid; gap: 8px; margin-top: auto; padding: 24px 0 calc(16px + env(safe-area-inset-bottom));
+  background: linear-gradient(to bottom, transparent, var(--surface) 22px); }
+.ob-foot-note { text-align: center; font-size: 13px; color: var(--text-muted); }
+
+.ob-title { margin: 0; font-size: 30px; line-height: 1.12; font-weight: 650; letter-spacing: -0.025em; color: var(--text-strong); text-wrap: balance; }
+.ob-lede { margin: 12px 0 0; font-size: 17px; line-height: 1.5; color: var(--text-muted); text-wrap: pretty; max-width: 42ch; }
+.ob-fields { display: grid; gap: 18px; margin-top: 32px; }
+.ob-section-label { font-size: 15px; font-weight: 600; color: var(--text-strong); margin-bottom: 8px; }
+/* One label voice for every field in onboarding, whatever the input size. */
+:is(.ob, .ob-picker) .mantine-InputWrapper-label { font-size: 15px; font-weight: 600; color: var(--text-strong); margin-bottom: 6px; }
+:is(.ob, .ob-picker) .mantine-InputWrapper-description { font-size: 13px; margin: -2px 0 6px; }
+:is(.ob, .ob-picker) .mantine-Input-input { border-radius: 12px; }
+.ob-hint { font-size: 14px; color: var(--text-muted); margin-top: 8px; }
+
+/* The one primary action. */
+.ob-cta { height: 54px !important; font-size: 16px !important; font-weight: 600 !important; letter-spacing: -0.005em; }
+
+/* Welcome: what the product does, as App Store feature rows. */
+.ob-hero-mark { width: 72px; height: 72px; border-radius: 20px; margin-bottom: 28px;
+  box-shadow: 0 14px 28px -14px rgba(17, 18, 16, 0.55), 0 3px 8px -4px rgba(17, 18, 16, 0.3); }
+.ob-features { display: grid; gap: 22px; margin-top: 32px; }
+.ob-feature { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 16px; align-items: start; }
+.ob-feature-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--surface-sunken); color: var(--text-strong); }
+.ob-feature-title { font-weight: 600; font-size: 16px; color: var(--text-strong); }
+.ob-feature-text { font-size: 15px; line-height: 1.45; color: var(--text-muted); margin-top: 2px; }
+
+/* Choices: big tappable options that behave as radios. */
+.ob-choices { display: grid; gap: 12px; margin-top: 28px; }
+.ob-choice { position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 16px; align-items: start; width: 100%; padding: 18px 48px 18px 18px;
+  text-align: left; font: inherit; color: var(--text); cursor: pointer; border-radius: 18px; border: 1.5px solid var(--surface-border); background: var(--surface);
+  transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out), background-color 150ms var(--ease-out); }
+.ob-choice:hover { border-color: var(--text-muted); }
+.ob-choice[aria-checked="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.ob-choice:disabled { cursor: not-allowed; opacity: 0.5; }
+.ob-choice-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--surface-sunken); color: var(--text-strong); }
+.ob-choice[aria-checked="true"] .ob-choice-icon { background: var(--ink); color: var(--surface); }
+.ob-choice-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 600; font-size: 17px; color: var(--text-strong); }
+.ob-choice-text { font-size: 15px; line-height: 1.45; color: var(--text-muted); margin-top: 4px; }
+.ob-choice-tick { position: absolute; top: 18px; right: 16px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  border: 1.5px solid var(--surface-border); color: transparent; transition: all 150ms var(--ease-out); }
+.ob-choice[aria-checked="true"] .ob-choice-tick { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.ob-pill { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  background: var(--ok-bg); color: var(--ok-fg); }
+
+/* Role picker: three chips that behave as radios. */
+.ob-chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ob-chip { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 76px; padding: 10px 6px; font: inherit;
+  font-size: 14px; font-weight: 600; color: var(--text); cursor: pointer; border-radius: 14px; border: 1.5px solid var(--surface-border); background: var(--surface);
+  transition: border-color 150ms var(--ease-out), background-color 150ms var(--ease-out), color 150ms var(--ease-out); }
+.ob-chip:hover { border-color: var(--text-muted); }
+.ob-chip[aria-checked="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.ob-chip-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ob-chip-row .ob-chip { flex-direction: row; min-height: 48px; }
+
+/* People and things added so far: quiet rows. */
+.ob-list { display: grid; margin-top: 24px; border-top: 1px solid var(--line); }
+.ob-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; min-height: 60px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.ob-row-title { font-weight: 600; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ob-row-meta { font-size: 14px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ob-add { display: grid; gap: 12px; margin-top: 24px; padding: 16px; border-radius: 18px; background: var(--surface-sunken); }
+
+/* Avatars: initials on ink, a lime ring for "you". */
+.ob-avatar { display: grid; place-items: center; flex: none; border-radius: 50%; font-weight: 650; letter-spacing: 0.01em; color: #fafaf7; user-select: none; }
+/* On a dark plate the darkest tones would vanish: give them a hairline. */
+:root[data-mantine-color-scheme="dark"] .ob-avatar { box-shadow: inset 0 0 0 1px rgba(238, 239, 233, 0.16); }
+.ob-avatar[data-you="true"], :root[data-mantine-color-scheme="dark"] .ob-avatar[data-you="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--signal); }
+:root[data-mantine-color-scheme="dark"] .ob-hero-mark { box-shadow: 0 0 0 1px rgba(238, 239, 233, 0.16), 0 14px 28px -14px rgba(0, 0, 0, 0.8); }
+
+/* Step motion: the next question slides in from the side it came from. */
+@keyframes ob-in-next { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes ob-in-back { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+@keyframes ob-rise { from { opacity: 0; transform: translateY(16px) scale(0.985); } to { opacity: 1; transform: none; } }
+@keyframes ob-fade { from { opacity: 0; } to { opacity: 1; } }
+.ob-step { animation: ob-in-next 340ms var(--ease-out) both; }
+.ob-step[data-dir="back"] { animation-name: ob-in-back; }
+
+/* The stage: an ink plate with a faint drafting grid. */
+.ob-stage { display: none; }
+.ob-plate { position: relative; flex: 1; display: grid; place-items: center; overflow: hidden; border-radius: 28px; padding: 48px;
+  background-color: #111210; color: #eeefe9;
+  background-image: linear-gradient(rgba(238, 239, 233, 0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(238, 239, 233, 0.045) 1px, transparent 1px),
+    radial-gradient(120% 80% at 50% 0%, rgba(198, 213, 90, 0.08), transparent 60%);
+  background-size: 32px 32px, 32px 32px, 100% 100%; background-position: -1px -1px, -1px -1px, 0 0; }
+:root[data-mantine-color-scheme="dark"] .ob-plate { background-color: #1a1c18; box-shadow: inset 0 0 0 1px #2a2c27; }
+.ob-plate-mark { position: absolute; top: 28px; left: 32px; display: inline-flex; align-items: center; gap: 10px; font-weight: 650; font-size: 15px; color: #eeefe9; }
+.ob-plate-mark img { width: 26px; height: 26px; border-radius: 7px; box-shadow: 0 0 0 1px rgba(238, 239, 233, 0.16); }
+.ob-plate-caption { position: absolute; left: 0; right: 0; bottom: 30px; text-align: center; font-size: 14px; color: #b0b3a8; padding: 0 32px; }
+.ob-visual { width: 100%; max-width: 420px; display: grid; justify-items: center; gap: 14px; }
+.ob-visual > * { animation: ob-rise 520ms var(--ease-out) both; }
+.ob-visual > :nth-child(2) { animation-delay: 70ms; }
+.ob-visual > :nth-child(3) { animation-delay: 140ms; }
+.ob-visual > :nth-child(4) { animation-delay: 210ms; }
+
+/* Paper: the things on the stage, printed on the same stock as the receipts. */
+.ob-paper { width: 100%; padding: 20px 22px; border-radius: 16px; background: #fffffb; color: #111210;
+  box-shadow: 0 28px 48px -26px rgba(0, 0, 0, 0.75), 0 10px 18px -10px rgba(0, 0, 0, 0.45); }
+.ob-paper-label { font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #6f7366; }
+.ob-paper-title { font-size: 20px; font-weight: 650; letter-spacing: -0.015em; color: #111210; margin-top: 4px; overflow-wrap: anywhere; }
+.ob-paper-title[data-empty="true"] { color: #b0b4a4; }
+.ob-paper-muted { color: #6f7366; font-size: 14px; line-height: 1.5; white-space: pre-line; }
+.ob-paper-rule { border: 0; border-top: 1px solid #111210; margin: 14px 0 10px; }
+.ob-paper-row { display: flex; justify-content: space-between; gap: 16px; padding: 5px 0; font-size: 14px; }
+.ob-paper-row span:first-child { color: #51554a; }
+.ob-paper-row b { font-weight: 600; }
+.ob-paper-row[data-signal="true"] b { box-shadow: inset 0 -4px 0 #c6d55a; }
+.ob-code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; letter-spacing: 0.02em; }
+.ob-bars { height: 44px; width: 100%; border-radius: 2px;
+  background: repeating-linear-gradient(90deg, #111210 0 2px, transparent 2px 4px, #111210 4px 7px, transparent 7px 9px, #111210 9px 10px, transparent 10px 13px, #111210 13px 16px, transparent 16px 18px); }
+.ob-tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 600; background: #f0f1ec; color: #33362f; }
+.ob-tag[data-signal="true"] { background: #c6d55a; color: #111210; }
+.ob-ghost { border: 1.5px dashed rgba(238, 239, 233, 0.28); border-radius: 16px; padding: 18px 22px; color: #b0b3a8; width: 100%; font-size: 15px; }
+
+/* A phone on the stage, for "Who's working?". */
+.ob-device { width: 290px; padding: 12px; border-radius: 44px; background: #0b0c0a; box-shadow: inset 0 0 0 1.5px #3a3d35, 0 40px 60px -30px rgba(0, 0, 0, 0.8); }
+.ob-device-screen { min-height: 460px; border-radius: 34px; background: #fafaf7; color: #111210; padding: 44px 18px 22px; }
+.ob-device-title { text-align: center; font-size: 20px; font-weight: 650; letter-spacing: -0.02em; margin-bottom: 18px; }
+.ob-device-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ob-device-tile { display: grid; justify-items: center; gap: 6px; padding: 14px 6px; border-radius: 16px; background: #f0f1ec; text-align: center; min-width: 0; }
+.ob-device-tile b { font-size: 13px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ob-device-tile small { font-size: 11px; color: #6f7366; }
+.ob-device-tile[data-ghost="true"] { background: transparent; border: 1.5px dashed #cfd2c5; min-height: 96px; }
+
+/* Done: the setup receipt, and the first run as numbered steps. */
+.ob-receipt-row { display: flex; justify-content: space-between; gap: 12px; }
+.ob-steps { list-style: none; counter-reset: ob-step; display: grid; gap: 0; margin: 24px 0 0; padding: 0; border-top: 1px solid var(--line); }
+.ob-steps li { counter-increment: ob-step; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 14px; align-items: start; padding: 14px 0;
+  border-bottom: 1px solid var(--line); font-size: 16px; line-height: 1.45; color: var(--text); }
+.ob-steps li::before { content: counter(ob-step); display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--ink); color: var(--surface); font-size: 13px; font-weight: 650; }
+
+/* "Who's working?": tiles you tap. */
+.ob-picker { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; padding: 48px 20px calc(32px + env(safe-area-inset-bottom)); }
+.ob-picker-inner { width: 100%; max-width: 720px; margin: auto 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.ob-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; width: 100%; margin-top: 36px; }
+.ob-person { display: grid; justify-items: center; gap: 10px; padding: 22px 10px 18px; border-radius: 22px; border: 0; background: transparent; font: inherit; color: inherit;
+  cursor: pointer; transition: background-color 150ms var(--ease-out); }
+.ob-person:hover { background: var(--surface-sunken); }
+.ob-person .ob-avatar { transition: transform 200ms var(--ease-out), box-shadow 200ms var(--ease-out); }
+.ob-person:hover .ob-avatar { transform: translateY(-2px); box-shadow: 0 12px 22px -12px rgba(17, 18, 16, 0.6); }
+.ob-person-name { font-weight: 600; font-size: 16px; color: var(--text-strong); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ob-person-role { font-size: 13px; color: var(--text-muted); margin-top: -6px; }
+.ob-person-new { display: grid; place-items: center; border-radius: 50%; border: 1.5px dashed var(--text-muted); color: var(--text-muted); }
+
+@media (min-width: 768px) {
+  .ob-main { padding: 20px 40px 0; }
+  .ob-title { font-size: 34px; }
+  .ob-picker .ob-title { font-size: 40px; }
+}
+
+/* Laptop: the step centred in its column, the stage beside it. */
+@media (min-width: 992px) {
+  .ob[data-stage="true"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); }
+  .ob-main { padding: 28px 56px 0; }
+  .ob-step { justify-content: center; padding: 40px 0; }
+  .ob-foot { position: static; margin-top: 36px; padding: 0 0 8px; background: none; }
+  .ob-stage { display: flex; position: sticky; top: 0; height: 100dvh; padding: 16px 16px 16px 0; }
+  .ob-title { font-size: 38px; }
+  .ob-phone-only { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-step, .ob-step[data-dir="back"], .ob-visual, .ob-visual > * { animation: ob-fade 150ms linear both; animation-delay: 0ms; }
+  .ob-segment::after, .ob-person .ob-avatar { transition: none; }
+}

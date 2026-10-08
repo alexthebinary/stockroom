@@ -42,6 +42,18 @@ every record a datasheet.
   - `ReceiptPrinter` — finishing a delivery prints the WH-IN receipt. This is
     the clerk flow's **one authored moment**; nothing else animates for show.
 
+## Onboarding (`components/onboarding/`, `features/setup/`)
+
+App Store style: one question per screen, a big title, the action at the
+thumb. With sample data it's five screens (welcome, company, you, team, how to
+start); starting empty adds warehouse, vendors, items and opening stock.
+On a laptop the question sits beside an **ink stage** with a drafting grid,
+showing a live picture of what's being built on receipt paper: the
+letterhead as you type the company name, "Who's working?" on a phone as people
+are added, an item's label as you type its SKU. The finish prints a setup
+receipt (the flow's one authored moment). "Who's working?" is a centred grid
+of avatar tiles. Choices and roles are real radios (`Choice`, `Chips`).
+
 ## Motion
 
 150–250 ms state changes on an exponential ease-out. One authored moment per

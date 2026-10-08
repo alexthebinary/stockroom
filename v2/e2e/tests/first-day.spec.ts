@@ -23,37 +23,35 @@ test("fresh install to a paid bill, with the books proved sound", async ({ brows
   watch(page);
 
   // ── First-run setup ──
+  // The stage beside each question repeats names on purpose, so assertions look in <main>.
+  const main = page.getByRole("main");
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Welcome to ProfitIndex" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your stock and your books, in sync." })).toBeVisible();
   await shot(page, "01-setup-welcome");
-  await page.getByRole("button", { name: "Start setup" }).click();
+  await page.getByRole("button", { name: "Get started" }).click();
   await page.getByLabel("Company name").fill("Newtown Robotics");
   await page.getByLabel("State").fill("PA");
   await page.getByRole("button", { name: "Continue" }).click();
 
+  // The person doing setup is the first on the team, and becomes "you" on this device.
   await page.getByLabel("Your name").fill("Ada Admin");
-  await page.getByRole("button", { name: "Add Ada Admin" }).click();
-  await expect(page.getByText("You", { exact: true })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Admin" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("button", { name: "Continue" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Cal Clerk");
   await page.getByRole("button", { name: "Add Cal Clerk" }).click();
+  await expect(main.getByText("Cal Clerk")).toBeVisible();
   await page.getByLabel("Name", { exact: true }).fill("Ann Accountant");
-  await page.getByText("Accounting", { exact: true }).click();
+  await page.getByRole("radio", { name: "Accounting" }).click();
   await page.getByRole("button", { name: "Add Ann Accountant" }).click();
-  await expect(page.getByText("Ann Accountant")).toBeVisible();
+  await expect(main.getByText("Ann Accountant")).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  await page.getByRole("button", { name: "Add sample data" }).click();
-  await expect(page.getByRole("heading", { name: "Warehouses" })).toBeVisible();
-  await expect(page.getByText("Main warehouse")).toBeVisible();
+  // Sample data is the recommended start, and with it the data screens are skipped.
+  await expect(page.getByRole("radio", { name: "Try it with sample data" })).toHaveAttribute("aria-checked", "true");
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: "Looks right" }).click();
-  await expect(page.getByText("Sample Freight Lines")).toBeVisible();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByText("SAMPLE-ROBOT")).toBeVisible();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "You're all set, Ada." })).toBeVisible();
   await shot(page, "02-setup-ready");
-  await page.getByRole("button", { name: "Finish setup" }).click();
+  await page.getByRole("button", { name: "Open ProfitIndex" }).click();
   await expect(page.getByText("The books are sound")).toBeVisible();
   await shot(page, "03-admin-home");
 

@@ -10,7 +10,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { ProfileProvider } from "./lib/profile";
-import { theme } from "./theme";
+import { cssVariablesResolver, theme } from "./theme";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 5_000, refetchOnWindowFocus: true } },
@@ -18,7 +18,7 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <MantineProvider theme={theme} defaultColorScheme="auto">
+    <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver} defaultColorScheme="auto">
       <Notifications position="top-center" />
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
