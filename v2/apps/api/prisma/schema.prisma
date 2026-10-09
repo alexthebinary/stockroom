@@ -227,7 +227,7 @@ model StockBalance {
 }
 
 /// Average cost (AVCO), one pool per item across all warehouses. valueCents is
-/// that item's slice of Inventory – On Hand.
+/// that item's slice of inventory on hand.
 model CostPool {
   itemId     Int @id
   qty        Int @default(0)
@@ -317,7 +317,7 @@ model PurchaseOrder {
 /// still awaiting a bill; qtyLanded is the part valued and on hand.
 /// qtyBilled / billedCents are what posted bills charged for this line
 /// (landed: goods − discount + freight); inboundCents is the part of that
-/// value not yet landed — this line's slice of Inventory – Inbound.
+/// value not yet landed — this line's slice of inventory in transit.
 model PurchaseOrderLine {
   id            Int     @id @default(autoincrement())
   poId          Int

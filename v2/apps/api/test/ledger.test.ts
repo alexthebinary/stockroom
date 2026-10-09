@@ -67,8 +67,9 @@ describe("ledger", () => {
     expect(bank.changes).toHaveLength(1);
     const locked = await admin.put("/api/posting-rules/inventoryOnHand", { accountId: operating.id });
     expect(locked.status).toBe(409);
-    const header = (await testDb().account.findUniqueOrThrow({ where: { code: "1200" } })).id;
-    expect((await admin.put("/api/posting-rules/cogs", { accountId: header })).status).toBe(400);
+    const retired = ok(await admin.post("/api/accounts", { code: "5010", name: "Old COGS", type: "EXPENSE", normalSide: "DEBIT" })).body;
+    ok(await admin.put(`/api/accounts/${retired.id}`, { isActive: false }));
+    expect((await admin.put("/api/posting-rules/cogs", { accountId: retired.id })).status).toBe(400);
   });
 });
 
@@ -80,7 +81,7 @@ describe("the books-sound check", () => {
     await testDb().costPool.update({ where: { itemId: ids.widget }, data: { valueCents: 109999 } });
     const report = await checkBooks(testDb());
     expect(report.sound).toBe(false);
-    expect(report.problems.join("\n")).toMatch(/Inventory – On Hand is 110000 but its stock is valued at 109999/);
+    expect(report.problems.join("\n")).toMatch(/inventory on hand is 110000 but its stock is valued at 109999/);
     await testDb().stockBalance.updateMany({ where: { itemId: ids.widget }, data: { onHand: 3 } });
     const second = await checkBooks(testDb());
     expect(second.problems.join("\n")).toMatch(/ON_HAND is 3 but the registers say 2/);

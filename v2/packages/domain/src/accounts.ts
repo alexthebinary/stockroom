@@ -1,9 +1,8 @@
 /**
- * The chart of accounts from the GAAP guide (§III), with one refinement:
- * "Inventory Asset" is a header with two posting children so stock that is
- * billed but still on its way (Inbound) stays apart from stock on the shelf
- * (On Hand). Statements roll the two up and read exactly like the guide; the
- * split is what lets the shelf value reconcile to the ledger to the cent.
+ * The chart of accounts from the GAAP guide (§III). All inventory posts to the
+ * one Inventory Asset account (1200). Each inventory line is tagged with its
+ * role, on hand or inbound (billed but still on its way), and that sub-ledger
+ * is what lets the shelf value reconcile to the ledger to the cent.
  */
 export type AccountType = "ASSET" | "LIABILITY" | "EQUITY" | "INCOME" | "EXPENSE";
 export type Side = "DEBIT" | "CREDIT";
@@ -22,9 +21,7 @@ export type AccountDef = {
 export const CHART: AccountDef[] = [
   { code: "1000", name: "Bank / Cash", type: "ASSET", normalSide: "DEBIT", purpose: "Customer receipts, vendor payments and cash refunds" },
   { code: "1100", name: "Accounts Receivable", type: "ASSET", normalSide: "DEBIT", purpose: "Amounts due from customers on sales invoices" },
-  { code: "1200", name: "Inventory Asset", type: "ASSET", normalSide: "DEBIT", header: true, purpose: "Inventory at average landed cost" },
-  { code: "1201", name: "Inventory – On Hand", type: "ASSET", normalSide: "DEBIT", parent: "1200", purpose: "Stock on the shelf, at average landed cost" },
-  { code: "1202", name: "Inventory – Inbound", type: "ASSET", normalSide: "DEBIT", parent: "1200", purpose: "Stock billed by the vendor that has not arrived yet" },
+  { code: "1200", name: "Inventory Asset", type: "ASSET", normalSide: "DEBIT", purpose: "Stock on the shelf and stock billed but not yet arrived, at average landed cost" },
   { code: "2000", name: "Accounts Payable", type: "LIABILITY", normalSide: "CREDIT", purpose: "Vendor bills: inventory, freight-in and freight-out" },
   { code: "2100", name: "Sales Tax Payable", type: "LIABILITY", normalSide: "CREDIT", purpose: "Sales tax collected on products and on shipping & handling" },
   { code: "3000", name: "Opening Balance Equity", type: "EQUITY", normalSide: "CREDIT", purpose: "Offset to the opening inventory balance" },
@@ -48,7 +45,7 @@ export const ROLES = {
   bank: { label: "Bank / cash account", locked: false },
   payable: { label: "Accounts payable", locked: false },
   inventoryOnHand: { label: "Inventory on hand", locked: true },
-  inventoryInbound: { label: "Inventory inbound", locked: true },
+  inventoryInbound: { label: "Inventory billed, in transit", locked: true },
   cogs: { label: "Cost of goods sold", locked: false },
   openingEquity: { label: "Opening balance equity", locked: false },
   outboundShipping: { label: "Outbound shipping expense", locked: false },
@@ -60,14 +57,14 @@ export const ROLES = {
 export type Role = keyof typeof ROLES;
 
 /**
- * Inventory roles are locked: the books-sound check compares those two
- * accounts to the stock records, and repointing them would break the proof.
+ * Inventory roles are locked to Inventory Asset: the books-sound check compares
+ * their lines to the stock records, and repointing them would break the proof.
  */
 export const DEFAULT_ROLE_ACCOUNTS: Record<Role, string> = {
   bank: "1000",
   payable: "2000",
-  inventoryOnHand: "1201",
-  inventoryInbound: "1202",
+  inventoryOnHand: "1200",
+  inventoryInbound: "1200",
   cogs: "5000",
   openingEquity: "3000",
   outboundShipping: "6100",

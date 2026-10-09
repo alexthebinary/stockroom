@@ -22,14 +22,13 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
     return { rows, totalDebitCents: posting.reduce((s, r) => s + r.debitCents, 0), totalCreditCents: posting.reduce((s, r) => s + r.creditCents, 0) };
   });
 
-  /** Stock value item by item, against Inventory – On Hand for that item. */
+  /** Stock value item by item, against the ledger's on-hand inventory for that item. */
   app.get("/api/reports/valuation", async () => {
-    const onHandAccount = (await db.postingRule.findUniqueOrThrow({ where: { role: "inventoryOnHand" } })).accountId;
     const [items, balances, pools, gl] = await Promise.all([
       db.item.findMany({ orderBy: { sku: "asc" } }),
       db.stockBalance.groupBy({ by: ["itemId"], _sum: { onHand: true, held: true } }),
       db.costPool.findMany(),
-      db.journalLine.groupBy({ by: ["itemId", "side"], where: { accountId: onHandAccount }, _sum: { amountCents: true } }),
+      db.journalLine.groupBy({ by: ["itemId", "side"], where: { role: "inventoryOnHand" }, _sum: { amountCents: true } }),
     ]);
     const rows = items
       .map((item) => {

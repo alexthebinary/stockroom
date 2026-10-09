@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { expectBooksSound, ok, sampleCompany, testDb } from "./helpers";
 import { deliver } from "./scan";
 
+/** Inventory Asset (1200), the part a role tags: on hand, or billed and in transit. */
+async function inventory(role: "inventoryOnHand" | "inventoryInbound") {
+  const lines = await testDb().journalLine.findMany({ where: { role } });
+  return lines.reduce((s, l) => s + (l.side === "DEBIT" ? l.amountCents : -l.amountCents), 0);
+}
+
 const WIDGET = "012345678905";
 type Company = Awaited<ReturnType<typeof sampleCompany>>;
 
@@ -31,10 +37,10 @@ describe("Vendor Bill – Freight-In from a third-party carrier (GAAP guide §II
     const { po } = await billedPo(c, 2);
     const freight = await freightBill(c, [po.id], 10000);
     expect(freight.allocations[0]).toMatchObject({ amountCents: 10000, inboundCents: 10000, onHandCents: 0, soldCents: 0 });
-    expect(await balance("1202")).toBe(110000);
+    expect(await inventory("inventoryInbound")).toBe(110000);
     await deliver(c.clerk, { warehouseId: c.ids.warehouse, poId: po.id }, [{ code: WIDGET, qty: 2 }]);
     expect(await pool(c.ids.widget)).toMatchObject({ qty: 2, valueCents: 110000 });
-    expect(await balance("1202")).toBe(0);
+    expect(await inventory("inventoryInbound")).toBe(0);
     expect(await balance("2000")).toBe(110000);
     await expectBooksSound();
   });
@@ -45,7 +51,7 @@ describe("Vendor Bill – Freight-In from a third-party carrier (GAAP guide §II
     await deliver(c.clerk, { warehouseId: c.ids.warehouse, poId: po.id }, [{ code: WIDGET, qty: 2 }]);
     await freightBill(c, [po.id], 10000);
     expect(await pool(c.ids.widget)).toMatchObject({ qty: 2, valueCents: 110000 });
-    expect(await balance("1201")).toBe(110000);
+    expect(await inventory("inventoryOnHand")).toBe(110000);
     await expectBooksSound();
   });
 
@@ -106,7 +112,7 @@ describe("Vendor credits (GAAP guide §II.1 #3, #4, #6, #7, #8)", () => {
     const credit = ok(await c.accountant.post(`/api/bills/${bill.id}/credits`, { kind: "RETURN", lines: [{ billLineId: bill.lines[0].id, qty: 1 }] })).body;
     expect(credit.totalCents).toBe(55000);
     expect(await balance("2000")).toBe(55000);
-    expect(await balance("1201")).toBe(55000);
+    expect(await inventory("inventoryOnHand")).toBe(55000);
     expect(await balance("5000"), "no variance when credit = average").toBe(0);
     expect(await pool(c.ids.widget)).toMatchObject({ qty: 1, valueCents: 55000 });
     const out = await testDb().stockMovement.findFirstOrThrow({ where: { register: "WH_OUT" } });
@@ -119,7 +125,7 @@ describe("Vendor credits (GAAP guide §II.1 #3, #4, #6, #7, #8)", () => {
     const bill = await landedBill(c);
     ok(await c.accountant.post(`/api/bills/${bill.id}/credits`, { kind: "RETURN", lines: [{ billLineId: bill.lines[0].id, qty: 2 }] }));
     expect(await balance("2000")).toBe(0);
-    expect(await balance("1201")).toBe(0);
+    expect(await inventory("inventoryOnHand")).toBe(0);
     expect((await testDb().purchaseOrder.findFirstOrThrow()).paymentStatus).toBe("PAID");
     await expectBooksSound();
   });
@@ -145,7 +151,7 @@ describe("Vendor credits (GAAP guide §II.1 #3, #4, #6, #7, #8)", () => {
     ok(await c.accountant.post(`/api/bills/${bill.id}/credits`, { kind: "RETURN", lines: [{ billLineId: bill.lines[0].id, qty: 1 }] }));
     ok(await c.accountant.post(`/api/bills/${bill.id}/refunds`, { amountCents: 55000 }));
     expect(await balance("1000")).toBe(-55000);
-    expect(await balance("1201")).toBe(55000);
+    expect(await inventory("inventoryOnHand")).toBe(55000);
     await expectBooksSound();
   });
 
@@ -158,13 +164,13 @@ describe("Vendor credits (GAAP guide §II.1 #3, #4, #6, #7, #8)", () => {
     await expectBooksSound();
   });
 
-  it("billed units that never arrived come off Inventory – Inbound", async () => {
+  it("billed units that never arrived come off inventory in transit", async () => {
     const c = await sampleCompany();
     const { po, bill } = await billedPo(c, 2, 10000);
     await deliver(c.clerk, { warehouseId: c.ids.warehouse, poId: po.id }, [{ code: WIDGET }]);
     const full = ok(await c.accountant.get(`/api/bills/${bill.id}`)).body;
     ok(await c.accountant.post(`/api/bills/${bill.id}/credits`, { kind: "RETURN", lines: [{ billLineId: full.lines[0].id, qty: 1, received: false }] }));
-    expect(await balance("1202")).toBe(0);
+    expect(await inventory("inventoryInbound")).toBe(0);
     expect(await balance("2000")).toBe(55000);
     const after = await testDb().purchaseOrder.findUniqueOrThrow({ where: { id: po.id } });
     expect(after.receivingStatus).toBe("RECEIVED");

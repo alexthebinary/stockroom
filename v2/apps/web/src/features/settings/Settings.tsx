@@ -127,7 +127,7 @@ function Accounts() {
       <Card withBorder>
         <Text fw={600}>Account assignment</Text>
         <Text size="sm" c="dimmed" mb="sm">
-          Which account each kind of posting lands in. The inventory accounts are locked: the books check compares them to the stock records.
+          Which account each kind of posting lands in. Inventory always posts to 1200 Inventory Asset (locked): the books check compares it to the stock records.
         </Text>
         <Stack gap="xs">
           {(rules.data ?? []).map((r) => (

@@ -83,9 +83,9 @@ Postgres, and `ANTHROPIC_API_KEY` to turn on the packing-slip reader.
    freight-in bills spread over the orders they carried; returns, price
    discounts, payments, refunds and voids follow the GAAP guide's entries.
 4. **The books check** (Reports) proves four things after every change, item
-   by item and vendor by vendor: debits = credits; Inventory – On Hand = stock
-   at average cost; Inventory – Inbound = billed stock not yet arrived; AP =
-   open bills.
+   by item and vendor by vendor: debits = credits; inventory on hand = stock
+   at average cost; inventory in transit = billed stock not yet arrived (both
+   in 1200 Inventory Asset); AP = open bills.
 
 ## Tests
 

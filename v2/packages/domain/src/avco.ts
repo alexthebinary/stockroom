@@ -7,7 +7,7 @@ import { assertCents, type Cents } from "./money";
  * the value at the average; the last unit out takes whatever value is left, so
  * the pool drains to exactly zero and never strands a rounding cent.
  *
- * The pool's VALUE is the item's slice of the Inventory – On Hand account.
+ * The pool's VALUE is the item's slice of inventory on hand (Inventory Asset, on-hand lines).
  */
 export type Pool = { qty: number; valueCents: Cents };
 

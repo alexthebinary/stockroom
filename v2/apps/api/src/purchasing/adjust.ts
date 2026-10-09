@@ -8,8 +8,8 @@ export type LineEffect = { poLineId: number; itemId: number; amountCents: number
  * Money that lands on a PO line after the fact — a carrier's freight-in bill
  * (positive) or a vendor's price discount (negative). Split by where the
  * line's units are (GAAP guide §I.4, AVCO):
- *   not yet landed  → Inventory – Inbound (they will cost more/less on arrival)
- *   still on hand   → the item's average-cost pool (Inventory – On Hand)
+ *   not yet landed  → inventory in transit (they will cost more/less on arrival)
+ *   still on hand   → the item's average-cost pool (inventory on hand)
  *   already gone    → Cost of Goods Sold
  * A pool that is empty, or would go below zero, passes the rest to COGS.
  */

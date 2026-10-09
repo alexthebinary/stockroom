@@ -26,7 +26,7 @@ export type CreditLineInput = {
  * variance (COGS by default). In the guide's examples they are equal, so the
  * entry is simply Dr AP / Cr Inventory.
  *
- * RETURN of units billed but never received: Dr AP / Cr Inventory – Inbound.
+ * RETURN of units billed but never received: Dr AP / Cr Inventory Asset (in transit).
  *
  * PRICE_ALLOWANCE: the line costs less — split exactly like late freight.
  */

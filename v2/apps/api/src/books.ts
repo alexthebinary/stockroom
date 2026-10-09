@@ -23,11 +23,11 @@ export type BooksReport = {
 export async function checkBooks(db: Db): Promise<BooksReport> {
   const problems: string[] = [];
   const rules = new Map((await db.postingRule.findMany()).map((r) => [r.role, r.accountId]));
-  const onHandAccount = rules.get("inventoryOnHand")!;
-  const inboundAccount = rules.get("inventoryInbound")!;
   const payableAccount = rules.get("payable")!;
 
-  const lines = await db.journalLine.findMany({ select: { accountId: true, side: true, amountCents: true, itemId: true, poLineId: true, vendorId: true } });
+  // Inventory is one account (1200); each line's role says which part of it,
+  // on hand or billed-in-transit, and each part is proved on its own.
+  const lines = await db.journalLine.findMany({ select: { accountId: true, role: true, side: true, amountCents: true, itemId: true, poLineId: true, vendorId: true } });
   const signed = (l: { side: string; amountCents: number }) => (l.side === "DEBIT" ? l.amountCents : -l.amountCents);
 
   // 1. Trial balance.
@@ -35,10 +35,10 @@ export async function checkBooks(db: Db): Promise<BooksReport> {
   const creditsCents = lines.filter((l) => l.side === "CREDIT").reduce((s, l) => s + l.amountCents, 0);
   if (debitsCents !== creditsCents) problems.push(`Trial balance is off: debits ${debitsCents} ≠ credits ${creditsCents}`);
 
-  // 2. Inventory – On Hand equals the average-cost pools, item by item.
+  // 2. Inventory on hand equals the average-cost pools, item by item.
   const glByItem = new Map<number, number>();
-  for (const l of lines.filter((l) => l.accountId === onHandAccount)) {
-    if (l.itemId == null) problems.push("An Inventory – On Hand line has no item");
+  for (const l of lines.filter((l) => l.role === "inventoryOnHand")) {
+    if (l.itemId == null) problems.push("An inventory on-hand line has no item");
     else glByItem.set(l.itemId, (glByItem.get(l.itemId) ?? 0) + signed(l));
   }
   const pools = await db.costPool.findMany();
@@ -47,21 +47,21 @@ export async function checkBooks(db: Db): Promise<BooksReport> {
   for (const itemId of itemIds) {
     const gl = glByItem.get(itemId) ?? 0;
     const pool = pools.find((p) => p.itemId === itemId);
-    if (gl !== (pool?.valueCents ?? 0)) problems.push(`Item ${itemId}: Inventory – On Hand is ${gl} but its stock is valued at ${pool?.valueCents ?? 0}`);
+    if (gl !== (pool?.valueCents ?? 0)) problems.push(`Item ${itemId}: inventory on hand is ${gl} but its stock is valued at ${pool?.valueCents ?? 0}`);
     const onHand = balances.filter((b) => b.itemId === itemId).reduce((s, b) => s + b.onHand, 0);
     if (onHand !== (pool?.qty ?? 0)) problems.push(`Item ${itemId}: ${onHand} on hand but ${pool?.qty ?? 0} units are costed`);
   }
 
-  // 3. Inventory – Inbound equals what bills charged and has not landed, PO line by PO line.
+  // 3. Inventory in transit equals what bills charged and has not landed, PO line by PO line.
   const glByPoLine = new Map<number, number>();
-  for (const l of lines.filter((l) => l.accountId === inboundAccount)) {
-    if (l.poLineId == null) problems.push("An Inventory – Inbound line has no PO line");
+  for (const l of lines.filter((l) => l.role === "inventoryInbound")) {
+    if (l.poLineId == null) problems.push("An inventory in-transit line has no PO line");
     else glByPoLine.set(l.poLineId, (glByPoLine.get(l.poLineId) ?? 0) + signed(l));
   }
   const poLines = await db.purchaseOrderLine.findMany({ select: { id: true, inboundCents: true } });
   for (const line of poLines) {
     const gl = glByPoLine.get(line.id) ?? 0;
-    if (gl !== line.inboundCents) problems.push(`PO line ${line.id}: Inventory – Inbound is ${gl} but ${line.inboundCents} is billed and not yet landed`);
+    if (gl !== line.inboundCents) problems.push(`PO line ${line.id}: inventory in transit is ${gl} but ${line.inboundCents} is billed and not yet landed`);
     if (line.inboundCents < 0) problems.push(`PO line ${line.id}: inbound value is negative`);
   }
 

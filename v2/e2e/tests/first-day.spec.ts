@@ -164,6 +164,21 @@ test("fresh install to a paid bill, with the books proved sound", async ({ brows
   await fixedBanner.getByRole("button", { name: "Got it" }).click();
   await expect(page.getByText("Updated: 1 of your notes is fixed")).toHaveCount(0);
 
+  // ── A carrier's freight bill, started from the Bills desk: the order is picked on the form ──
+  await page.goto("/bills");
+  await page.getByRole("link", { name: "Freight bill" }).click();
+  await page.getByRole("combobox", { name: "Carrier" }).click();
+  await page.getByRole("option", { name: "Sample Freight Lines" }).click();
+  await page.getByLabel("Amount $").fill("75.00");
+  const continueFreight = page.getByRole("button", { name: "Continue" });
+  await expect(continueFreight, "no order picked yet").toBeDisabled();
+  await page.getByPlaceholder("Pick one or more purchase orders").click();
+  await page.getByRole("option", { name: /^PO-/ }).first().click();
+  await page.keyboard.press("Escape");
+  await continueFreight.click();
+  await expect(page).toHaveURL(/\/bills\/\d+$/);
+  await expect(page.getByText("Orders this freight brought in")).toBeVisible();
+
   // The same screens in dark mode, for the design inspection round.
   await phone.close();
   const night = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, colorScheme: "dark" });

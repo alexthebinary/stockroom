@@ -3,6 +3,12 @@ import { describe, expect, it } from "vitest";
 import { expectBooksSound, ok, sampleCompany, testDb } from "./helpers";
 import { deliver } from "./scan";
 
+/** Inventory Asset (1200), the part a role tags: on hand, or billed and in transit. */
+async function inventory(role: "inventoryOnHand" | "inventoryInbound") {
+  const lines = await testDb().journalLine.findMany({ where: { role } });
+  return lines.reduce((s, l) => s + (l.side === "DEBIT" ? l.amountCents : -l.amountCents), 0);
+}
+
 const WIDGET = "012345678905"; // the sample widget's UPC-A
 const ROBOT = "012345678912";
 
@@ -48,8 +54,8 @@ describe("scan first, bill after (the clerk's surprise delivery)", () => {
     ok(await accountant.post(`/api/bills/${bill.id}/post`, { version: edited.version }));
 
     expect(await stock(ids.widget)).toEqual({ onHand: 2, held: 0, poolQty: 2, poolValue: 110000 });
-    expect(await balances("1201")).toBe(110000);
-    expect(await balances("1202")).toBe(0);
+    expect(await inventory("inventoryOnHand")).toBe(110000);
+    expect(await inventory("inventoryInbound")).toBe(0);
     expect(await balances("2000")).toBe(110000);
     const db = testDb();
     expect((await db.warehouseReceipt.findFirstOrThrow()).state).toBe("POSTED");
@@ -98,14 +104,14 @@ describe("scan first, bill after (the clerk's surprise delivery)", () => {
 });
 
 describe("bill first, goods after (the WMS doc's order: PO → Bill → Receipt)", () => {
-  it("bill posts to Inventory – Inbound; boxes land one at a time and clear it exactly", async () => {
+  it("bill posts to inventory in transit; boxes land one at a time and clear it exactly", async () => {
     const { admin, clerk, accountant, ids } = await sampleCompany();
     const po = ok(await admin.post("/api/purchase-orders", { vendorId: ids.supplier, warehouseId: ids.warehouse, lines: [{ itemId: ids.widget, qtyOrdered: 3, unitCostCents: 33333 }] })).body;
     expect(await testDb().journalEntry.count(), "a PO posts nothing").toBe(0);
     const draft = ok(await accountant.post("/api/bills", { poId: po.id })).body;
     const edited = ok(await accountant.patch(`/api/bills/${draft.id}`, { version: draft.version, vendorInvoiceNumber: "INV-3", freightCents: 1 })).body;
     ok(await accountant.post(`/api/bills/${draft.id}/post`, { version: edited.version }));
-    expect(await balances("1202")).toBe(100000);
+    expect(await inventory("inventoryInbound")).toBe(100000);
     expect(await balances("2000")).toBe(100000);
     expect((await testDb().purchaseOrder.findUniqueOrThrow({ where: { id: po.id } })).receivingStatus).toBe("NOT_RECEIVED");
 
@@ -116,7 +122,7 @@ describe("bill first, goods after (the WMS doc's order: PO → Bill → Receipt)
       values.push((await testDb().receiptLine.findFirstOrThrow({ orderBy: { id: "desc" } })).valueCents);
     }
     expect(values).toEqual([33333, 33334, 33333]);
-    expect(await balances("1202")).toBe(0);
+    expect(await inventory("inventoryInbound")).toBe(0);
     expect(await stock(ids.widget)).toEqual({ onHand: 3, held: 0, poolQty: 3, poolValue: 100000 });
     expect((await testDb().purchaseOrder.findUniqueOrThrow({ where: { id: po.id } })).receivingStatus).toBe("RECEIVED");
     await expectBooksSound();

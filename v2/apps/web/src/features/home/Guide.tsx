@@ -10,7 +10,7 @@ export function Guide() {
         {[
           ["1. Purchase order", "Commits to buy. Posts nothing — it only tells the dock what to expect. Its three statuses move on their own: billed, paid, received."],
           ["2. Vendor bill", "The only purchase document that posts money: Dr Inventory / Cr Accounts Payable, at landed cost (price, less discounts, plus freight spread over the lines)."],
-          ["3. Warehouse receipt", "Records the boxes physically arriving (the WH-IN register). It moves value from Inventory – Inbound to Inventory – On Hand, but it is always triggered by the bill."],
+          ["3. Warehouse receipt", "Records the boxes physically arriving (the WH-IN register). Within Inventory Asset it moves value from in transit to on hand, and it is always triggered by the bill."],
         ].map(([t, d]) => (
           <Card key={t} withBorder>
             <Text fw={600}>{t}</Text>
@@ -42,7 +42,7 @@ export function Guide() {
         <Title order={3} mb="xs">
           The books check
         </Title>
-        <Text>Four comparisons run on demand (Reports): debits equal credits; Inventory – On Hand equals stock at average cost, item by item; Inventory – Inbound equals billed stock not yet arrived; Accounts Payable equals open bills, vendor by vendor.</Text>
+        <Text>Four comparisons run on demand (Reports): debits equal credits; inventory on hand equals stock at average cost, item by item; inventory in transit equals billed stock not yet arrived; Accounts Payable equals open bills, vendor by vendor.</Text>
       </Card>
     </Stack>
   );

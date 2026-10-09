@@ -9,10 +9,10 @@ import {
 } from "../src";
 
 /**
- * The GAAP guide states entries against "Inventory Asset". v2 books the two
- * children (1201 On Hand, 1202 Inbound); statements roll them up. So each
- * golden test resolves roles to accounts, rolls children into their parent,
- * and nets — and must then read exactly like the guide.
+ * The GAAP guide states entries against "Inventory Asset", and so does v2:
+ * both inventory roles post to 1200. So each golden test resolves roles to
+ * accounts, rolls any children into their parent, and nets, and must then
+ * read exactly like the guide.
  */
 function asTheGuideReadsIt(...entries: PlannedLine[][]): Record<string, number> {
   const net: Record<string, number> = {};

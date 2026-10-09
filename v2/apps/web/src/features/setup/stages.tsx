@@ -232,7 +232,7 @@ export function OpeningStage({ totalCents }: { totalCents: number }) {
       </div>
       <hr className="ob-paper-rule" />
       <div className="ob-paper-row">
-        <span>Dr Inventory · On hand</span>
+        <span>Dr Inventory Asset</span>
         <b>{usd(totalCents)}</b>
       </div>
       <div className="ob-paper-row">

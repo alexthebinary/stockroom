@@ -405,12 +405,16 @@ export function NewFreightBill() {
   const navigate = useNavigate();
   const params = new URLSearchParams(window.location.search);
   const carriers = useQuery({ queryKey: ["vendors", "CARRIER"], queryFn: () => get<Vendor[]>("/vendors?kind=CARRIER") });
+  const orders = useQuery({ queryKey: ["orders", "ALL"], queryFn: () => get<PurchaseOrder[]>("/purchase-orders?lifecycle=ALL") });
   const [kind, setKind] = useState("FREIGHT_IN");
   const [vendorId, setVendorId] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
+  // Opened from a bill, the order is already known; from the Bills desk, pick it here.
+  const [targets, setTargets] = useState<string[]>(params.get("po") ? [params.get("po")!] : []);
+  const inbound = kind === "FREIGHT_IN";
   const create = async () => {
     try {
-      const bill = await post<Bill>("/freight-bills", { kind, vendorId: Number(vendorId), amountCents: cents(amount), targetPoIds: params.get("po") ? [Number(params.get("po"))] : [] });
+      const bill = await post<Bill>("/freight-bills", { kind, vendorId: Number(vendorId), amountCents: cents(amount), targetPoIds: inbound ? targets.map(Number) : [] });
       navigate(`/bills/${bill.id}`);
     } catch (error) {
       toastErr(error);
@@ -422,7 +426,19 @@ export function NewFreightBill() {
       <SegmentedControl value={kind} onChange={setKind} data={[{ value: "FREIGHT_IN", label: "Bringing stock in" }, { value: "FREIGHT_OUT", label: "Shipping to customers" }]} />
       <Select label="Carrier" data={(carriers.data ?? []).map((v) => ({ value: String(v.id), label: v.name }))} value={vendorId} onChange={setVendorId} description="Carriers are vendors of the carrier kind (Settings → Vendors)." />
       <TextInput label="Amount $" value={amount} onChange={(e) => setAmount(e.currentTarget.value)} inputMode="decimal" />
-      <Button onClick={create} disabled={!vendorId || cents(amount) <= 0}>
+      {inbound ? (
+        <MultiSelect
+          label="Orders this freight brought in"
+          description="Its cost is spread over these orders' items as landed cost."
+          placeholder={targets.length ? undefined : "Pick one or more purchase orders"}
+          data={(orders.data ?? []).filter((o) => o.lifecycle !== "CANCELED").map((o) => ({ value: String(o.id), label: `${o.number} · ${o.vendor?.name ?? "vendor not set"}` }))}
+          value={targets}
+          onChange={setTargets}
+          searchable
+          nothingFoundMessage="No purchase orders yet: receive a delivery first."
+        />
+      ) : null}
+      <Button onClick={create} disabled={!vendorId || cents(amount) <= 0 || (inbound && targets.length === 0)}>
         Continue
       </Button>
     </Stack>

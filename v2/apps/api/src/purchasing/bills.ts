@@ -123,7 +123,7 @@ export async function previewBill(tx: Tx, billId: number) {
 }
 
 /**
- * Post an inventory bill (GAAP guide §II.1): Dr Inventory – Inbound / Cr AP
+ * Post an inventory bill (GAAP guide §II.1): Dr Inventory Asset (in transit) / Cr AP
  * at landed cost, freight on the bill spread over its lines. Units already
  * waiting at the dock for this bill land in the same transaction (WH-IN
  * against the bill: Dr On Hand / Cr Inbound) and become sellable stock.

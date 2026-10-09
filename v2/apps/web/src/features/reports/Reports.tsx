@@ -44,8 +44,8 @@ function BooksCheck() {
   const f = books.data.figures;
   const checks = [
     ["Debits equal credits", f.debitsCents === f.creditsCents, `${usd(f.debitsCents)} = ${usd(f.creditsCents)}`],
-    ["Inventory – On Hand equals stock at average cost", f.onHandGlCents === f.onHandPoolCents, `${usd(f.onHandGlCents)} = ${usd(f.onHandPoolCents)}`],
-    ["Inventory – Inbound equals billed stock not yet arrived", f.inboundGlCents === f.inboundOpenCents, `${usd(f.inboundGlCents)} = ${usd(f.inboundOpenCents)}`],
+    ["Inventory on hand equals stock at average cost", f.onHandGlCents === f.onHandPoolCents, `${usd(f.onHandGlCents)} = ${usd(f.onHandPoolCents)}`],
+    ["Inventory in transit equals billed stock not yet arrived", f.inboundGlCents === f.inboundOpenCents, `${usd(f.inboundGlCents)} = ${usd(f.inboundOpenCents)}`],
     ["Accounts Payable equals open bills", f.payableGlCents === f.payableOpenCents, `${usd(f.payableGlCents)} = ${usd(f.payableOpenCents)}`],
   ] as const;
   return (

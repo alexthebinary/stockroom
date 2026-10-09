@@ -9,7 +9,10 @@ describe("a fresh install", () => {
     expect(body.required).toBe(true);
     expect(body.counts).toEqual({ profiles: 0, warehouses: 0, vendors: 0, items: 0, stocked: 0 });
     const accounts = ok(await client().get("/api/accounts")).body;
-    expect(accounts.map((a: { code: string }) => a.code)).toContain("1201");
+    const codes = accounts.map((a: { code: string }) => a.code);
+    expect(codes).toContain("1200");
+    expect(codes).not.toContain("1201");
+    expect(codes).not.toContain("1202");
   });
 
   it("loads the minimal sample: 1 warehouse, a supplier and a carrier, 3 items, no stock, no transactions", async () => {
@@ -66,7 +69,7 @@ describe("opening stock (GAAP guide §II.3 #1)", () => {
     );
     expect(body.totalCents).toBe(300000);
     const accounts = ok(await admin.get("/api/accounts")).body as { code: string; balanceCents: number }[];
-    expect(accounts.find((a) => a.code === "1201")!.balanceCents).toBe(300000);
+    expect(accounts.find((a) => a.code === "1200")!.balanceCents).toBe(300000);
     expect(accounts.find((a) => a.code === "3000")!.balanceCents).toBe(300000);
     const pool = await testDb().costPool.findUniqueOrThrow({ where: { itemId: ids.widget } });
     expect(pool).toMatchObject({ qty: 6, valueCents: 300000 });
