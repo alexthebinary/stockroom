@@ -238,6 +238,12 @@ sudo systemctl daemon-reload && sudo systemctl enable --now profitindex-autodepl
 - **Pause it:** `sudo systemctl stop profitindex-autodeploy.timer`; `start` turns it back on.
 - **Roll back:** pause it, then `git checkout <commit> && ./start.sh`.
 - A failed build leaves the running version up, and is retried on the next check.
+- **Notes fixed by a commit:** write `feedback #12` in the commit message and
+  that note is marked done once the commit is live; the tester who sent it sees
+  an "Updated: your note is fixed" banner next time they open the app.
+- **Pushes to your phone:** install the ntfy app, subscribe to a topic name
+  nobody would guess, and set `NOTIFY_URL=https://ntfy.sh/<that topic>` in
+  `.env`. You get new feedback as it arrives, and each deploy or failed deploy.
 
 ## Plainly stated
 

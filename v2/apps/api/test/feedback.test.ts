@@ -1,3 +1,4 @@
+import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
 import { client, ok, sampleCompany } from "./helpers";
 
@@ -44,5 +45,29 @@ describe("beta feedback", () => {
 
     expect(ok(await c.admin.patch(`/api/feedback/${id}`, { status: "DONE" })).body.status).toBe("DONE");
     expect(ok(await anon.get("/api/feedback?status=OPEN")).body).toHaveLength(1);
+  });
+
+  it("pushes new feedback to the owner's phone when NOTIFY_URL is set", async () => {
+    await sampleCompany();
+    const received = new Promise<Record<string, unknown>>((resolve) => {
+      const server = createServer((request, response) => {
+        let body = "";
+        request.on("data", (chunk) => (body += chunk));
+        request.on("end", () => {
+          response.end("{}");
+          server.close();
+          resolve(JSON.parse(body));
+        });
+      }).listen(0, () => {
+        process.env.NOTIFY_URL = `http://127.0.0.1:${(server.address() as { port: number }).port}/pi-test`;
+      });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    ok(await client().post("/api/feedback", { kind: "BUG", note: "Scan froze", path: "/receive", author: "Bea Tester" }), 201);
+    const push = await received;
+    delete process.env.NOTIFY_URL;
+    expect(push).toMatchObject({ topic: "pi-test", title: "New bug from Bea Tester", tags: ["beetle"] });
+    expect(push.message).toContain("Scan froze");
+    expect(push.click).toMatch(/\/feedback$/);
   });
 });

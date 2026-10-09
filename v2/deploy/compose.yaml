@@ -41,6 +41,7 @@ services:
       DATABASE_URL: postgresql://profitindex:${POSTGRES_PASSWORD}@db:5432/profitindex
       PORT: "4100"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      NOTIFY_URL: ${NOTIFY_URL:-}
     ports:
       - "127.0.0.1:4100:4100"
     healthcheck:

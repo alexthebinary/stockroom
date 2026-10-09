@@ -1,7 +1,7 @@
 import { Button, CloseButton, Drawer, FileButton, Group, Menu, Popover, Stack, Text, Textarea, TextInput } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { IconBug, IconBulb, IconCamera, IconCheck, IconEyeOff, IconHelp, IconList, IconMapPin, IconMessageReport, IconPhoto } from "@tabler/icons-react";
+import { IconBug, IconBulb, IconCamera, IconCheck, IconCircleCheckFilled, IconEyeOff, IconHelp, IconList, IconMapPin, IconMessageReport, IconPhoto } from "@tabler/icons-react";
 import { type PointerEvent, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Chips } from "../../components/onboarding/Onboarding";
@@ -23,6 +23,22 @@ const KIND_OPTIONS = [
   { value: "QUESTION" as Kind, label: "Question", icon: <IconHelp size={20} /> },
 ];
 const NAME_KEY = "pi.feedbackName";
+const MINE_KEY = "pi.myNotes";
+const SEEN_KEY = "pi.seenFixed";
+const readIds = (key: string): number[] => {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? "[]");
+  } catch {
+    return [];
+  }
+};
+const addIds = (key: string, ids: number[]) => {
+  try {
+    localStorage.setItem(key, JSON.stringify([...new Set([...readIds(key), ...ids])]));
+  } catch {
+    // Private window: the banner just won't remember.
+  }
+};
 
 /** A photo or capture, shrunk on the device to at most 1600px wide, as a JPEG data URL. */
 async function shrink(source: CanvasImageSource & { width: number; height: number }): Promise<string> {
@@ -63,6 +79,11 @@ export function FeedbackLayer() {
   const phone = useMediaQuery("(max-width: 640px)");
   const setup = useQuery({ queryKey: ["setup"], queryFn: () => get<Setup>("/setup") });
   const notes = useQuery({ queryKey: ["feedback", pathname], queryFn: () => get<Note[]>(`/feedback?path=${encodeURIComponent(pathname)}&status=OPEN`) });
+  const [mine, setMine] = useState(() => readIds(MINE_KEY));
+  const [seen, setSeen] = useState(() => readIds(SEEN_KEY));
+  const done = useQuery({ queryKey: ["feedback", "done"], queryFn: () => get<Note[]>("/feedback?status=DONE"), enabled: mine.length > 0 });
+  const fixed = (done.data ?? []).filter((note) => mine.includes(note.id) && !seen.includes(note.id));
+  const [showFixed, setShowFixed] = useState(false);
   const focus = Number(new URLSearchParams(search).get("feedback")) || null;
 
   const [hidden, setHidden] = useState(false);
@@ -113,7 +134,7 @@ export function FeedbackLayer() {
     setBusy(true);
     try {
       if (!profile && name.trim()) localStorage.setItem(NAME_KEY, name.trim());
-      await post("/feedback", {
+      const { id } = await post<{ id: number }>("/feedback", {
         kind,
         note: text,
         path: pathname,
@@ -123,6 +144,8 @@ export function FeedbackLayer() {
         author: name.trim() || null,
         screenshot: shot,
       });
+      addIds(MINE_KEY, [id]);
+      setMine(readIds(MINE_KEY));
       toastOk("Thanks, your note was sent");
       close();
       setShowPins(true);
@@ -236,6 +259,40 @@ export function FeedbackLayer() {
           })
         : null}
       {draftAt ? <span className="fb-pin" data-draft="true" style={{ left: draftAt.x, top: draftAt.y }} /> : null}
+
+      {fixed.length ? (
+        <div className="fb-fixed" role="status">
+          <div className="fb-fixed-head">
+            <IconCircleCheckFilled size={22} className="fb-fixed-icon" />
+            <span>
+              Updated: {fixed.length === 1 ? "1 of your notes is fixed" : `${fixed.length} of your notes are fixed`}
+            </span>
+            <Button size="xs" variant="subtle" color="gray" onClick={() => setShowFixed(!showFixed)}>
+              {showFixed ? "Hide" : "Show"}
+            </Button>
+            <Button
+              size="xs"
+              variant="white"
+              onClick={() => {
+                addIds(SEEN_KEY, fixed.map((note) => note.id));
+                setSeen(readIds(SEEN_KEY));
+                setShowFixed(false);
+              }}
+            >
+              Got it
+            </Button>
+          </div>
+          {showFixed ? (
+            <ul className="fb-fixed-list">
+              {fixed.map((note) => (
+                <li key={note.id}>
+                  <b>{KIND_LABEL[note.kind]}</b> {note.note}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
 
       <Drawer
         opened={draft != null && !capturing}

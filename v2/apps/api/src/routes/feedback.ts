@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Deps } from "../app";
 import { idParam, notFound, parse } from "../http";
+import { notify } from "../notify";
 
 const feedbackBody = z.object({
   kind: z.enum(["BUG", "IDEA", "QUESTION"]),
@@ -36,9 +37,11 @@ export function registerFeedback(app: FastifyInstance, { db }: Deps) {
         screenshot: shot?.[2] ? new Uint8Array(Buffer.from(shot[2], "base64")) : null,
         screenshotType: shot?.[2] ? (shot[1] ?? null) : null,
       },
-      select: { id: true },
+      select: { id: true, author: true },
     });
-    return reply.status(201).send(row);
+    const origin = `${request.protocol}://${request.headers.host}`;
+    notify(`New ${body.kind.toLowerCase()} from ${row.author}`, `${body.note.slice(0, 240)}\n${body.path}`, { click: `${origin}/feedback`, tags: [body.kind === "BUG" ? "beetle" : body.kind === "IDEA" ? "bulb" : "question"] });
+    return reply.status(201).send({ id: row.id });
   });
 
   app.get("/api/feedback", async (request) => {

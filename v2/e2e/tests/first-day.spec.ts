@@ -157,6 +157,12 @@ test("fresh install to a paid bill, with the books proved sound", async ({ brows
   await shot(page, "10c-feedback-list");
   await page.getByRole("button", { name: "Done", exact: true }).click();
   await expect(page.getByText(/No open feedback/)).toBeVisible();
+  // The device that sent it is told, once, that it's fixed.
+  await page.goto("/");
+  const fixedBanner = page.getByRole("status").filter({ hasText: "Updated: 1 of your notes is fixed" });
+  await expect(fixedBanner).toBeVisible();
+  await fixedBanner.getByRole("button", { name: "Got it" }).click();
+  await expect(page.getByText("Updated: 1 of your notes is fixed")).toHaveCount(0);
 
   // The same screens in dark mode, for the design inspection round.
   await phone.close();
