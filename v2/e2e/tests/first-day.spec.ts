@@ -134,6 +134,30 @@ test("fresh install to a paid bill, with the books proved sound", async ({ brows
   await expect(page.getByText("Debits equal credits")).toBeVisible();
   await shot(page, "10-books-check");
 
+  // ── A beta tester pins a note on the page, with a screenshot ──
+  await page.getByRole("button", { name: "Feedback", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Mark something on this page" }).click();
+  const heading = (await page.getByRole("heading", { level: 1 }).first().boundingBox())!;
+  await page.mouse.click(heading.x + 12, heading.y + heading.height / 2);
+  await page.getByRole("radio", { name: "Idea" }).click();
+  await page.getByLabel("What happened, and what did you expect?").fill("Show the trial balance as a chart too");
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  await page.locator('input[type="file"]').setInputFiles({ name: "shot.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+  await expect(page.getByAltText("Screenshot to send")).toBeVisible();
+  await shot(page, "10b-feedback-note");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByText("Thanks, your note was sent")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Note 1: Show the trial balance/ })).toBeVisible();
+  const markdown = await (await page.request.get("/api/feedback/export.md")).text();
+  expect(markdown).toContain("Show the trial balance as a chart too");
+  expect(markdown).toContain("`/reports`");
+  await page.goto("/feedback");
+  await expect(page.getByText("Show the trial balance as a chart too")).toBeVisible();
+  await expect(page.getByAltText("Screenshot for note 1")).toBeVisible();
+  await shot(page, "10c-feedback-list");
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(page.getByText(/No open feedback/)).toBeVisible();
+
   // The same screens in dark mode, for the design inspection round.
   await phone.close();
   const night = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, colorScheme: "dark" });

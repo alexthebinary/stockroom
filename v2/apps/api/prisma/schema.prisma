@@ -25,6 +25,8 @@ model Company {
   setupStep            Int       @default(0)
   setupCompletedAt     DateTime?
   sampleDataLoadedAt   DateTime?
+  /// The beta "Feedback" tab on every screen; off once the beta is over.
+  feedbackEnabled      Boolean   @default(true)
   createdAt            DateTime  @default(now())
 }
 
@@ -520,4 +522,28 @@ model VendorCreditLine {
   costCents   Int @default(0)
 
   credit VendorCredit @relation(fields: [creditId], references: [id], onDelete: Cascade)
+}
+
+/// A tester's note pinned to a spot in the app. kind: BUG | IDEA | QUESTION;
+/// status: OPEN | DONE | WONTFIX. The author is a name snapshot, not a link to
+/// Profile, so feedback survives the demo being wiped (deploy/reset.sh).
+model Feedback {
+  id             Int      @id @default(autoincrement())
+  kind           String
+  status         String   @default("OPEN")
+  note           String
+  path           String
+  pageTitle      String?
+  /// Where on the page: { selector, label, offsetX, offsetY, pageX, pageY, viewportWidth }.
+  anchor         Json?
+  /// What the device knew: browser, screen, colour scheme, build, recent errors.
+  context        Json
+  author         String
+  authorJob      String?
+  screenshot     Bytes?
+  screenshotType String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([path, status])
 }

@@ -8,6 +8,7 @@ import { registerAccounting } from "./routes/accounting";
 import { registerAdjustments } from "./routes/adjustments";
 import { registerAi } from "./routes/ai";
 import { registerCatalog } from "./routes/catalog";
+import { registerFeedback } from "./routes/feedback";
 import { registerPayables } from "./routes/payables";
 import { registerPurchasing } from "./routes/purchasing";
 import { registerReports } from "./routes/reports";
@@ -21,7 +22,7 @@ declare module "fastify" {
 
 export type Deps = { db: Db; reader: Reader | null };
 
-const OPEN_WITHOUT_PROFILE = ["/api/setup", "/api/profiles", "/api/health"];
+const OPEN_WITHOUT_PROFILE = ["/api/setup", "/api/profiles", "/api/health", "/api/feedback"];
 
 /**
  * Sent with every response. The app is reachable from the open internet with
@@ -120,5 +121,6 @@ export function buildApp(deps: Deps): FastifyInstance {
   registerReports(app, deps);
   registerAdjustments(app, deps);
   registerAi(app, deps);
+  registerFeedback(app, deps);
   return app;
 }

@@ -7,6 +7,7 @@ import {
   IconChartBar,
   IconFileInvoice,
   IconHome,
+  IconMessageReport,
   IconMoon,
   IconPrinter,
   IconReceipt2,
@@ -35,6 +36,7 @@ const SECTIONS: Record<string, Section> = {
   settings: { to: "/settings", label: "Settings", icon: IconSettings },
   sheet: { to: "/test-sheet", label: "Test sheet", icon: IconPrinter },
   guide: { to: "/guide", label: "How it works", icon: IconBook2 },
+  feedback: { to: "/feedback", label: "Feedback", icon: IconMessageReport },
 };
 
 /** The phone's bottom tabs: the three or four things this job does all day. */
@@ -47,8 +49,8 @@ const TABS: Record<Job, (keyof typeof SECTIONS)[]> = {
 /** The desktop rail: everything, grouped, the job's own work first. */
 const RAIL: Record<Job, (keyof typeof SECTIONS)[]> = {
   CLERK: ["home", "receive", "items", "orders", "sheet", "guide"],
-  ACCOUNTING: ["home", "bills", "payables", "orders", "reports", "items", "receive", "settings", "guide"],
-  ADMIN: ["home", "orders", "bills", "payables", "receive", "items", "reports", "settings", "sheet", "guide"],
+  ACCOUNTING: ["home", "bills", "payables", "orders", "reports", "items", "receive", "settings", "guide", "feedback"],
+  ADMIN: ["home", "orders", "bills", "payables", "receive", "items", "reports", "settings", "sheet", "guide", "feedback"],
 };
 
 const isActive = (pathname: string, to: string) => (to === "/" ? pathname === "/" : pathname.startsWith(to));

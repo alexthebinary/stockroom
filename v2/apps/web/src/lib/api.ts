@@ -1,3 +1,4 @@
+import { recordProblem } from "./diagnostics";
 /** The API, as the person currently working: their profile id rides on every request. */
 const PROFILE_KEY = "pi.profile";
 
@@ -44,11 +45,13 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
+    recordProblem(`${method} ${path} → no connection`);
     throw new ApiError("No connection. Your work is safe on this device; try again when you're back online.", 0);
   }
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
   if (!response.ok) {
+    recordProblem(`${method} ${path} → ${response.status} ${data?.error ?? ""}`.trim());
     if (response.status === 401) onUnauthorized?.();
     throw new ApiError(data?.error ?? `Request failed (${response.status})`, response.status);
   }

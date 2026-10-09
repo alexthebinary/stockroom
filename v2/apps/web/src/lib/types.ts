@@ -107,7 +107,7 @@ export type ScanEvent = {
 };
 
 export type Setup = {
-  company: { name: string; address: string | null; homeState: string | null; fiscalYearStartMonth: number; setupStep: number; setupCompletedAt: string | null; sampleDataLoadedAt: string | null };
+  company: { name: string; address: string | null; homeState: string | null; fiscalYearStartMonth: number; setupStep: number; setupCompletedAt: string | null; sampleDataLoadedAt: string | null; feedbackEnabled: boolean };
   required: boolean;
   counts: { profiles: number; warehouses: number; vendors: number; items: number; stocked: number };
   sample: {

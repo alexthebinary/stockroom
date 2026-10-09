@@ -3,6 +3,8 @@ import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  // Named in every feedback report: the deploy passes its commit, else the build time.
+  define: { __APP_BUILD__: JSON.stringify(process.env.VITE_APP_VERSION || new Date().toISOString().slice(0, 16).replace("T", " ")) },
   plugins: [
     react(),
     VitePWA({

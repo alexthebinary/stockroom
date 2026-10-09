@@ -1,0 +1,23 @@
+/* ── Beta feedback: the edge tab, pin mode, pins. Above the scanner (400) and Mantine's layers. ── */
+.fb-tab { position: fixed; right: 0; top: 50%; z-index: 900; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 12px 8px; border: 0; border-radius: 12px 0 0 12px; background: var(--ink); color: var(--surface); font: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer; box-shadow: 0 8px 20px -10px rgba(17, 18, 16, 0.6); transition: padding 150ms var(--ease-out); }
+.fb-tab:hover { padding-right: 12px; }
+.fb-tab-label { writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: 0.02em; }
+.fb-tab-count { display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--signal); color: var(--signal-ink); font-size: 11px; }
+@media (max-width: 640px) { .fb-tab { top: 38%; padding: 10px 6px; } .fb-tab-label { display: none; } }
+
+.fb-overlay { position: fixed; inset: 0; z-index: 1000; cursor: crosshair; }
+.fb-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 999px;
+  background: var(--ink); color: var(--surface); font-size: 14px; font-weight: 600; white-space: nowrap; cursor: default; box-shadow: 0 12px 28px -14px rgba(0, 0, 0, 0.6); }
+.fb-hover { position: fixed; pointer-events: none; border-radius: 6px; outline: 2px solid var(--signal); background: rgba(198, 213, 90, 0.12); transition: all 80ms linear; }
+
+.fb-pin { position: absolute; z-index: 950; width: 28px; height: 28px; margin: -14px 0 0 -14px; display: grid; place-items: center; border-radius: 50% 50% 50% 4px;
+  border: 2px solid var(--surface); background: var(--ink); color: var(--surface); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 6px 14px -6px rgba(0, 0, 0, 0.6); }
+.fb-pin[data-focus="true"], .fb-pin[data-draft="true"] { box-shadow: 0 0 0 3px var(--signal), 0 6px 14px -6px rgba(0, 0, 0, 0.6); }
+.fb-pin[data-draft="true"] { background: var(--signal); pointer-events: none; }
+
+.fb-shot { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+.fb-shot img { display: block; width: 100%; max-height: 220px; object-fit: cover; object-position: top; }
+.fb-shot button { position: absolute; top: 6px; right: 6px; background: var(--surface); }

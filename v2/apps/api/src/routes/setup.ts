@@ -20,6 +20,7 @@ const companyBody = z.object({
     .regex(/^[A-Z]{2}$/, "Use the two-letter state code")
     .optional(),
   fiscalYearStartMonth: z.number().int().min(1).max(12).default(1),
+  feedbackEnabled: z.boolean().optional(),
 });
 
 const openingBody = z.object({

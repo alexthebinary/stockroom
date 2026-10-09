@@ -9,8 +9,11 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
+import { watchProblems } from "./lib/diagnostics";
 import { ProfileProvider } from "./lib/profile";
 import { cssVariablesResolver, theme } from "./theme";
+
+watchProblems();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 5_000, refetchOnWindowFocus: true } },

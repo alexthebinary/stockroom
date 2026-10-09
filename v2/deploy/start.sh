@@ -15,6 +15,6 @@ if [ ! -f .env ]; then
   echo "wrote .env with a new database password"
 fi
 
-docker compose up -d --build
+APP_VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo dev) docker compose up -d --build
 docker compose --profile backup build --quiet backup
 ./url.sh

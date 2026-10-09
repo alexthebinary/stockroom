@@ -5,6 +5,8 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Shell } from "./components/Shell";
 import { BillDesk } from "./features/bills/BillDesk";
 import { BillPage, NewFreightBill } from "./features/bills/BillPage";
+import { FeedbackLayer } from "./features/feedback/FeedbackLayer";
+import { FeedbackPage } from "./features/feedback/FeedbackPage";
 import { Guide } from "./features/home/Guide";
 import { HomePage } from "./features/home/Homes";
 import { ProfilePicker } from "./features/home/ProfilePicker";
@@ -44,8 +46,17 @@ export function App() {
       </Center>
     );
   }
+  return (
+    <>
+      <Screens profile={profile != null} required={setup.data.required} pathname={pathname} />
+      <FeedbackLayer />
+    </>
+  );
+}
+
+function Screens({ profile, required, pathname }: { profile: boolean; required: boolean; pathname: string }) {
   if (pathname === "/test-sheet") return <Suspense fallback={spinner}><TestSheet /></Suspense>;
-  if (setup.data.required || pathname === "/setup") return <Suspense fallback={spinner}><SetupWizard /></Suspense>;
+  if (required || pathname === "/setup") return <Suspense fallback={spinner}><SetupWizard /></Suspense>;
   if (!profile) return <ProfilePicker />;
   return (
     <Shell>
@@ -65,6 +76,7 @@ export function App() {
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/guide" element={<Guide />} />
+        <Route path="/feedback" element={<FeedbackPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </Suspense>

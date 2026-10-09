@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Group, Select, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
+import { Alert, Badge, Button, Card, Group, Select, Stack, Switch, Table, Tabs, Text, TextInput } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -191,6 +191,22 @@ function Company() {
       <Button component={Link} to="/setup" variant="light" w="fit-content">
         Open setup
       </Button>
+      {setup.data ? (
+        <Switch
+          label="Beta feedback tab"
+          description="The Feedback tab on the right edge of every screen, for testers to pin notes."
+          checked={setup.data.company.feedbackEnabled}
+          onChange={async (event) => {
+            const c = setup.data!.company;
+            try {
+              await put("/setup/company", { name: c.name, address: c.address ?? undefined, homeState: c.homeState ?? undefined, fiscalYearStartMonth: c.fiscalYearStartMonth, feedbackEnabled: event.currentTarget.checked });
+              await queryClient.invalidateQueries({ queryKey: ["setup"] });
+            } catch (error) {
+              toastErr(error);
+            }
+          }}
+        />
+      ) : null}
       {setup.data?.sample.loaded ? (
         <Alert color="blue" title="Sample data">
           <Text size="sm" mb="xs">

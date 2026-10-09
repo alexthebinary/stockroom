@@ -12,7 +12,9 @@ COPY e2e/package.json e2e/
 RUN npm ci --workspace=@pi/domain --workspace=@pi/api --workspace=@pi/web --include-workspace-root
 COPY packages packages
 COPY apps apps
-RUN npm run build -w @pi/web && npm run build -w @pi/api
+# The commit, named in every feedback report (deploy/start.sh passes it).
+ARG APP_VERSION=dev
+RUN VITE_APP_VERSION=$APP_VERSION npm run build -w @pi/web && npm run build -w @pi/api
 
 FROM node:22-bookworm-slim
 # Prisma's migration engine links OpenSSL 3, which the slim image leaves out.
