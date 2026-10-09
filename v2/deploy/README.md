@@ -22,10 +22,11 @@ Nothing listens on the LAN. The database has no published port. The app is on
 | `.env.example` | every setting; `.env` is never committed |
 | `reset.sh` | wipe the beta back to a fresh install (backs up first, keeps the link) |
 | `update.sh` | back up, pull, rebuild |
+| `autodeploy.sh` | run by a timer: `update.sh` whenever the branch has a new commit |
 | `backup/` | the backup image: `pg_dump`, checked readable, copied to R2 |
 | `restore.sh` | replace the live database from a backup, then prove the books |
 | `drill.sh` | restore a backup into a scratch copy and prove it, leaving live data alone |
-| `systemd/` | the nightly backup timer |
+| `systemd/` | the nightly backup timer and the auto-deploy timer |
 
 ## 1. The machine
 
@@ -219,6 +220,24 @@ cd /opt/stockroom/v2/deploy && ./update.sh
 It backs up first, then pulls, rebuilds, restarts, and prints the address.
 Database migrations apply when the app starts. Phones pick up the new version
 the next time they open the app.
+
+## 7. Auto-deploy
+
+Every few minutes the Dell checks the branch it's on. When there's a commit it
+hasn't deployed yet, it runs `update.sh`: back up, pull, rebuild. Pushed fixes
+are live in about five minutes, and the link stays the same.
+
+```bash
+cd /opt/stockroom/v2/deploy
+sed "s/^User=.*/User=$USER/" systemd/profitindex-autodeploy.service | sudo tee /etc/systemd/system/profitindex-autodeploy.service >/dev/null
+sudo cp systemd/profitindex-autodeploy.timer /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now profitindex-autodeploy.timer
+```
+
+- **Watch it:** `journalctl -u profitindex-autodeploy -f`
+- **Pause it:** `sudo systemctl stop profitindex-autodeploy.timer`; `start` turns it back on.
+- **Roll back:** pause it, then `git checkout <commit> && ./start.sh`.
+- A failed build leaves the running version up, and is retried on the next check.
 
 ## Plainly stated
 

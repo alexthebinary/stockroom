@@ -1,0 +1,11 @@
+[Unit]
+Description=ProfitIndex auto-deploy: update when the branch has a new commit
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+# The person who owns the clone; the install step in README.md fills this in.
+User=CHANGE_ME
+WorkingDirectory=/opt/stockroom/v2/deploy
+ExecStart=/opt/stockroom/v2/deploy/autodeploy.sh

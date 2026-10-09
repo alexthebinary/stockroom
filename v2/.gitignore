@@ -12,3 +12,4 @@ screenshots/
 # Dell deployment: secrets and local backups never go in git.
 deploy/.env
 deploy/backups/
+deploy/.deployed
