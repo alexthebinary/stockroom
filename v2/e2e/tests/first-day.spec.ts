@@ -133,6 +133,16 @@ test("fresh install to a paid bill, with the books proved sound", async ({ brows
   await page.goto("/reports");
   await expect(page.getByText("Debits equal credits")).toBeVisible();
   await shot(page, "10-books-check");
+  // The general journal: each transaction with its debits and credits.
+  await page.getByRole("tab", { name: "Journal entries" }).click();
+  const journal = page.getByRole("table");
+  await expect(journal.getByText("Vendor bill – inventory")).toBeVisible();
+  await expect(journal.getByText("Warehouse receipt").first()).toBeVisible();
+  await shot(page, "10a-journal");
+  await page.getByRole("combobox", { name: "Transaction type" }).click();
+  await page.getByRole("option", { name: "Vendor payment" }).click();
+  await expect(page.getByText("1 entry, newest first")).toBeVisible();
+  await expect(page.getByRole("row", { name: /Total shown \$1,100\.00 \$1,100\.00/ })).toBeVisible();
 
   // ── A beta tester pins a note on the page, with a screenshot ──
   await page.getByRole("button", { name: "Feedback", exact: true }).click();

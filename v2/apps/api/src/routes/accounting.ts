@@ -55,13 +55,25 @@ export function registerAccounting(app: FastifyInstance, { db }: Deps) {
 
   app.get("/api/books/check", async () => checkBooks(db));
 
+  /** The general journal, newest first; filter by kind of transaction, page with skip. */
   app.get("/api/journal", async (request) => {
-    const q = parse(z.object({ sourceType: z.string().optional(), sourceId: z.coerce.number().int().optional(), take: z.coerce.number().int().max(500).default(100) }), request.query);
+    const q = parse(
+      z.object({
+        sourceType: z.string().optional(),
+        sourceId: z.coerce.number().int().optional(),
+        event: z.string().optional(),
+        take: z.coerce.number().int().min(1).max(500).default(50),
+        skip: z.coerce.number().int().min(0).default(0),
+      }),
+      request.query,
+    );
     return db.journalEntry.findMany({
-      where: { ...(q.sourceType ? { sourceType: q.sourceType } : {}), ...(q.sourceId != null ? { sourceId: q.sourceId } : {}) },
-      include: { lines: { include: { account: true } } },
+      where: { ...(q.sourceType ? { sourceType: q.sourceType } : {}), ...(q.sourceId != null ? { sourceId: q.sourceId } : {}), ...(q.event ? { event: q.event } : {}) },
+      // Debits first, as a journal reads.
+      include: { lines: { include: { account: true }, orderBy: [{ side: "desc" }, { id: "asc" }] }, reverses: { select: { number: true } } },
       orderBy: { id: "desc" },
       take: q.take,
+      skip: q.skip,
     });
   });
 }

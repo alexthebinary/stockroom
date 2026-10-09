@@ -261,3 +261,20 @@ describe("Reports", () => {
     expect(home.admin.booksSound).toBe(true);
   });
 });
+
+describe("the general journal", () => {
+  it("lists entries newest first, filters by kind, and shows each entry's debits before its credits", async () => {
+    const c = await sampleCompany();
+    const { bill } = await billedPo(c, 2);
+    await freightBill(c, [bill.poId], 10000);
+    const all = ok(await c.accountant.get("/api/journal")).body as { event: string; lines: { side: string }[] }[];
+    expect(all.map((e) => e.event)).toEqual(["FREIGHT_IN_POSTED", "BILL_POSTED"]);
+    const bills = ok(await c.accountant.get("/api/journal?event=BILL_POSTED")).body as { lines: { side: string; amountCents: number; role: string; account: { code: string } }[] }[];
+    expect(bills).toHaveLength(1);
+    expect(bills[0]!.lines.map((l) => [l.side, l.account.code, l.role, l.amountCents])).toEqual([
+      ["DEBIT", "1200", "inventoryInbound", 100000],
+      ["CREDIT", "2000", "payable", 100000],
+    ]);
+    expect(ok(await c.accountant.get("/api/journal?take=1&skip=1")).body[0].event).toBe("BILL_POSTED");
+  });
+});

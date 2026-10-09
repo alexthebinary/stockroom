@@ -127,3 +127,6 @@ export type Home = {
   accounting: { draftBills: number; heldUnits: number; unknownItems: number; payableCents: number; dueThisWeekCents: number; overdueCents: number };
   admin: { booksSound: boolean; problems: string[] };
 };
+
+export type JournalLine = { id: number; side: "DEBIT" | "CREDIT"; amountCents: number; role: string; account: { code: string; name: string } };
+export type JournalEntry = { id: number; number: string; event: string; date: string; memo: string | null; actor: string; reverses: { number: string } | null; lines: JournalLine[] };

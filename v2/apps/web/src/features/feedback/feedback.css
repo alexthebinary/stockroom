@@ -30,3 +30,6 @@
 .fb-fixed-icon { color: var(--signal); flex: none; }
 .fb-fixed-list { margin: 10px 0 2px; padding: 0 0 0 32px; display: grid; gap: 6px; font-weight: 400; max-height: 40vh; overflow: auto; }
 .fb-fixed-list b { color: var(--signal); font-weight: 600; margin-right: 4px; }
+
+/* Keep the page's right edge (amounts in a Credit column, say) clear of the tab. */
+@media (min-width: 641px) { body:has(.fb-tab) .mantine-AppShell-main { padding-right: 52px; } }

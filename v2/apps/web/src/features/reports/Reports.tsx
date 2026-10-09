@@ -1,9 +1,12 @@
-import { Alert, Card, Group, Stack, Table, Tabs, Text } from "@mantine/core";
-import { useQuery } from "@tanstack/react-query";
+import { EVENTS, type EventType } from "@pi/domain";
+import { Alert, Button, Card, Group, Select, Stack, Table, Tabs, Text } from "@mantine/core";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
 import { plural, formatDate, Loading, Money, PageHeader, usd } from "../../components/ui";
 import { get } from "../../lib/api";
+import type { JournalEntry } from "../../lib/types";
 
 type Books = { sound: boolean; problems: string[]; figures: Record<string, number> };
 type Tb = { rows: { id: number; code: string; name: string; isHeader: boolean; parentId: number | null; debitCents: number; creditCents: number }[]; totalDebitCents: number; totalCreditCents: number };
@@ -18,6 +21,7 @@ export function Reports() {
         <Tabs.List mb="md">
           <Tabs.Tab value="books">Books check</Tabs.Tab>
           <Tabs.Tab value="tb">Trial balance</Tabs.Tab>
+          <Tabs.Tab value="journal">Journal entries</Tabs.Tab>
           <Tabs.Tab value="stock">Stock value</Tabs.Tab>
           <Tabs.Tab value="held">Awaiting bill</Tabs.Tab>
         </Tabs.List>
@@ -26,6 +30,9 @@ export function Reports() {
         </Tabs.Panel>
         <Tabs.Panel value="tb">
           <TrialBalance />
+        </Tabs.Panel>
+        <Tabs.Panel value="journal">
+          <Journal />
         </Tabs.Panel>
         <Tabs.Panel value="stock">
           <StockValue />
@@ -114,6 +121,121 @@ function TrialBalance() {
         </Table.Tbody>
       </Table>
     </Table.ScrollContainer>
+  );
+}
+
+const PAGE = 50;
+/** Inventory is one account (1200); its lines say which part they move. */
+const INVENTORY_PART: Record<string, string> = { inventoryOnHand: "on hand", inventoryInbound: "in transit" };
+
+/** The general journal: every entry, newest first, each with its debits and credits. */
+function Journal() {
+  const [event, setEvent] = useState<string | null>(null);
+  const [pages, setPages] = useState(1);
+  const journal = useQuery({
+    queryKey: ["journal", event, pages],
+    queryFn: () => get<JournalEntry[]>(`/journal?take=${PAGE * pages}${event ? `&event=${event}` : ""}`),
+    placeholderData: keepPreviousData,
+  });
+  const entries = journal.data ?? [];
+  const lines = entries.flatMap((e) => e.lines);
+  const total = (side: "DEBIT" | "CREDIT") => lines.filter((l) => l.side === side).reduce((s, l) => s + l.amountCents, 0);
+  return (
+    <Stack>
+      <Group justify="space-between" align="flex-end">
+        <Select
+          aria-label="Transaction type"
+          placeholder="All transaction types"
+          data={Object.entries(EVENTS).map(([value, e]) => ({ value, label: e.label }))}
+          value={event}
+          onChange={(v) => {
+            setEvent(v);
+            setPages(1);
+          }}
+          clearable
+          w={280}
+        />
+        <Text size="sm" c="dimmed">
+          {plural(entries.length, "entry", "entries")}, newest first
+        </Text>
+      </Group>
+      {journal.isLoading ? (
+        <Loading />
+      ) : entries.length === 0 ? (
+        <div className="ruled-empty">{event ? "No entries of this type yet." : "Nothing is posted yet. Entries appear here as bills, receipts and payments post."}</div>
+      ) : (
+        <Table.ScrollContainer minWidth={720}>
+          <Table withRowBorders={false} verticalSpacing={6}>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Entry</Table.Th>
+                <Table.Th>Type</Table.Th>
+                <Table.Th>Account</Table.Th>
+                <Table.Th ta="right">Debit</Table.Th>
+                <Table.Th ta="right">Credit</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {entries.flatMap((e) =>
+                e.lines.map((l, i) => (
+                  <Table.Tr key={l.id} style={i === 0 ? { borderTop: "1px solid var(--line)" } : undefined}>
+                    <Table.Td style={{ verticalAlign: "top" }}>
+                      {i === 0 ? (
+                        <>
+                          <Text size="sm" fw={600}>
+                            {e.number}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            {formatDate(e.date)} · {e.actor}
+                          </Text>
+                        </>
+                      ) : null}
+                    </Table.Td>
+                    <Table.Td style={{ verticalAlign: "top" }}>
+                      {i === 0 ? (
+                        <>
+                          <Text size="sm">{(e.reverses ? `Reversal of ${e.reverses.number}: ` : "") + (EVENTS[e.event as EventType]?.label ?? e.event)}</Text>
+                          {e.memo ? (
+                            <Text size="xs" c="dimmed">
+                              {e.memo}
+                            </Text>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </Table.Td>
+                    <Table.Td pl={l.side === "CREDIT" ? 32 : undefined}>
+                      {l.account.code} {l.account.name}
+                      {INVENTORY_PART[l.role] ? (
+                        <Text span size="xs" c="dimmed">
+                          {" "}
+                          · {INVENTORY_PART[l.role]}
+                        </Text>
+                      ) : null}
+                    </Table.Td>
+                    <Table.Td ta="right">{l.side === "DEBIT" ? <Money cents={l.amountCents} /> : ""}</Table.Td>
+                    <Table.Td ta="right">{l.side === "CREDIT" ? <Money cents={l.amountCents} /> : ""}</Table.Td>
+                  </Table.Tr>
+                )),
+              )}
+              <Table.Tr fw={700} style={{ borderTop: "1px solid var(--ink)" }}>
+                <Table.Td colSpan={3}>Total shown</Table.Td>
+                <Table.Td ta="right">
+                  <Money cents={total("DEBIT")} />
+                </Table.Td>
+                <Table.Td ta="right">
+                  <Money cents={total("CREDIT")} />
+                </Table.Td>
+              </Table.Tr>
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
+      {entries.length === PAGE * pages ? (
+        <Button variant="subtle" w="fit-content" onClick={() => setPages(pages + 1)} loading={journal.isFetching}>
+          Show {PAGE} more
+        </Button>
+      ) : null}
+    </Stack>
   );
 }
 
