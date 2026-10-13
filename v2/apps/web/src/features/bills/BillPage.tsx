@@ -452,6 +452,7 @@ function PostedBill({ bill }: { bill: FullBill }) {
   const [modal, setModal] = useState<"pay" | "refund" | "credit" | null>(null);
   const [voiding, setVoiding] = useState(false);
   const open = bill.openCents ?? 0;
+  const toReceive = [...new Map(bill.lines.flatMap((l) => (l.poLine ? [[l.poLine.id, l.poLine] as const] : []))).values()].reduce((s, p) => s + Math.max(0, p.qtyOrdered - p.qtyReceived), 0);
   const refresh = () => queryClient.invalidateQueries();
   const act = async (fn: () => Promise<unknown>, message: string) => {
     try {
@@ -476,6 +477,16 @@ function PostedBill({ bill }: { bill: FullBill }) {
         <Stat label="Credited" value={usd(bill.creditedCents)} />
         <Stat label={open < 0 ? "Vendor owes us" : "Open"} value={<span className={open === 0 && bill.status === "POSTED" ? "rule-in" : undefined}>{usd(Math.abs(open))}</span>} signal={open === 0 && bill.status === "POSTED"} />
       </SimpleGrid>
+      {bill.status === "POSTED" && bill.kind === "INVENTORY" && bill.poId && toReceive > 0 ? (
+        <Alert color="lime" title={`${plural(toReceive, "unit")} from this bill ${toReceive === 1 ? "hasn't" : "haven't"} arrived yet`}>
+          <Group justify="space-between" wrap="nowrap">
+            <Text size="sm">When the delivery shows up, receive it against {bill.po?.number ?? "its order"}. Stock goes on hand at the billed cost.</Text>
+            <Button component={Link} to={`/receive?po=${bill.poId}`}>
+              Receive these
+            </Button>
+          </Group>
+        </Alert>
+      ) : null}
       {bill.status === "POSTED" ? (
         <Group>
           {open > 0 ? <Button onClick={() => setModal("pay")}>Record payment</Button> : null}

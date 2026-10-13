@@ -77,6 +77,56 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
       .sort((a, b) => b.days - a.days);
   });
 
+  /**
+   * Inventory still to receive: units on open orders that have not arrived at
+   * the dock, oldest order first. Billed-but-not-received is the part already
+   * owed to the vendor (it sits in inventory in transit).
+   */
+  app.get("/api/reports/to-receive", async () => {
+    const orders = await db.purchaseOrder.findMany({
+      where: { lifecycle: "OPEN", receivingStatus: { not: "RECEIVED" } },
+      include: { lines: true },
+      orderBy: { id: "asc" },
+    });
+    const [items, vendors, warehouses] = await Promise.all([
+      db.item.findMany({ where: { id: { in: orders.flatMap((o) => o.lines.map((l) => l.itemId)) } } }),
+      db.vendor.findMany({ where: { id: { in: orders.map((o) => o.vendorId!).filter(Boolean) } } }),
+      db.warehouse.findMany({ where: { id: { in: orders.map((o) => o.warehouseId) } } }),
+    ]);
+    const now = Date.now();
+    const rows = orders
+      .map((o) => {
+        const lines = o.lines
+          .filter((l) => l.qtyOrdered > l.qtyReceived)
+          .map((l) => {
+            const outstanding = l.qtyOrdered - l.qtyReceived;
+            return {
+              lineId: l.id,
+              item: items.find((i) => i.id === l.itemId)!,
+              ordered: l.qtyOrdered,
+              received: l.qtyReceived,
+              outstanding,
+              billed: l.qtyBilled > l.qtyReceived,
+              valueCents: outstanding * l.unitCostCents,
+            };
+          });
+        return {
+          poId: o.id,
+          poNumber: o.number,
+          billingStatus: o.billingStatus,
+          vendor: vendors.find((v) => v.id === o.vendorId) ?? null,
+          warehouse: warehouses.find((w) => w.id === o.warehouseId) ?? null,
+          orderedAt: o.createdAt,
+          days: Math.floor((now - o.createdAt.getTime()) / DAY),
+          lines,
+          units: lines.reduce((s, l) => s + l.outstanding, 0),
+          valueCents: lines.reduce((s, l) => s + l.valueCents, 0),
+        };
+      })
+      .filter((o) => o.lines.length > 0);
+    return { orders: rows, totalUnits: rows.reduce((s, o) => s + o.units, 0), totalValueCents: rows.reduce((s, o) => s + o.valueCents, 0) };
+  });
+
   /** What we owe, by vendor, aged by days past the due date. */
   app.get("/api/reports/ap-aging", async (request) => {
     const { asOf } = parse(z.object({ asOf: z.coerce.date().default(() => new Date()) }), request.query);

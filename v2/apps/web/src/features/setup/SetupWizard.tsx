@@ -609,7 +609,7 @@ function ItemsStep({ frame, next }: Nav) {
       ) : null}
       {importing ? (
         <div className="ob-add">
-          <CsvImport kind="items" columns="sku, name, barcode, pack_qty, tracking (SERIAL), vendor, vendor_sku, cost" example={`sku,name,barcode,tracking,vendor,vendor_sku,cost\nGRIP-01,Gripper arm,036000291452,,${vendorName},GA-1,129.00`} onDone={() => items.refetch()} />
+          <CsvImport kind="items" columns="sku, name, brand, category, barcode, pack_qty, tracking (SERIAL), vendor, vendor_sku, cost" example={`sku,name,barcode,tracking,vendor,vendor_sku,cost\nGRIP-01,Gripper arm,036000291452,,${vendorName},GA-1,129.00`} onDone={() => items.refetch()} />
         </div>
       ) : (
         <form className="ob-add" onSubmit={add}>

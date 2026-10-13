@@ -19,9 +19,18 @@ const vendorBody = z.object({
   address: z.string().trim().optional(),
   paymentTermsDays: z.number().int().min(0).max(365).default(30),
 });
+/** Free-text grouping label; blank means none. Absent stays absent so a partial update leaves it alone. */
+const label = z
+  .string()
+  .trim()
+  .max(60)
+  .transform((v) => v || null)
+  .nullish();
 const itemBody = z.object({
   sku: z.string().trim().min(1).max(64),
   name: z.string().trim().min(1),
+  brand: label,
+  category: label,
   trackingMode: z.enum(["NONE", "SERIAL"]).default("NONE"),
   condition: z.enum(["NEW", "OPEN_BOX", "REFURBISHED", "DAMAGED"]).default("NEW"),
   conditionOfId: z.number().int().positive().nullish(),
@@ -67,18 +76,36 @@ export function registerCatalog(app: FastifyInstance, { db }: Deps) {
 
   // ── Items ──
   app.get("/api/items", async (request) => {
-    const { search } = parse(z.object({ search: z.string().trim().optional() }), request.query);
+    const { search, brand, category } = parse(z.object({ search: z.string().trim().optional(), brand: z.string().trim().optional(), category: z.string().trim().optional() }), request.query);
     return db.item.findMany({
       where: {
         isActive: true,
+        ...(brand ? { brand } : {}),
+        ...(category ? { category } : {}),
         ...(search
-          ? { OR: [{ sku: { contains: search, mode: "insensitive" } }, { name: { contains: search, mode: "insensitive" } }, { barcodes: { some: { raw: { contains: search } } } }] }
+          ? {
+              OR: [
+                { sku: { contains: search, mode: "insensitive" } },
+                { name: { contains: search, mode: "insensitive" } },
+                { brand: { contains: search, mode: "insensitive" } },
+                { category: { contains: search, mode: "insensitive" } },
+                { barcodes: { some: { raw: { contains: search } } } },
+              ],
+            }
           : {}),
       },
       include: { barcodes: true },
       orderBy: { sku: "asc" },
       take: 200,
     });
+  });
+  /** The brands and categories in use, for the filter lists and the item form's suggestions. */
+  app.get("/api/items/facets", async () => {
+    const [brands, categories] = await Promise.all([
+      db.item.findMany({ where: { isActive: true, brand: { not: null } }, select: { brand: true }, distinct: ["brand"], orderBy: { brand: "asc" } }),
+      db.item.findMany({ where: { isActive: true, category: { not: null } }, select: { category: true }, distinct: ["category"], orderBy: { category: "asc" } }),
+    ]);
+    return { brands: brands.map((r) => r.brand!), categories: categories.map((r) => r.category!) };
   });
   app.get("/api/items/:id", async (request) => {
     const { id } = parse(idParam, request.params);
@@ -174,6 +201,8 @@ function itemFromCsv(row: Record<string, string>, vendors: { id: number; name: s
   return parse(itemBody, {
     sku: row.sku,
     name: row.name,
+    brand: row.brand || undefined,
+    category: row.category || undefined,
     trackingMode: (row.tracking || "NONE").toUpperCase() === "SERIAL" ? "SERIAL" : "NONE",
     defaultVendorId: vendor?.id,
     lastCostCents: cost,

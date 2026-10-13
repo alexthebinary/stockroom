@@ -11,6 +11,11 @@ import type { JournalEntry } from "../../lib/types";
 type Books = { sound: boolean; problems: string[]; figures: Record<string, number> };
 type Tb = { rows: { id: number; code: string; name: string; isHeader: boolean; parentId: number | null; debitCents: number; creditCents: number }[]; totalDebitCents: number; totalCreditCents: number };
 type Valuation = { rows: { itemId: number; sku: string; name: string; onHand: number; held: number; valueCents: number; averageCents: number; glCents: number; varianceCents: number }[]; totalValueCents: number; totalGlCents: number };
+type ToReceive = {
+  orders: { poId: number; poNumber: string; billingStatus: string; vendor: { name: string } | null; warehouse: { name: string } | null; days: number; units: number; valueCents: number; lines: { lineId: number; item: { name: string; sku: string }; ordered: number; received: number; outstanding: number; billed: boolean }[] }[];
+  totalUnits: number;
+  totalValueCents: number;
+};
 type Held = { poId: number; poNumber: string; vendor: { name: string } | null; item: { name: string }; qtyHeld: number; estimateCents: number; receivedAt: string; days: number }[];
 
 export function Reports() {
@@ -24,6 +29,7 @@ export function Reports() {
           <Tabs.Tab value="journal">Journal entries</Tabs.Tab>
           <Tabs.Tab value="stock">Stock value</Tabs.Tab>
           <Tabs.Tab value="held">Awaiting bill</Tabs.Tab>
+          <Tabs.Tab value="toReceive">To receive</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="books">
           <BooksCheck />
@@ -39,6 +45,9 @@ export function Reports() {
         </Tabs.Panel>
         <Tabs.Panel value="held">
           <HeldStock />
+        </Tabs.Panel>
+        <Tabs.Panel value="toReceive">
+          <ToReceiveReport />
         </Tabs.Panel>
       </Tabs>
     </>
@@ -310,6 +319,43 @@ function HeldStock() {
             </div>
             <Text c={h.days > 7 ? "orange" : undefined} fw={600}>
               {plural(h.days, "day")}
+            </Text>
+          </Group>
+        </Card>
+      ))}
+    </Stack>
+  );
+}
+
+/** Ordered, not yet at the dock. Each order opens Receive with that order picked. */
+function ToReceiveReport() {
+  const data = useQuery({ queryKey: ["to-receive"], queryFn: () => get<ToReceive>("/reports/to-receive") });
+  if (!data.data) return <Loading />;
+  if (data.data.orders.length === 0) return <Text c="dimmed">Everything ordered has arrived.</Text>;
+  return (
+    <Stack gap="xs">
+      <Text c="dimmed">
+        {plural(data.data.totalUnits, "unit")} on order, about {usd(data.data.totalValueCents)} at order cost. Oldest order first. Tap one to receive it.
+      </Text>
+      {data.data.orders.map((o) => (
+        <Card key={o.poId} withBorder padding="sm" component={Link} to={`/receive?po=${o.poId}`} style={{ textDecoration: "none", color: "inherit" }}>
+          <Group justify="space-between" wrap="nowrap" align="flex-start">
+            <div>
+              <Text fw={600}>
+                {o.poNumber} · {o.vendor?.name ?? "vendor not set"}
+              </Text>
+              {o.lines.map((l) => (
+                <Text key={l.lineId} size="sm" c="dimmed">
+                  {l.outstanding} × {l.item.name}
+                  {l.received ? ` (${l.received} of ${l.ordered} already in)` : ""}
+                </Text>
+              ))}
+              <Text size="xs" c="dimmed">
+                {o.warehouse?.name ?? ""} · {o.billingStatus === "NOT_BILLED" ? "not billed yet" : o.billingStatus === "BILLED" ? "billed, owed to the vendor" : o.billingStatus.replace("_", " ").toLowerCase()}
+              </Text>
+            </div>
+            <Text fw={600} c={o.days > 14 ? "orange" : undefined} style={{ whiteSpace: "nowrap" }}>
+              {plural(o.days, "day")} ago
             </Text>
           </Group>
         </Card>

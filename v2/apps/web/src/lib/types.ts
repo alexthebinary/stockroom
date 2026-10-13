@@ -5,6 +5,8 @@ export type Item = {
   id: number;
   sku: string;
   name: string;
+  brand?: string | null;
+  category?: string | null;
   trackingMode: "NONE" | "SERIAL";
   condition: string;
   conditionOfId: number | null;

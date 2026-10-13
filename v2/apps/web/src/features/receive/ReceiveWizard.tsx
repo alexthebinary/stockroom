@@ -21,7 +21,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { IconAlertTriangle, IconBarcode, IconCheck, IconCloudOff, IconFileText, IconMinus, IconPlus, IconQuestionMark } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Coach } from "../../components/Coach";
 import { type PrinterStage, ReceiptPrinter } from "../../components/kitchen/ReceiptPrinter";
 import { TactileButton } from "../../components/kitchen/TactileButton";
@@ -78,6 +78,9 @@ const lastWarehouse = () => {
 export function ReceiveWizard() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  // /receive?po=N (from a bill or the To receive report): that order is offered first.
+  const [params] = useSearchParams();
+  const wantedPo = Number(params.get("po")) || null;
   const resume = recalled();
   const [step, setStep] = useState(resume?.step ?? 0);
   const [sessionId, setSessionId] = useState<number | null>(resume?.sessionId ?? null);
@@ -142,7 +145,7 @@ export function ReceiveWizard() {
           }}
         />
       )}
-      {step === 1 && warehouseId && <WhoStep warehouseId={warehouseId} onStart={start} onBack={() => setStep(0)} />}
+      {step === 1 && warehouseId && <WhoStep warehouseId={warehouseId} wantedPo={wantedPo} onStart={start} onBack={() => setStep(0)} />}
       {step >= 2 && step <= 3 && session.data && (
         <ScanAndCheck
           session={session.data}
@@ -190,27 +193,34 @@ function WhereStep({ warehouses, value, onPick }: { warehouses: Warehouse[]; val
   );
 }
 
-function WhoStep({ warehouseId, onStart, onBack }: { warehouseId: number; onStart: (who: { vendorId?: number | null; poId?: number | null }) => void; onBack: () => void }) {
+function WhoStep({ warehouseId, wantedPo, onStart, onBack }: { warehouseId: number; wantedPo: number | null; onStart: (who: { vendorId?: number | null; poId?: number | null }) => void; onBack: () => void }) {
   const expected = useQuery({ queryKey: ["expected", warehouseId], queryFn: () => get<Expected>(`/receiving/expected?warehouseId=${warehouseId}`) });
   const vendors = useQuery({ queryKey: ["vendors", "SUPPLIER"], queryFn: () => get<Vendor[]>("/vendors?kind=SUPPLIER") });
   const ai = useQuery({ queryKey: ["ai"], queryFn: () => get<{ available: boolean }>("/ai/status") });
   const [vendorId, setVendorId] = useState<string | null>(null);
+  const orders = [...(expected.data ?? [])].sort((a, b) => Number(b.id === wantedPo) - Number(a.id === wantedPo));
+  const missingWanted = wantedPo != null && expected.data != null && !expected.data.some((po) => po.id === wantedPo);
   return (
     <Stack>
+      {missingWanted ? (
+        <Alert color="orange" title="That order isn't expected at this warehouse">
+          It may be fully received already, or going to another warehouse. Go back to change the warehouse, or pick the supplier below.
+        </Alert>
+      ) : null}
       <Text size="lg" fw={500}>
         Who is it from?
       </Text>
       <Coach id="receive-who" title="Not sure? That's fine.">
         Pick the order if you see it below, or just the supplier. If you don't know, tap "Not sure" — accounting will sort it out from the paperwork. You never need to know prices.
       </Coach>
-      {(expected.data ?? []).length > 0 ? (
+      {orders.length > 0 ? (
         <Stack gap="xs">
           <Text size="sm" c="dimmed">
             Expected here
           </Text>
-          {expected.data!.map((po) => (
+          {orders.map((po) => (
             <UnstyledButton key={po.id} onClick={() => onStart({ poId: po.id, vendorId: po.vendor?.id })}>
-              <Card withBorder padding="md">
+              <Card withBorder padding="md" style={po.id === wantedPo ? { borderColor: "var(--mantine-color-lime-6)", borderWidth: 2 } : undefined}>
                 <Group justify="space-between" wrap="nowrap">
                   <div>
                     <Text fw={600}>{po.vendor?.name ?? "Vendor not set"}</Text>
