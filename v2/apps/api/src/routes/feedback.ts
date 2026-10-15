@@ -135,4 +135,54 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
     });
     return reply.header("Content-Type", "text/markdown; charset=utf-8").send(`# Feedback (${status.toLowerCase()}, ${rows.length})\n\n${sections.join("\n\n")}\n`);
   });
+
+  // ── The daily auto-apply job (Plan B). The token is an accident guard on a login-free demo, not auth. ──
+  const jobBody = z.object({ runId: z.string().min(1).max(80), revision: z.number().int().positive() });
+  const guard = (request: { headers: Record<string, unknown> }) => {
+    const token = process.env.AUTO_TOKEN;
+    if (!token || request.headers["x-auto-token"] !== token) throw notFound("That route");
+  };
+  const conflict = () => new DomainError("The note moved on or is held by another run", 409);
+  const jobRow = async (id: number) => shape(await db.feedback.findUniqueOrThrow({ where: { id }, select: LIST_FIELDS }));
+
+  app.post("/api/feedback/:id/auto/claim", async (request) => {
+    guard(request);
+    const { id } = parse(idParam, request.params);
+    const { runId, revision } = parse(jobBody, request.body);
+    const { count } = await db.feedback.updateMany({ where: { id, revision, autoClaim: null, status: "OPEN" }, data: { autoClaim: runId, autoRevision: revision, autoState: "QUEUED" } });
+    if (count !== 1) throw conflict();
+    return jobRow(id);
+  });
+
+  app.post("/api/feedback/:id/auto/outcome", async (request) => {
+    guard(request);
+    const { id } = parse(idParam, request.params);
+    const body = parse(jobBody.extend({ autoState: z.enum(["FAILED", "SHIPPED", "QUEUED"]), autoNote: z.string().max(2000).nullish(), autoCommit: z.string().max(80).nullish(), status: z.enum(["DONE", "OPEN"]).optional() }), request.body);
+    const { count } = await db.feedback.updateMany({
+      where: { id, autoClaim: body.runId, autoRevision: body.revision, revision: body.revision },
+      data: { autoState: body.autoState, autoNote: body.autoNote ?? null, autoCommit: body.autoCommit ?? null, autoClaim: null, ...(body.status ? { status: body.status } : {}) },
+    });
+    if (count !== 1) throw conflict();
+    return jobRow(id);
+  });
+
+  app.post("/api/feedback/:id/auto/question", async (request) => {
+    guard(request);
+    const { id } = parse(idParam, request.params);
+    const { runId, revision, text } = parse(jobBody.extend({ text: z.string().trim().min(1).max(2000) }), request.body);
+    await db.$transaction(async (tx) => {
+      const { count } = await tx.feedback.updateMany({ where: { id, autoClaim: runId, autoRevision: revision, revision }, data: { autoState: "NEEDS_ANSWER", autoClaim: null } });
+      if (count !== 1) throw conflict();
+      await tx.feedbackTurn.create({ data: { feedbackId: id, role: "assistant", content: text } });
+    });
+    return jobRow(id);
+  });
+
+  app.post("/api/feedback/:id/auto/release", async (request) => {
+    guard(request);
+    const { id } = parse(idParam, request.params);
+    const { runId, revision } = parse(jobBody, request.body);
+    const { count } = await db.feedback.updateMany({ where: { id, autoClaim: runId, autoRevision: revision }, data: { autoClaim: null } });
+    return { released: count === 1 };
+  });
 }
