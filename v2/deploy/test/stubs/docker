@@ -1,0 +1,11 @@
+#!/bin/sh
+# Stub: records calls; the backup run writes a fake dump; `up` can move the health build to APP_VERSION.
+echo "$*${APP_VERSION:+ APP_VERSION=$APP_VERSION}" >> "$T/calls.docker"
+case "$*" in
+  *"--profile backup run --rm backup"*)
+    mkdir -p "$DEPLOY/backups"; echo dump > "$DEPLOY/backups/profitindex-$(date +%s%N).dump"
+    if [ -x "$T/hook-on-backup" ]; then "$T/hook-on-backup"; rm -f "$T/hook-on-backup"; fi ;;
+  *"up -d --build"*)
+    if [ -e "$T/health-follows-up" ]; then echo "$APP_VERSION" > "$T/health-build"; fi ;;
+esac
+exit 0

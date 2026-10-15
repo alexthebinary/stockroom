@@ -1,0 +1,13 @@
+#!/bin/sh
+# Stub: /api/health from $T/health-build; PATCH and ntfy pushes are recorded.
+args="$*"
+case "$args" in
+  *"/api/health"*)
+    b=$(cat "$T/health-build"); [ "$b" = none ] && exit 7
+    printf '{"ok":true,"build":"%s"}' "$b"; exit 0 ;;
+  *"-X PATCH"*)
+    id=$(printf '%s' "$args" | sed -n 's#.*/api/feedback/\([0-9]*\).*#\1#p'); echo "PATCH $id" >> "$T/calls.curl"; exit 0 ;;
+  *"Title: "*)
+    title=$(printf '%s' "$args" | sed -n 's/.*Title: \([^-]*\) -d.*/\1/p'); echo "PUSH $title" >> "$T/calls.curl"; exit 0 ;;
+esac
+echo "OTHER $args" >> "$T/calls.curl"; exit 0
