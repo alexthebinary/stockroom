@@ -36,6 +36,28 @@ describe("the daily job's feedback routes", () => {
     expect(out).toMatchObject({ status: "DONE", autoState: "SHIPPED", autoCommit: "abc1234", autoClaim: null, autoRevision: 1 });
   });
 
+  it("outcome is safe to replay", async () => {
+    const id = await note();
+    ok(await auto(`/api/feedback/${id}/auto/claim`, { runId: "r1", revision: 1 }));
+    const payload = { runId: "r1", revision: 1, autoState: "SHIPPED", autoCommit: "abc1234", status: "DONE" };
+    const first = ok(await auto(`/api/feedback/${id}/auto/outcome`, payload)).body;
+    expect(first).toMatchObject({ status: "DONE", autoState: "SHIPPED", autoCommit: "abc1234", autoClaim: null });
+    const replay = ok(await auto(`/api/feedback/${id}/auto/outcome`, payload)).body;
+    expect(replay).toEqual(first);
+    expect((await auto(`/api/feedback/${id}/auto/outcome`, { ...payload, autoCommit: "zzz9999" })).status).toBe(409);
+    expect(ok(await client().get("/api/feedback")).body[0]).toEqual(first);
+  });
+
+  it("export.md includes the failed auto outcome and its note", async () => {
+    const id = await note();
+    const autoNote = "Validation failed: the brand filter still hides matching items.";
+    ok(await auto(`/api/feedback/${id}/auto/claim`, { runId: "r1", revision: 1 }));
+    ok(await auto(`/api/feedback/${id}/auto/outcome`, { runId: "r1", revision: 1, autoState: "FAILED", autoNote }));
+    const md = await client().app.inject({ method: "GET", url: "/api/feedback/export.md" });
+    expect(md.statusCode).toBe(200);
+    expect(md.body).toContain(`Auto: failed — ${autoNote}`);
+  });
+
   it("stale outcome: a tester edit mid-run blocks the outcome; release still frees the note", async () => {
     const id = await note();
     ok(await auto(`/api/feedback/${id}/auto/claim`, { runId: "r1", revision: 1 }));

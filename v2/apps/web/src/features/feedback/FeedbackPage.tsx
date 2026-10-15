@@ -18,6 +18,7 @@ export function FeedbackPage() {
   const [chatFor, setChatFor] = useState<number | null>(null);
   const [status, setStatus] = useState<"OPEN" | "DONE" | "WONTFIX">("OPEN");
   const notes = useQuery({ queryKey: ["feedback", "all", status], queryFn: () => get<Note[]>(`/feedback?status=${status}`) });
+  const ai = useQuery({ queryKey: ["ai-clarify"], queryFn: () => get<{ clarify: boolean }>("/ai/status") });
   const setNoteStatus = async (id: number, next: Note["status"]) => {
     try {
       await patch(`/feedback/${id}`, { status: next });
@@ -64,8 +65,8 @@ export function FeedbackPage() {
                 </Text>
               </Group>
               <Text style={{ whiteSpace: "pre-wrap" }}>{note.note}</Text>
-              {note.specState === "PROPOSED" || (note.specState === "NONE" && note.status === "OPEN") || note.autoState === "NEEDS_ANSWER" ? (
-                <Button size="xs" variant="light" onClick={() => setChatFor(note.id)}>{note.autoState === "NEEDS_ANSWER" ? "Answer a question" : "Clarify"}</Button>
+              {ai.data?.clarify && note.status === "OPEN" ? (
+                <Button size="xs" variant="light" onClick={() => setChatFor(note.id)}>{note.autoState === "NEEDS_ANSWER" ? "Answer a question" : note.specState === "CONFIRMED" ? "Change the spec" : "Clarify"}</Button>
               ) : null}
               <Text size="xs" c="dimmed">
                 {note.specState === "CONFIRMED" ? "Spec confirmed" : note.specState === "PROPOSED" ? "Spec waiting for confirmation" : ""}

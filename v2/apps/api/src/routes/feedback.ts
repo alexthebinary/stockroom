@@ -20,7 +20,7 @@ const feedbackBody = z.object({
   screenshot: z.string().nullish(),
 });
 
-const listQuery = z.object({ path: z.string().optional(), status: z.enum(["OPEN", "DONE", "WONTFIX"]).optional() });
+const listQuery = z.object({ path: z.string().optional(), status: z.enum(["OPEN", "DONE", "WONTFIX"]).optional(), turns: z.literal("1").optional() });
 const LIST_FIELDS = { id: true, kind: true, status: true, note: true, path: true, pageTitle: true, anchor: true, context: true, author: true, authorJob: true, screenshotType: true, createdAt: true, updatedAt: true, spec: true, specState: true, autoState: true, autoNote: true, autoCommit: true, revision: true, autoRevision: true, autoClaim: true, _count: { select: { turns: true } } } as const;
 const shape = <T extends { screenshotType: string | null; _count: { turns: number } }>({ _count, ...row }: T) => ({ ...row, hasScreenshot: row.screenshotType != null, turnCount: _count.turns });
 
@@ -50,8 +50,8 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
   });
 
   app.get("/api/feedback", async (request) => {
-    const query = parse(listQuery, request.query);
-    const rows = await db.feedback.findMany({ where: query, orderBy: { id: "desc" }, select: LIST_FIELDS });
+    const { turns, ...where } = parse(listQuery, request.query);
+    const rows = await db.feedback.findMany({ where, orderBy: { id: "desc" }, select: { ...LIST_FIELDS, ...(turns === "1" ? { turns: { orderBy: { id: "asc" as const }, select: { role: true, content: true } } } : {}) } });
     return rows.map(shape);
   });
 
@@ -65,33 +65,42 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
   app.post("/api/feedback/:id/clarify", async (request) => {
     const { id } = parse(idParam, request.params);
     const { message } = parse(z.object({ message: z.string().trim().min(1).max(2000).optional() }), request.body ?? {});
-    const row = await db.feedback.findUnique({ where: { id } });
-    if (!row) throw notFound("That note");
-    const existing = await db.feedbackTurn.count({ where: { feedbackId: id } });
-    if (!message && existing > 0) return state(id, null);   // reopening the chat: never re-ask
-    if (message) {
-      await db.$transaction([
-        db.feedbackTurn.create({ data: { feedbackId: id, role: "user", content: message } }),
-        db.feedback.update({ where: { id }, data: { revision: { increment: 1 }, ...(row.specState === "CONFIRMED" ? { specState: "PROPOSED" } : {}) } }),
-      ]);
-    }
+    const { row, rev, lastTurn } = await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Feedback" WHERE id = ${id} FOR UPDATE`;
+      let row = await tx.feedback.findUnique({ where: { id } });
+      if (!row) throw notFound("That note");
+      if (message) {
+        await tx.feedbackTurn.create({ data: { feedbackId: id, role: "user", content: message } });
+        row = await tx.feedback.update({ where: { id }, data: { revision: { increment: 1 }, ...(row.specState === "CONFIRMED" ? { specState: "PROPOSED" } : {}) } });
+      }
+      const lastTurn = await tx.feedbackTurn.findFirst({ where: { feedbackId: id }, orderBy: { id: "desc" }, select: { id: true, role: true } });
+      return { row, rev: row.revision, lastTurn };
+    });
+    if (!message && lastTurn?.role === "assistant") return state(id, null);
+    const lastTurnId = lastTurn?.id ?? null;
     if (!clarifier) return state(id, UNAVAILABLE, { unavailable: true });
     const anchor = (row.anchor ?? {}) as { label?: string };
     const ctx = row.context as { errors?: { message?: string }[] };
     const input: ClarifyNote = { kind: row.kind, note: row.note, path: row.path, pageTitle: row.pageTitle, anchorLabel: anchor.label ?? "", errors: (ctx.errors ?? []).map((e) => String(e.message ?? "")).slice(-5) };
     const result = await clarifier.clarify({ note: input, turns: (await turnsOf(id)).slice(-10) });
     if (!result.ok) return state(id, UNAVAILABLE, { unavailable: true });
-    await db.$transaction([
-      db.feedbackTurn.create({ data: { feedbackId: id, role: "assistant", content: result.text } }),
-      ...(result.spec ? [db.feedback.update({ where: { id }, data: { spec: result.spec, specState: "PROPOSED", revision: { increment: 1 } } })] : []),
-    ]);
-    return state(id, result.text);
+    const saved = await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Feedback" WHERE id = ${id} FOR UPDATE`;
+      const current = await tx.feedback.findUniqueOrThrow({ where: { id }, select: { revision: true } });
+      const newest = await tx.feedbackTurn.findFirst({ where: { feedbackId: id }, orderBy: { id: "desc" }, select: { id: true } });
+      if (current.revision !== rev || (newest?.id ?? null) !== lastTurnId) return false;
+      await tx.feedbackTurn.create({ data: { feedbackId: id, role: "assistant", content: result.text } });
+      if (result.spec) await tx.feedback.update({ where: { id }, data: { spec: result.spec, specState: "PROPOSED", revision: { increment: 1 } } });
+      return true;
+    });
+    return state(id, saved ? result.text : null);
   });
 
   app.post("/api/feedback/:id/confirm", async (request) => {
     const { id } = parse(idParam, request.params);
+    const { revision } = parse(z.object({ revision: z.number().int().positive() }), request.body);
     if (!(await db.feedback.findUnique({ where: { id }, select: { id: true } }))) throw notFound("That note");
-    const { count } = await db.feedback.updateMany({ where: { id, specState: "PROPOSED" }, data: { specState: "CONFIRMED", revision: { increment: 1 } } });
+    const { count } = await db.feedback.updateMany({ where: { id, specState: "PROPOSED", revision }, data: { specState: "CONFIRMED", revision: { increment: 1 } } });
     if (count !== 1) throw new DomainError("There is no proposed spec to confirm", 409);
     return state(id, null);
   });
@@ -128,6 +137,7 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
       if (ctx.userAgent) lines.push(`Browser: ${ctx.userAgent}`);
       if (ctx.errors?.length) lines.push("Recent errors:", ...ctx.errors.map((e) => `- ${e.at} ${e.message}`));
       if (row.screenshotType) lines.push(`Screenshot: ${origin}/api/feedback/${row.id}/screenshot`);
+      if (row.autoState !== "NONE") lines.push(`Auto: ${row.autoState.toLowerCase()}${row.autoNote ? ` — ${row.autoNote}` : ""}`);
       const spec = row.spec as Spec | null;
       if (spec) lines.push("", `Spec (${row.specState.toLowerCase()}):`, `- Problem: ${spec.problem}`, `- Expected: ${spec.expected}`, `- Where: ${spec.where}`, ...spec.doneWhen.map((d) => `- Done when: ${d}`));
       if (row.turns.length) lines.push("", "Chat:", ...row.turns.map((t) => `${t.role === "user" ? "Tester" : "AI"}: ${t.content.replace(/\n/g, " ")}`));
@@ -162,7 +172,11 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
       where: { id, autoClaim: body.runId, autoRevision: body.revision, revision: body.revision },
       data: { autoState: body.autoState, autoNote: body.autoNote ?? null, autoCommit: body.autoCommit ?? null, autoClaim: null, ...(body.status ? { status: body.status } : {}) },
     });
-    if (count !== 1) throw conflict();
+    if (count !== 1) {
+      const row = await db.feedback.findUnique({ where: { id }, select: LIST_FIELDS });
+      if (row && row.autoClaim === null && row.autoRevision === body.revision && row.revision === body.revision && row.autoState === body.autoState && (row.autoCommit ?? null) === (body.autoCommit ?? null) && (body.status === undefined || row.status === body.status)) return shape(row);
+      throw conflict();
+    }
     return jobRow(id);
   });
 

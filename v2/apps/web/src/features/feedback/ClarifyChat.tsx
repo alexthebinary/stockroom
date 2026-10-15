@@ -14,13 +14,15 @@ export function ClarifyChat({ noteId, onDone }: { noteId: number; onDone: () => 
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(true);
 
-  const call = async (path: string, body?: unknown) => {
+  const call = async (path: string, body?: unknown): Promise<boolean> => {
     setBusy(true);
     try {
       setState(await post<ClarifyState>(`/feedback/${noteId}/${path}`, body ?? {}));
       await queryClient.invalidateQueries({ queryKey: ["feedback"] });
+      return true;
     } catch (error) {
       toastErr(error);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -36,7 +38,7 @@ export function ClarifyChat({ noteId, onDone }: { noteId: number; onDone: () => 
     await call("clarify", { message });
   };
   const confirm = async () => {
-    await call("confirm");
+    if (!state || !(await call("confirm", { revision: state.revision }))) return;
     toastOk("Thanks — it's queued to be built");
     onDone();
   };
