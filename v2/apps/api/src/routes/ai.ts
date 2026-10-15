@@ -8,8 +8,8 @@ import { parse } from "../http";
 
 const imageBody = z.object({ image: z.string().startsWith("data:image/").max(12_000_000), vendorId: z.number().int().positive().nullish() });
 
-export function registerAi(app: FastifyInstance, { db, reader }: Deps) {
-  app.get("/api/ai/status", async () => ({ available: reader != null }));
+export function registerAi(app: FastifyInstance, { db, reader, clarifier }: Deps) {
+  app.get("/api/ai/status", async () => ({ available: reader != null, clarify: clarifier != null }));
 
   function imageOf(dataUrl: string) {
     const image = imageFromDataUrl(dataUrl);

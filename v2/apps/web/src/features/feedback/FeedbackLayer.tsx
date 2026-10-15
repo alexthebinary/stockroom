@@ -11,10 +11,11 @@ import { deviceContext } from "../../lib/diagnostics";
 import { useProfile } from "../../lib/profile";
 import type { Setup } from "../../lib/types";
 import { type Anchor, anchorAt, locate, targetOf } from "./anchor";
+import { ClarifyChat, type Spec } from "./ClarifyChat";
 import "./feedback.css";
 
 export type Kind = "BUG" | "IDEA" | "QUESTION";
-export type Note = { id: number; kind: Kind; status: "OPEN" | "DONE" | "WONTFIX"; note: string; path: string; pageTitle: string | null; anchor: Anchor | null; author: string; authorJob: string | null; hasScreenshot: boolean; createdAt: string; context: { viewport?: string; build?: string; errors?: unknown[] } };
+export type Note = { id: number; kind: Kind; status: "OPEN" | "DONE" | "WONTFIX"; note: string; path: string; pageTitle: string | null; anchor: Anchor | null; author: string; authorJob: string | null; hasScreenshot: boolean; createdAt: string; context: { viewport?: string; build?: string; errors?: unknown[] }; spec: Spec | null; specState: "NONE" | "PROPOSED" | "CONFIRMED"; autoState: string; autoNote: string | null; autoCommit: string | null; turnCount: number };
 
 export const KIND_LABEL: Record<Kind, string> = { BUG: "Bug", IDEA: "Idea", QUESTION: "Question" };
 const KIND_OPTIONS = [
@@ -78,6 +79,7 @@ export function FeedbackLayer() {
   const { profile } = useProfile();
   const phone = useMediaQuery("(max-width: 640px)");
   const setup = useQuery({ queryKey: ["setup"], queryFn: () => get<Setup>("/setup") });
+  const ai = useQuery({ queryKey: ["ai-clarify"], queryFn: () => get<{ clarify: boolean }>("/ai/status") });
   const notes = useQuery({ queryKey: ["feedback", pathname], queryFn: () => get<Note[]>(`/feedback?path=${encodeURIComponent(pathname)}&status=OPEN`) });
   const [mine, setMine] = useState(() => readIds(MINE_KEY));
   const [seen, setSeen] = useState(() => readIds(SEEN_KEY));
@@ -91,6 +93,7 @@ export function FeedbackLayer() {
   const [picking, setPicking] = useState(false);
   const [hover, setHover] = useState<DOMRect | null>(null);
   const [draft, setDraft] = useState<Anchor | null>(null);
+  const [chatFor, setChatFor] = useState<number | null>(null);
   const [kind, setKind] = useState<Kind>("BUG");
   const [text, setText] = useState("");
   const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
@@ -148,6 +151,7 @@ export function FeedbackLayer() {
       setMine(readIds(MINE_KEY));
       toastOk("Thanks, your note was sent");
       close();
+      if (ai.data?.clarify) setChatFor(id);
       setShowPins(true);
       await queryClient.invalidateQueries({ queryKey: ["feedback"] });
     } catch (error) {
@@ -342,6 +346,19 @@ export function FeedbackLayer() {
             Send
           </Button>
         </Stack>
+      </Drawer>
+      <Drawer
+        opened={chatFor != null}
+        onClose={() => setChatFor(null)}
+        position={phone ? "bottom" : "right"}
+        size={phone ? "auto" : 400}
+        title="A few questions about your note"
+        overlayProps={{ backgroundOpacity: phone ? 0.3 : 0 }}
+        lockScroll={phone}
+        zIndex={1002}
+        className="fb-ui"
+      >
+        {chatFor != null ? <ClarifyChat noteId={chatFor} onDone={() => setChatFor(null)} /> : null}
       </Drawer>
     </div>
   );

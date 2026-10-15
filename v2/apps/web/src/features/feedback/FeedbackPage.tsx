@@ -1,10 +1,12 @@
-import { Badge, Button, Group, SegmentedControl, Text } from "@mantine/core";
+import { Badge, Button, Drawer, Group, SegmentedControl, Text } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { IconCopy, IconDownload } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader, toastErr, toastOk } from "../../components/ui";
 import { get, patch } from "../../lib/api";
+import { ClarifyChat } from "./ClarifyChat";
 import { KIND_LABEL, type Note } from "./FeedbackLayer";
 
 const STATUS_LABEL = { OPEN: "Open", DONE: "Done", WONTFIX: "Won't fix" } as const;
@@ -12,6 +14,8 @@ const STATUS_LABEL = { OPEN: "Open", DONE: "Done", WONTFIX: "Won't fix" } as con
 /** Every note testers left, with what to do about it, and an export to paste into Claude. */
 export function FeedbackPage() {
   const queryClient = useQueryClient();
+  const phone = useMediaQuery("(max-width: 640px)");
+  const [chatFor, setChatFor] = useState<number | null>(null);
   const [status, setStatus] = useState<"OPEN" | "DONE" | "WONTFIX">("OPEN");
   const notes = useQuery({ queryKey: ["feedback", "all", status], queryFn: () => get<Note[]>(`/feedback?status=${status}`) });
   const setNoteStatus = async (id: number, next: Note["status"]) => {
@@ -60,6 +64,15 @@ export function FeedbackPage() {
                 </Text>
               </Group>
               <Text style={{ whiteSpace: "pre-wrap" }}>{note.note}</Text>
+              {note.specState === "PROPOSED" || (note.specState === "NONE" && note.status === "OPEN") || note.autoState === "NEEDS_ANSWER" ? (
+                <Button size="xs" variant="light" onClick={() => setChatFor(note.id)}>{note.autoState === "NEEDS_ANSWER" ? "Answer a question" : "Clarify"}</Button>
+              ) : null}
+              <Text size="xs" c="dimmed">
+                {note.specState === "CONFIRMED" ? "Spec confirmed" : note.specState === "PROPOSED" ? "Spec waiting for confirmation" : ""}
+                {note.autoState === "SHIPPED" && note.autoCommit ? ` · Shipped in ${note.autoCommit.slice(0, 7)}` : ""}
+                {note.autoState === "FAILED" && note.autoNote ? ` · Not built yet: ${note.autoNote}` : ""}
+                {note.autoState === "NEEDS_ANSWER" ? " · Waiting for your answer" : ""}
+              </Text>
               <Text size="sm" c="dimmed" mt={4}>
                 {note.path}
                 {note.anchor?.label ? ` · on “${note.anchor.label}”` : ""} · {note.context.viewport ?? "?"} · build {note.context.build ?? "?"}
@@ -95,6 +108,19 @@ export function FeedbackPage() {
           </div>
         ))}
       </div>
+      <Drawer
+        opened={chatFor != null}
+        onClose={() => setChatFor(null)}
+        position={phone ? "bottom" : "right"}
+        size={phone ? "auto" : 400}
+        title="A few questions about your note"
+        overlayProps={{ backgroundOpacity: phone ? 0.3 : 0 }}
+        lockScroll={phone}
+        zIndex={1002}
+        className="fb-ui"
+      >
+        {chatFor != null ? <ClarifyChat noteId={chatFor} onDone={() => setChatFor(null)} /> : null}
+      </Drawer>
     </>
   );
 }

@@ -33,3 +33,7 @@
 
 /* Keep the page's right edge (amounts in a Credit column, say) clear of the tab. */
 @media (min-width: 641px) { body:has(.fb-tab) .mantine-AppShell-main { padding-right: 52px; } }
+
+.fb-turn { background: var(--mantine-color-default-hover); max-width: 85%; }
+.fb-turn-me { margin-left: auto; background: var(--mantine-color-lime-light); }
+.fb-spec { border-color: var(--mantine-color-lime-6); }

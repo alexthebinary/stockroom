@@ -82,7 +82,9 @@ describe("reading a packing slip at the dock", () => {
 
   it("says so when no reader is configured, and refuses a non-image", async () => {
     const c = await sampleCompany();
-    expect(ok(await c.clerk.get("/api/ai/status")).body).toEqual({ available: false });
+    expect(ok(await c.clerk.get("/api/ai/status")).body).toEqual({ available: false, clarify: false });
+    const withClarifier = client(c.profiles.clerk.id, null, { clarify: async () => ({ ok: false as const, reason: "error" as const }) });
+    expect(ok(await withClarifier.get("/api/ai/status")).body).toEqual({ available: false, clarify: true });
     expect(ok(await c.clerk.post("/api/ai/read-slip", { image: PIXEL })).body).toEqual({ available: false });
     const withReader = client(c.profiles.clerk.id, fake({ vendorName: null, poNumber: null, documentNumber: null, documentDate: null, isInvoice: false, lines: [] }));
     expect((await withReader.post("/api/ai/read-slip", { image: "data:image/png;base64,***" })).status).toBe(400);
