@@ -40,6 +40,11 @@ test("malformed spec is dropped, text kept", async () => {
   assert.deepEqual(parseSpec(JSON.stringify(spec)), spec);
 });
 
+test("a doneWhen sent as one string becomes a one-item list (GLM does this)", () => {
+  assert.deepEqual(parseSpec({ ...spec, doneWhen: "Open Receive and see PO-00002 listed" }), { ...spec, doneWhen: ["Open Receive and see PO-00002 listed"] });
+  assert.equal(parseSpec({ ...spec, doneWhen: "" }), null);
+});
+
 test("conversation is valid: alternating, starts and ends with the user", () => {
   const ms = buildMessages(NOTE, [{ role: "assistant", content: "Q1" }, { role: "assistant", content: "Q1b" }, { role: "user", content: "A1" }, { role: "assistant", content: "Q2" }]);
   const roles = ms.slice(1).map((m) => m.role);

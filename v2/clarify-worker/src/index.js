@@ -26,6 +26,8 @@ export function parseSpec(raw) {
   let s = raw;
   if (typeof s === "string") { try { s = JSON.parse(s); } catch { return null; } }
   if (!s || typeof s !== "object") return null;
+  // GLM-4.7-flash often sends doneWhen as one string instead of a list (probe 2026-10-15).
+  if (typeof s.doneWhen === "string") s = { ...s, doneWhen: [s.doneWhen] };
   const str = (v, max) => typeof v === "string" && v.trim().length > 0 && v.length <= max;
   if (!str(s.problem, 500) || !str(s.expected, 500) || !str(s.where, 500)) return null;
   if (!Array.isArray(s.doneWhen) || s.doneWhen.length < 1 || s.doneWhen.length > 3 || !s.doneWhen.every((d) => str(d, 200))) return null;
