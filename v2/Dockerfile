@@ -21,6 +21,9 @@ FROM node:22-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production PORT=4100
+# The commit this image was built from, reported by /api/health (deploy/update.sh passes it).
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
 COPY --from=build /app /app
 EXPOSE 4100
 # Apply any new migrations, then serve. A brand-new database opens the setup wizard.

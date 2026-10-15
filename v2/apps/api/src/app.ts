@@ -112,7 +112,16 @@ export function buildApp(deps: Deps): FastifyInstance {
     return sendError(reply, 500, "Something went wrong on our side. Nothing was saved.");
   });
 
-  app.get("/api/health", async () => ({ ok: true }));
+  // Liveness for the deploy scripts: a real database round-trip, and which commit is running.
+  app.get("/api/health", async (_request, reply) => {
+    const build = process.env.APP_VERSION ?? "dev";
+    try {
+      await deps.db.$queryRaw`SELECT 1`;
+      return { ok: true, build };
+    } catch {
+      return reply.status(503).send({ ok: false, build });
+    }
+  });
 
   registerSetup(app, deps);
   registerCatalog(app, deps);
