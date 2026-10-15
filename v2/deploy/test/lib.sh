@@ -16,6 +16,7 @@ setup() {
   git clone -q "$T/origin.git" "$T/repo" 2>/dev/null
   mkdir -p "$T/repo/v2"; cp -R "$SRC_DEPLOY" "$T/repo/v2/deploy"; rm -rf "$T/repo/v2/deploy/test" "$T/repo/v2/deploy/backups" "$T/repo/v2/deploy/.env"
   printf 'NOTIFY_URL=https://ntfy.example/t\n' > "$T/repo/v2/deploy/.env"
+  printf '#!/bin/sh\nexit 0\n' > "$T/repo/v2/deploy/url.sh"   # the real one polls tunnel logs for 60s
   printf '.env\nbackups/\n.deployed\n.failed\n' > "$T/repo/v2/deploy/.gitignore"
   git -C "$T/repo" -c user.email=t@t -c user.name=t add -A >/dev/null
   git -C "$T/repo" -c user.email=t@t -c user.name=t commit -qm "base"

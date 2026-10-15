@@ -74,4 +74,31 @@ assert_eq "PATCH 4
 PATCH 5
 PATCH 6" "$(calls curl | grep '^PATCH' | sort)" "marked exactly 4, 5, 6"
 teardown
+# retry keeps the receipt: a failing deploy retried later must not replace its receipt, and the
+# receipt's backup survives the backup service pruning backups/
+setup
+sha=$(commit_remote "feat: migration that breaks the app")
+sh "$DEPLOY/autodeploy.sh" && fail "should fail"
+r="$PI_STATE_DIR/profitindex-deploy/receipt-$sha.json"; assert_file "$r"
+first=$(cat "$r"); b=$(sed -n 's/.*"backup":"\([^"]*\)".*/\1/p' "$r")
+case "$b" in "$PI_STATE_DIR"/*) ;; *) fail "receipt backup not pinned under the state dir: $b" ;; esac
+sh "$DEPLOY/autodeploy.sh" && fail "retry should fail too"
+assert_eq "$first" "$(cat "$r")" "receipt unchanged by the retry"
+rm -f "$DEPLOY"/backups/*.dump
+assert_file "$b"
+assert_eq "$(sha256sum "$b" | cut -d' ' -f1)" "$(sed -n 's/.*"sha256":"\([^"]*\)".*/\1/p' "$r")" "pinned backup checksum"
+teardown
+
+# halt fails closed: an unknown SHA, an empty file, or a real SHA with CRLF/whitespace all refuse
+for content in "0123456789abcdef0123456789abcdef01234567" "" "SPACED"; do
+  setup; touch "$T/health-follows-up"
+  bad=$(commit_remote "feat: candidate")
+  mkdir -p "$PI_STATE_DIR/profitindex-autoapply"
+  if [ "$content" = SPACED ]; then printf ' %s\r\n' "$bad" > "$PI_STATE_DIR/profitindex-autoapply/HALT"; else printf '%s' "$content" > "$PI_STATE_DIR/profitindex-autoapply/HALT"; fi
+  before=$(cat "$DEPLOY/.deployed")
+  sh "$DEPLOY/autodeploy.sh" || fail "halt run exit ($content)"
+  assert_eq "$before" "$(cat "$DEPLOY/.deployed")" "nothing deployed under HALT [$content]"
+  calls curl | grep -q '^PUSH Deploy halted' || fail "no halt push for [$content]"
+  teardown
+done
 echo "deploy scenarios ok"

@@ -39,7 +39,12 @@ short=$(git rev-parse --short=7 "$target")
 subject=$(git log -1 --format=%s "$target")
 
 if [ -e "$HALT" ]; then
-  halted=$(cat "$HALT")
+  halted=$(tr -d ' \t\r\n' < "$HALT")
+  # Fail closed: empty, unreadable or unknown to this clone counts as "halt everything".
+  if [ "$halted" != "*" ] && ! git cat-file -e "$halted^{commit}" 2>/dev/null; then
+    echo "HALT holds '$halted', which is not a commit here: refusing every deploy"
+    halted="*"
+  fi
   if [ "$halted" = "*" ] || git merge-base --is-ancestor "$halted" "$target" 2>/dev/null; then
     echo "halted: $short not deployed (HALT=$halted)"
     if [ "$(cat .halted 2>/dev/null || true)" != "$target" ]; then

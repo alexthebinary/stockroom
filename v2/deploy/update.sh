@@ -17,11 +17,20 @@ dump=$(ls -1t backups/profitindex-*.dump 2>/dev/null | head -n 1 || true)
 if [ -n "$target" ]; then
   git fetch --quiet origin
   git merge --ff-only --quiet "$target"
-  mkdir -p "$STATE_DIR/profitindex-deploy"
-  printf '{"sha":"%s","backup":"%s","sha256":"%s","at":"%s"}\n' \
-    "$(git rev-parse "$target")" "$(cd "$(dirname "$dump")" && pwd)/$(basename "$dump")" \
-    "$(sha256sum "$dump" | cut -d' ' -f1)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    > "$STATE_DIR/profitindex-deploy/receipt-$(git rev-parse "$target").json"
+  full=$(git rev-parse "$target")
+  receipts="$STATE_DIR/profitindex-deploy"
+  receipt="$receipts/receipt-$full.json"
+  # First attempt only: a retried deploy must keep naming the backup taken before
+  # the first try (later dumps may already include its migration). The dump is
+  # pinned outside backups/, which the backup service prunes to the newest 14.
+  if [ ! -e "$receipt" ]; then
+    mkdir -p "$receipts/backups"
+    pinned="$receipts/backups/$(basename "$dump")"
+    cp "$dump" "$pinned"
+    sum=$(sha256sum "$pinned" | cut -d' ' -f1)
+    printf '{"sha":"%s","backup":"%s","sha256":"%s","at":"%s"}\n' "$full" "$pinned" "$sum" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$receipt.tmp"
+    mv "$receipt.tmp" "$receipt"
+  fi
 else
   git pull --ff-only
 fi
