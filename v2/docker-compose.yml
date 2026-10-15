@@ -25,6 +25,9 @@ services:
       DATABASE_URL: postgresql://profitindex:profitindex@db:5432/profitindex
       PORT: "4100"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLARIFY_URL: ${CLARIFY_URL:-}
+      CLARIFY_SECRET: ${CLARIFY_SECRET:-}
+      AUTO_TOKEN: ${AUTO_TOKEN:-}
     ports:
       - "4100:4100"
 volumes:

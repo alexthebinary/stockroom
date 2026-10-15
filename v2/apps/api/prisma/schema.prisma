@@ -547,5 +547,33 @@ model Feedback {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  /// The clarified request: { problem, expected, where, doneWhen[] }.
+  spec           Json?
+  /// NONE | PROPOSED | CONFIRMED
+  specState      String   @default("NONE")
+  /// The daily job: NONE | QUEUED | NEEDS_ANSWER | FAILED | SHIPPED
+  autoState      String   @default("NONE")
+  autoNote       String?
+  autoCommit     String?
+  /// Bumped on every tester turn, spec change and confirm; the job binds its work to one revision.
+  revision       Int      @default(1)
+  /// Run id holding the note; null when free.
+  autoClaim      String?
+  /// The last revision the job handled (kept after the claim is released).
+  autoRevision   Int?
+  turns          FeedbackTurn[]
+
   @@index([path, status])
+}
+
+/// One message in a note's clarify chat.
+model FeedbackTurn {
+  id         Int      @id @default(autoincrement())
+  feedbackId Int
+  feedback   Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  role       String
+  content    String
+  createdAt  DateTime @default(now())
+
+  @@index([feedbackId])
 }

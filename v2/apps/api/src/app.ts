@@ -1,5 +1,6 @@
 import { DomainError } from "@pi/domain";
 import Fastify, { type FastifyInstance } from "fastify";
+import type { Clarifier } from "./ai/clarifier";
 import type { Reader } from "./ai/reader";
 import type { Db } from "./db";
 import type { Profile } from "./generated/prisma/client";
@@ -20,7 +21,7 @@ declare module "fastify" {
   }
 }
 
-export type Deps = { db: Db; reader: Reader | null };
+export type Deps = { db: Db; reader: Reader | null; clarifier?: Clarifier | null };
 
 const OPEN_WITHOUT_PROFILE = ["/api/setup", "/api/profiles", "/api/health", "/api/feedback"];
 
