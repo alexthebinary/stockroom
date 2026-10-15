@@ -162,6 +162,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
     return orders.map((o) => ({
       id: o.id,
       number: o.number,
+      warehouseId: o.warehouseId,
       billingStatus: o.billingStatus,
       vendor: vendors.find((v) => v.id === o.vendorId) ?? null,
       lines: o.lines

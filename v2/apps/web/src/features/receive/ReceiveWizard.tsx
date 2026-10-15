@@ -33,7 +33,7 @@ import type { Item, Vendor, Warehouse } from "../../lib/types";
 import { type ScanFeedback, Scanner } from "../scan/Scanner";
 import { enqueue, eventsFor, flush, forget, outbox, type QueuedEvent } from "./outbox";
 
-type Expected = { id: number; number: string; billingStatus: string; vendor: Vendor | null; lines: { id: number; itemId: number; item: Item; outstanding: number }[] }[];
+type Expected = { id: number; number: string; warehouseId: number | null; billingStatus: string; vendor: Vendor | null; lines: { id: number; itemId: number; item: Item; outstanding: number }[] }[];
 type Session = { id: number; clientId: string; warehouseId: number; vendorId: number | null; poId: number | null; status: string };
 type Result = { poIds: number[]; receiptIds: number[]; receiptNumbers: string[]; draftBillIds: number[]; landedUnits: number; heldUnits: number; unknown: { code: string | null; name: string | null; qty: number }[] };
 type SlipRead = {
@@ -92,9 +92,16 @@ export function ReceiveWizard() {
   useEffect(() => {
     if (sessionId) remember({ sessionId, step });
   }, [sessionId, step]);
+  // One warehouse: nothing to ask, so open on the orders (feedback #7: the
+  // first screen showed a lone warehouse card and no orders). This also
+  // replaces a remembered warehouse that no longer exists.
+  const onlyWarehouse = warehouses.data?.length === 1 ? warehouses.data[0]!.id : null;
+  // Only before a delivery starts: a resumed session keeps its own warehouse.
   useEffect(() => {
-    if (warehouses.data?.length === 1 && !warehouseId) setWarehouseId(warehouses.data[0]!.id);
-  }, [warehouses.data, warehouseId]);
+    if (onlyWarehouse == null || step > 1) return;
+    if (warehouseId !== onlyWarehouse) setWarehouseId(onlyWarehouse);
+    if (step === 0) setStep(1);
+  }, [onlyWarehouse, warehouseId, step]);
   useEffect(() => {
     if (session.data && session.data.status !== "OPEN" && step < 4) {
       remember(null);
@@ -130,7 +137,7 @@ export function ReceiveWizard() {
         </Badge>
       </Group>
       <Progress value={(Math.min(step + 1, 5) / 5) * 100} color="lime.4" size="sm" />
-      {step === 0 && (
+      {step === 0 && warehouses.data && onlyWarehouse == null && (
         <WhereStep
           warehouses={warehouses.data ?? []}
           value={warehouseId}
@@ -145,7 +152,7 @@ export function ReceiveWizard() {
           }}
         />
       )}
-      {step === 1 && warehouseId && <WhoStep warehouseId={warehouseId} wantedPo={wantedPo} onStart={start} onBack={() => setStep(0)} />}
+      {step === 1 && warehouseId && <WhoStep warehouseId={warehouseId} wantedPo={wantedPo} onStart={start} onBack={onlyWarehouse == null ? () => setStep(0) : undefined} />}
       {step >= 2 && step <= 3 && session.data && (
         <ScanAndCheck
           session={session.data}
@@ -163,12 +170,14 @@ export function ReceiveWizard() {
           }}
         />
       )}
-      {step === 4 && result && <DoneStep result={result.result} lines={result.lines} warehouseName={warehouses.data?.find((w) => w.id === warehouseId)?.name ?? ""} onAnother={finishOver} onHome={() => navigate("/")} />}
+      {step === 4 && result && <DoneStep result={result.result} lines={result.lines} warehouseName={warehouses.data?.find((w) => w.id === (session.data?.warehouseId ?? warehouseId))?.name ?? ""} onAnother={finishOver} onHome={() => navigate("/")} />}
     </Stack>
   );
 }
 
 function WhereStep({ warehouses, value, onPick }: { warehouses: Warehouse[]; value: number | null; onPick: (id: number) => void }) {
+  const expected = useQuery({ queryKey: ["expected", "all"], queryFn: () => get<Expected>("/receiving/expected") });
+  const ordersAt = (id: number) => expected.data?.filter((po) => po.warehouseId === id).length;
   return (
     <Stack>
       <Text size="lg" fw={500}>
@@ -183,6 +192,7 @@ function WhereStep({ warehouses, value, onPick }: { warehouses: Warehouse[]; val
               </Text>
               <Text size="sm" c="dimmed">
                 {w.code}
+                {ordersAt(w.id) != null ? ` · ${ordersAt(w.id) ? plural(ordersAt(w.id)!, "order") + " expected" : "no orders expected"}` : ""}
               </Text>
             </Card>
           </UnstyledButton>
@@ -193,7 +203,7 @@ function WhereStep({ warehouses, value, onPick }: { warehouses: Warehouse[]; val
   );
 }
 
-function WhoStep({ warehouseId, wantedPo, onStart, onBack }: { warehouseId: number; wantedPo: number | null; onStart: (who: { vendorId?: number | null; poId?: number | null }) => void; onBack: () => void }) {
+function WhoStep({ warehouseId, wantedPo, onStart, onBack }: { warehouseId: number; wantedPo: number | null; onStart: (who: { vendorId?: number | null; poId?: number | null }) => void; onBack?: () => void }) {
   const expected = useQuery({ queryKey: ["expected", warehouseId], queryFn: () => get<Expected>(`/receiving/expected?warehouseId=${warehouseId}`) });
   const vendors = useQuery({ queryKey: ["vendors", "SUPPLIER"], queryFn: () => get<Vendor[]>("/vendors?kind=SUPPLIER") });
   const ai = useQuery({ queryKey: ["ai"], queryFn: () => get<{ available: boolean }>("/ai/status") });
@@ -234,6 +244,10 @@ function WhoStep({ warehouseId, wantedPo, onStart, onBack }: { warehouseId: numb
             </UnstyledButton>
           ))}
         </Stack>
+      ) : expected.data ? (
+        <Alert color="gray" title="No open orders expected here">
+          Nothing is on order for this warehouse. Pick the supplier below, or tap "Not sure", and accounting will match it to the paperwork.
+        </Alert>
       ) : null}
       <Card withBorder>
         <Stack>
@@ -248,10 +262,12 @@ function WhoStep({ warehouseId, wantedPo, onStart, onBack }: { warehouseId: numb
           <IconFileText size={14} /> You can photograph the packing slip on the next screen and it will be read for you.
         </Text>
       ) : null}
-      <Group justify="space-between">
-        <Button variant="subtle" onClick={onBack}>
-          Back
-        </Button>
+      <Group justify={onBack ? "space-between" : "flex-end"}>
+        {onBack ? (
+          <Button variant="subtle" onClick={onBack}>
+            Back
+          </Button>
+        ) : null}
         <Button variant="default" size="md" leftSection={<IconQuestionMark size={18} />} onClick={() => onStart({})}>
           Not sure
         </Button>
