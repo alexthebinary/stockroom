@@ -1,0 +1,14 @@
+name = "profitindex-clarify"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[ai]
+binding = "AI"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "REPLACED_IN_TASK_2"
+
+[vars]
+CLARIFY_PER_DAY = "200"
+# Secret, never here:  wrangler secret put CLARIFY_SECRET
