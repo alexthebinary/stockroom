@@ -2,7 +2,8 @@
 # gate.sh <v2 dir>: check a disposable copy against a disposable database.
 set -eu
 V2="$1"; ID=$$; NET="pitest-$ID"; DB="pitest-db-$ID"; NODE="pitest-node-$ID"; S=$(mktemp -d)
-trap 'docker rm -f "$NODE" "$DB" >/dev/null 2>&1; docker network rm "$NET" >/dev/null 2>&1; rm -rf "$S"' EXIT
+# Cleanup never changes the verdict: keep the real exit code (with set -e, a failing rm here would turn a pass into exit 1).
+trap 'st=$?; docker rm -f "$NODE" "$DB" >/dev/null 2>&1 || :; docker network rm "$NET" >/dev/null 2>&1 || :; rm -rf "$S" 2>/dev/null || :; exit $st' EXIT
 trap 'exit 1' HUP INT TERM
 mkdir "$S/v2" "$S/results"
 tar -C "$V2" --exclude=node_modules --exclude=.env --exclude=clarify-worker -cf "$S/source.tar" .
@@ -17,8 +18,10 @@ done
 docker exec "$DB" pg_isready -U profitindex >/dev/null 2>&1
 docker run --rm --network "$NET" --name "$NODE" -v "$S/v2:/app" -v "$S/results:/results" -w /app \
   -e DATABASE_URL="postgresql://profitindex:profitindex@$DB:5432/profitindex_test" \
+  -e HOST_IDS="$(id -u):$(id -g)" \
   -e TEST_DATABASE_URL="postgresql://profitindex:profitindex@$DB:5432/profitindex_test" \
   node:22-slim sh -c '
+    trap "chown -R \"\$HOST_IDS\" /app /results" EXIT   # whatever happens, the host can delete what we made
     set -e
     apt-get update && apt-get install -y --no-install-recommends openssl
     npm ci --workspace=@pi/domain --workspace=@pi/api --workspace=@pi/web --include-workspace-root

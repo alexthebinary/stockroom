@@ -4,7 +4,7 @@
 # that is live right now still serves on the upgraded database (so reverting the code is a real recovery).
 set -u
 CAND="$1"; BASE_IMAGE="$2"; DUMP="$3"; ID=$$; NET="mig-$ID"; DB="migdb-$ID"; IMG="pi-candidate-$ID"; S=$(mktemp -d)
-trap 'docker rm -f "$DB" "app-$ID" >/dev/null 2>&1; docker network rm "$NET" >/dev/null 2>&1; docker image rm -f "$IMG" >/dev/null 2>&1; rm -rf "$S"' EXIT
+trap 'st=$?; docker rm -f "$DB" "app-$ID" >/dev/null 2>&1 || :; docker network rm "$NET" >/dev/null 2>&1 || :; docker image rm -f "$IMG" >/dev/null 2>&1 || :; rm -rf "$S" 2>/dev/null || :; exit $st' EXIT
 docker build -q -t "$IMG" --build-arg APP_VERSION=candidate "$CAND" >/dev/null || { echo "candidate image does not build"; exit 1; }
 cp "$DUMP" "$S/db.dump"
 docker network create "$NET" >/dev/null
