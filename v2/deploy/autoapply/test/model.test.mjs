@@ -31,6 +31,27 @@ test("review pass/fail", async () => {
   assert.deepEqual(await review({ spec: {}, note, diff: "d", runner: claude("eh") }), { pass: false, reasons: "review unreadable" });
 });
 
+test("review demands Done-when coverage", async () => {
+  const spec = { problem: "Brand choice resets", expected: "Remember the brand filter", where: "/items",
+    doneWhen: ["The selected brand survives a page reload", "Clearing the filter removes the saved brand"] };
+  let command, prompt;
+  await review({ spec, note, diff: "diff --git a/v2/apps/api/test/items.test.ts b/v2/apps/api/test/items.test.ts",
+    runner: async (cmd, args) => {
+      command = cmd;
+      prompt = args[args.indexOf("-p") + 1];
+      return { code: 0, stdout: JSON.stringify({ result: '{"pass":true,"reasons":"covered"}' }), stderr: "", timedOut: false };
+    } });
+  assert.equal(command, "claude");
+  for (const line of spec.doneWhen) assert.ok(prompt.includes(line), `review must receive Done-when line: ${line}`);
+  assert.match(prompt, /\b(?:each|every|all)\b[^\n.]*\bdone[\s-]*when\b[^\n.]*\btest\b/i,
+    "review must require a test for each Done-when criterion");
+  assert.match(prompt, /\bscreen\b[^\n.]*\b(?:no|without|lacks?)\b[^\n.]*\btest harness\b/i,
+    "review must address screens without a test harness");
+  assert.match(prompt, /\bprecise code change\b/i, "a screen without a harness needs a precise code change");
+  assert.match(prompt, /\btest\b[^\n.]*\b(?:other|unrelated|different)\b[^\n.]*\b(?:does not|doesn't|do not|don't|cannot|can't|never) count\b/i,
+    "a test asserting on other behaviour must not count as coverage");
+});
+
 test("claude runs on the plan login with no hooks, MCP servers or skills (no note leaves the Dell via the recall hook)", async () => {
   let argv = [];
   await triage(note, { runner: async (_c, args) => { argv = args; return { code: 0, stdout: JSON.stringify({ result: '{"clear":false,"question":"q"}' }), stderr: "" }; } });

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, mkdirSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { implementNote } from "../implement.mjs";
@@ -17,21 +17,102 @@ function repo() {
   return { r, cfg: { repo: r, implLane: "codex", workDir: join(d, "work"), receiptsDir: join(d, "rc"), timeouts: { codex: 5000, gate: 5000, migration: 5000, model: 5000 } } };
 }
 const calls = [];
-const fake = (edit, { gate = 0, migration = 0, implementation = { code: 0, stdout: "status:  answered\n", stderr: "" } } = {}) => async (cmd, args, opts) => {
-  calls.push([cmd, ...args].join(" "));
-  if (cmd === "dispatch" || cmd === "codex") {
-    const wt = cmd === "dispatch" ? args.find((a) => a.startsWith("--cd=")).slice(5) : args[args.indexOf("-C") + 1];
-    edit(wt);
-    return implementation;
-  }
-  if (cmd === "sh" && args[0].endsWith("migration-gate.sh")) return { code: migration, stdout: "", stderr: "base image: GET /api/items 500" };
-  if (cmd === "sh" && args[0].endsWith("/gate.sh")) return { code: gate, stdout: "tests: 1 failed", stderr: "" };
-  return run(cmd, args, opts);
+const fake = (edit, { gate = 0, gateStdout = "tests: 1 failed", prompts = [], commands = [], migration = 0, implementation = { code: 0, stdout: "status:  answered\n", stderr: "" } } = {}) => {
+  let gateIndex = 0;
+  return async (cmd, args, opts) => {
+    calls.push([cmd, ...args].join(" "));
+    commands.push([cmd, ...args]);
+    if (cmd === "dispatch" || cmd === "codex") {
+      const wt = cmd === "dispatch" ? args.find((a) => a.startsWith("--cd=")).slice(5) : args[args.indexOf("-C") + 1];
+      prompts.push(cmd === "codex" ? opts.input : readFileSync(args.at(-1), "utf8"));
+      edit(wt, prompts.length);
+      return implementation;
+    }
+    if (cmd === "sh" && args[0].endsWith("migration-gate.sh")) return { code: migration, stdout: "", stderr: "base image: GET /api/items 500" };
+    if (cmd === "sh" && args[0].endsWith("/gate.sh")) {
+      const code = Array.isArray(gate) ? gate[gateIndex++] : gate;
+      assert.notEqual(code, undefined, "gate ran more times than its scripted sequence");
+      return { code, stdout: code === 0 ? "tests passed" : gateStdout, stderr: "" };
+    }
+    return run(cmd, args, opts);
+  };
 };
 const note = { id: 9, kind: "IDEA", revision: 4, note: "n" };
 const spec = { problem: "p", expected: "Remember the brand filter", where: "/items", doneWhen: ["d"] };
 const pass = async () => ({ pass: true, reasons: "ok" });
 const withTest = (wt) => { writeFileSync(join(wt, "v2/apps/api/a.ts"), "2\n"); writeFileSync(join(wt, "v2/apps/api/test/a.test.ts"), "t\n"); };
+
+for (const lane of ["local", "codex"]) {
+  test(`${lane}: gate failure is fed back and retried`, async (t) => {
+    const { r, cfg } = repo();
+    t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+    cfg.implLane = lane;
+    const parent = git(r, "rev-parse", "HEAD");
+    const prompts = [], commands = [];
+    const out = await implementNote({ note, spec, runId: "retry-gate", parent, base: parent, baseImage: "base", cfg,
+      runner: fake(withTest, { gate: [1, 0], gateStdout: "FAIL items count expected 3 got 1", prompts, commands }), reviewFn: pass });
+    assert.equal(out.ok, true, out.reason);
+    assert.equal(prompts.length, 2, "implementer must retry once");
+    assert.ok(prompts[1].includes("FAIL items count expected 3 got 1"), "retry must include the gate failure");
+    assert.match(prompts[1], /Done when/i);
+    assert.equal(commands.filter(([cmd, script]) => cmd === "sh" && script.endsWith("/gate.sh")).length, 2);
+    assert.equal(commands.filter(([cmd, ...args]) => cmd === "git" && args.includes("commit")).length, 1);
+    assert.equal(git(r, "rev-list", "--count", `${parent}..${out.sha}`), "1");
+  });
+
+  test(`${lane}: gives up after two retries`, async (t) => {
+    const { r, cfg } = repo();
+    t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+    cfg.implLane = lane;
+    assert.equal(cfg.retries, undefined, "exercise the default retry budget");
+    const parent = git(r, "rev-parse", "HEAD");
+    const prompts = [], commands = [];
+    const out = await implementNote({ note, spec, runId: "retry-exhausted", parent, base: parent, baseImage: "base", cfg,
+      runner: fake(withTest, { gate: [1, 1, 1], prompts, commands }), reviewFn: pass });
+    assert.equal(out.ok, false);
+    assert.match(out.reason, /^tests failed/);
+    assert.equal(commands.filter(([cmd, ...args]) => cmd === "git" && args.includes("commit")).length, 0);
+    assert.equal(existsSync(join(cfg.workDir, "retry-exhausted", "note-9")), false);
+    assert.equal(prompts.length, 3, "undefined retries must allow the initial attempt and two retries");
+    assert.equal(commands.filter(([cmd, script]) => cmd === "sh" && script.endsWith("/gate.sh")).length, 3);
+  });
+
+  test(`${lane}: no test changed is retried too`, async (t) => {
+    const { r, cfg } = repo();
+    t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+    cfg.implLane = lane;
+    const parent = git(r, "rev-parse", "HEAD");
+    const prompts = [], commands = [];
+    const edit = (wt, attempt) => {
+      writeFileSync(join(wt, "v2/apps/api/a.ts"), "2\n");
+      if (attempt === 2) withTest(wt);
+    };
+    const out = await implementNote({ note, spec, runId: "retry-missing-test", parent, base: parent, baseImage: "base", cfg,
+      runner: fake(edit, { gate: [0], prompts, commands }), reviewFn: pass });
+    assert.equal(out.ok, true, out.reason);
+    assert.equal(prompts.length, 2);
+    assert.match(prompts[1], /(?:\btest\b[^\n.]*\b(?:required|must|needed)\b|\b(?:require[ds]?|must|need(?:s|ed)?)\b[^\n.]*\btest\b)/i,
+      "retry must say that a test is required");
+    assert.equal(commands.filter(([cmd, script]) => cmd === "sh" && script.endsWith("/gate.sh")).length, 1);
+    assert.equal(git(r, "show", `${out.sha}:v2/apps/api/test/a.test.ts`), "t");
+  });
+
+  test(`${lane}: cfg.retries = 0 disables retries`, async (t) => {
+    const { r, cfg } = repo();
+    t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+    cfg.implLane = lane;
+    cfg.retries = 0;
+    const parent = git(r, "rev-parse", "HEAD");
+    const prompts = [], commands = [];
+    const out = await implementNote({ note, spec, runId: "no-retry", parent, base: parent, baseImage: "base", cfg,
+      runner: fake(withTest, { gate: [1, 0], prompts, commands }), reviewFn: pass });
+    assert.equal(out.ok, false);
+    assert.match(out.reason, /^tests failed/);
+    assert.equal(prompts.length, 1);
+    assert.equal(commands.filter(([cmd, ...args]) => cmd === "git" && args.includes("commit")).length, 0);
+    assert.equal(existsSync(join(cfg.workDir, "no-retry", "note-9")), false);
+  });
+}
 
 test("local lane runs codex exec with the local responses provider and the prompt on stdin", async (t) => {
   const { r, cfg } = repo();
