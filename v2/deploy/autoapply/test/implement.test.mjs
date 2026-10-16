@@ -58,6 +58,7 @@ test("local lane runs codex exec with the local responses provider and the promp
   assert.match(provider, /wire_api\s*=\s*"responses"/);
   assert.ok(args.some((arg, i) => arg === "-m" && args[i + 1] === "local"));
   assert.equal(args.at(-1), "-");
+  assert.ok(args.includes("model_context_window=32768") && args.includes("model_auto_compact_token_limit=24000"), "codex must know the local window and compact before it (dry run 2026-10-16 died at 32,784 tokens)");
   assert.equal(opts.timeoutMs, cfg.timeouts.codex);
   assert.equal(typeof opts.input, "string");
   assert.match(opts.input, /IMPLEMENT \(bounded\)/);

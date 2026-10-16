@@ -36,7 +36,7 @@ export async function implementNote({ note, spec, runId, parent, base, baseImage
     if (cfg.implLane === "local") {
       // Operator 2026-10-16: unattended implementation uses the local model;
       // Codex 0.162 requires wire_api=responses for this provider.
-      const local = await runner("codex", ["exec", "--skip-git-repo-check", "-C", wt, "-s", "workspace-write", "-c", "mcp_servers.claude.enabled=false", "-c", "model_provider=localllm", "-c", 'model_providers.localllm={name="local-llm",base_url="http://127.0.0.1:8080/v1",wire_api="responses"}', "-m", "local", "-"], { timeoutMs: cfg.timeouts.codex, input: prompt });
+      const local = await runner("codex", ["exec", "--skip-git-repo-check", "-C", wt, "-s", "workspace-write", "-c", "mcp_servers.claude.enabled=false", "-c", "model_provider=localllm", "-c", 'model_providers.localllm={name="local-llm",base_url="http://127.0.0.1:8080/v1",wire_api="responses"}', "-c", "model_context_window=32768", "-c", "model_auto_compact_token_limit=24000", "-m", "local", "-"], { timeoutMs: cfg.timeouts.codex, input: prompt });
       if (local.code !== 0 || local.timedOut) return { ok: false, reason: `local model: ${local.timedOut ? "timed out" : (local.stdout + local.stderr).trim().split("\n").pop()}` };
     } else {
       const codex = await runner("dispatch", ["codex", `--cd=${wt}`, "--kind=implement", "--write", promptFile], { timeoutMs: cfg.timeouts.codex });
