@@ -44,7 +44,9 @@ services:
       NOTIFY_URL: ${NOTIFY_URL:-}
       CLARIFY_URL: ${CLARIFY_URL:-}
       CLARIFY_SECRET: ${CLARIFY_SECRET:-}
+      LOCAL_LLM_URL: ${LOCAL_LLM_URL:-http://host.docker.internal:8081}
       AUTO_TOKEN: ${AUTO_TOKEN:-}
+    extra_hosts: ["host.docker.internal:host-gateway"]
     ports:
       - "127.0.0.1:4100:4100"
     healthcheck:
@@ -53,6 +55,13 @@ services:
       timeout: 5s
       retries: 3
       start_period: 60s
+
+  # Lets the app reach the Dell's local model (llama-server listens on 127.0.0.1 only).
+  llm-relay:
+    image: alpine/socat:1.8.0.1
+    network_mode: host
+    restart: unless-stopped
+    command: TCP-LISTEN:8081,bind=172.17.0.1,fork,reuseaddr TCP:127.0.0.1:8080
 
   cloudflared:
     image: cloudflare/cloudflared:2026.9.3

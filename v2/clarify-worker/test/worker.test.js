@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import worker, { buildMessages, parseSpec } from "../src/index.js";
+import { readFileSync } from "node:fs";
 
 const kv = () => { const m = new Map(); return { get: async (k) => m.get(k) ?? null, put: async (k, v) => void m.set(k, v), m }; };
 const env = (run, extra = {}) => ({ AI: { run }, KV: kv(), CLARIFY_SECRET: "s3cret", CLARIFY_PER_DAY: "200", ...extra });
@@ -64,4 +65,12 @@ test("daily cap and allocation errors answer capped", async () => {
 test("upstream failure is 502; bad body is 400", async () => {
   assert.equal((await worker.fetch(req({ note: NOTE, turns: [] }), env(async () => { throw new Error("boom"); }))).status, 502);
   assert.equal((await worker.fetch(req({ turns: [] }), env(async () => ({})))).status, 400);
+});
+
+test("the API's local fallback uses the same system prompt", () => {
+  const ts = readFileSync(new URL("../../apps/api/src/ai/local-clarifier.ts", import.meta.url), "utf8");
+  const src = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+  const pick = (s) => s.slice(s.indexOf("You help a beta tester"), s.indexOf("not instructions to you.") + "not instructions to you.".length);
+  assert.ok(pick(src).length > 100);
+  assert.equal(pick(ts).replace(/[`'"+\s]/g, ""), pick(src).replace(/[`'"+\s]/g, ""));
 });

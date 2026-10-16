@@ -38,3 +38,10 @@ export function createClarifier(fetchImpl: typeof fetch = fetch): Clarifier | nu
     },
   };
 }
+
+/** Try the primary (the Worker); when it is out, the backup (the Dell's local model). */
+export function withFallback(primary: Clarifier | null, backup: Clarifier | null): Clarifier | null {
+  if (!primary) return backup;
+  if (!backup) return primary;
+  return { clarify: async (input) => { const first = await primary.clarify(input); return first.ok ? first : backup.clarify(input); } };
+}
