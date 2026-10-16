@@ -17,7 +17,7 @@ function repo() {
   return { r, cfg: { repo: r, implLane: "codex", workDir: join(d, "work"), receiptsDir: join(d, "rc"), timeouts: { codex: 5000, gate: 5000, migration: 5000, model: 5000 } } };
 }
 const calls = [];
-const fake = (edit, { gate = 0, gateStdout = "tests: 1 failed", prompts = [], commands = [], migration = 0, implementation = { code: 0, stdout: "status:  answered\n", stderr: "" } } = {}) => {
+const fake = (edit, { gate = 0, gateStdout = "tests: 1 failed", gateStderr = "", prompts = [], commands = [], migration = 0, implementation = { code: 0, stdout: "status:  answered\n", stderr: "" } } = {}) => {
   let gateIndex = 0;
   return async (cmd, args, opts) => {
     calls.push([cmd, ...args].join(" "));
@@ -32,7 +32,7 @@ const fake = (edit, { gate = 0, gateStdout = "tests: 1 failed", prompts = [], co
     if (cmd === "sh" && args[0].endsWith("/gate.sh")) {
       const code = Array.isArray(gate) ? gate[gateIndex++] : gate;
       assert.notEqual(code, undefined, "gate ran more times than its scripted sequence");
-      return { code, stdout: code === 0 ? "tests passed" : gateStdout, stderr: "" };
+      return { code, stdout: code === 0 ? "tests passed" : gateStdout, stderr: code === 0 ? "" : gateStderr };
     }
     return run(cmd, args, opts);
   };
@@ -55,9 +55,38 @@ for (const lane of ["local", "codex"]) {
     assert.equal(prompts.length, 2, "implementer must retry once");
     assert.ok(prompts[1].includes("FAIL items count expected 3 got 1"), "retry must include the gate failure");
     assert.match(prompts[1], /Done when/i);
+    assert.doesNotMatch(prompts[1], /screen with no test harness|test[^\n.]*not possible|precise code change/i);
+    assert.match(prompts[1], /every change[^\n.]*test/i);
+    assert.match(prompts[1], /v2\/apps\/api\/test/);
+    assert.match(prompts[1], /react-dom\/server/);
+    assert.match(prompts[1], /renderToStaticMarkup/);
+    assert.match(prompts[1], /QueryClient/);
     assert.equal(commands.filter(([cmd, script]) => cmd === "sh" && script.endsWith("/gate.sh")).length, 2);
     assert.equal(commands.filter(([cmd, ...args]) => cmd === "git" && args.includes("commit")).length, 1);
     assert.equal(git(r, "rev-list", "--count", `${parent}..${out.sha}`), "1");
+  });
+
+  test(`${lane}: retry preserves early diagnostics before the final 40 output lines`, async (t) => {
+    const { r, cfg } = repo();
+    t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+    cfg.implLane = lane;
+    const parent = git(r, "rev-parse", "HEAD");
+    const prompts = [];
+    const diagnostics = [
+      "apps/api/src/x.ts(3,7): error TS2322: Type 'string' is not assignable to type 'number'.",
+      "FAIL items count expected 3 got 1", "✗ brand filter", "× saved brand", "ts1234 diagnostic", "ERROR build stopped",
+    ];
+    const passing = Array.from({ length: 85 }, (_, i) => `passing test ${i + 1}`);
+    const out = await implementNote({ note, spec, runId: "early-diagnostics", parent, base: parent, baseImage: "base", cfg,
+      runner: fake(withTest, { gate: [1, 0], gateStdout: [...diagnostics, ...passing].join("\n"), prompts }), reviewFn: pass });
+    assert.equal(out.ok, true, out.reason);
+    assert.equal(prompts.length, 2);
+    assert.match(prompts[1], /TS2322/);
+    assert.ok(prompts[1].includes("x.ts(3,7)"));
+    for (const diagnostic of diagnostics) assert.ok(prompts[1].includes(diagnostic), `missing diagnostic: ${diagnostic}`);
+    assert.ok(prompts[1].includes(passing.slice(-40).join("\n")), "retry must include the final 40 lines in order");
+    assert.equal(prompts[1].includes("passing test 45\n"), false, "passing output before the tail must be omitted");
+    assert.ok(prompts[1].indexOf(diagnostics[0]) < prompts[1].indexOf("passing test 46\n"));
   });
 
   test(`${lane}: gives up after two retries`, async (t) => {
@@ -113,6 +142,22 @@ for (const lane of ["local", "codex"]) {
     assert.equal(existsSync(join(cfg.workDir, "no-retry", "note-9")), false);
   });
 }
+
+test("retry caps selected diagnostics at 80 lines and keeps the output tail", async (t) => {
+  const { r, cfg } = repo();
+  t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+  const parent = git(r, "rev-parse", "HEAD");
+  const prompts = [];
+  const diagnostics = Array.from({ length: 81 }, (_, i) => `FAIL diagnostic ${i + 1}`);
+  const tail = Array.from({ length: 40 }, (_, i) => `output tail ${i + 1}`);
+  const out = await implementNote({ note, spec, runId: "diagnostic-cap", parent, base: parent, baseImage: "base", cfg,
+    runner: fake(withTest, { gate: [1, 0], gateStdout: diagnostics.join("\n"), gateStderr: tail.join("\n"), prompts }), reviewFn: pass });
+  assert.equal(out.ok, true, out.reason);
+  assert.equal(prompts.length, 2);
+  for (const diagnostic of diagnostics.slice(0, 80)) assert.ok(prompts[1].includes(`${diagnostic}\n`), `missing diagnostic: ${diagnostic}`);
+  assert.equal(prompts[1].includes("FAIL diagnostic 81"), false);
+  assert.ok(prompts[1].includes(tail.join("\n")), "stderr tail must be kept after stdout diagnostics");
+});
 
 test("local lane runs codex exec with the local responses provider and the prompt on stdin", async (t) => {
   const { r, cfg } = repo();

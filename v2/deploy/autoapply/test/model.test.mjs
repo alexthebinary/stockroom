@@ -45,9 +45,13 @@ test("review demands Done-when coverage", async () => {
   for (const line of spec.doneWhen) assert.ok(prompt.includes(line), `review must receive Done-when line: ${line}`);
   assert.match(prompt, /\b(?:each|every|all)\b[^\n.]*\bdone[\s-]*when\b[^\n.]*\btest\b/i,
     "review must require a test for each Done-when criterion");
-  assert.match(prompt, /\bscreen\b[^\n.]*\b(?:no|without|lacks?)\b[^\n.]*\btest harness\b/i,
-    "review must address screens without a test harness");
-  assert.match(prompt, /\bprecise code change\b/i, "a screen without a harness needs a precise code change");
+  assert.doesNotMatch(prompt, /screen with no test harness|precise code change/i,
+    "review must not allow code changes to substitute for tests");
+  assert.match(prompt, /every change[^\n.]*test/i);
+  assert.match(prompt, /v2\/apps\/api\/test/);
+  assert.match(prompt, /react-dom\/server/);
+  assert.match(prompt, /renderToStaticMarkup/);
+  assert.match(prompt, /QueryClient/);
   assert.match(prompt, /\btest\b[^\n.]*\b(?:other|unrelated|different)\b[^\n.]*\b(?:does not|doesn't|do not|don't|cannot|can't|never) count\b/i,
     "a test asserting on other behaviour must not count as coverage");
 });

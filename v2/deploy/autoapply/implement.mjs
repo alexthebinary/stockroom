@@ -58,12 +58,13 @@ export async function implementNote({ note, spec, runId, parent, base, baseImage
       if (files.some((f) => /^v2\/apps\/[^/]+\/test\//.test(f) || /^v2\/deploy\/.*\/test\//.test(f))) {
         const gate = await runner("sh", [join(HERE, "gate.sh"), join(wt, "v2")], { timeoutMs: cfg.timeouts.gate });
         if (gate.code === 0) break;
-        const lines = (gate.stdout + gate.stderr).trim().split("\n");
+        const lines = (gate.stdout + "\n" + gate.stderr).trim().split("\n");
         reason = `tests failed: ${lines.slice(-20).join(" | ").slice(0, 900)}`;
-        feedback = `tests failed:\n${lines.slice(-60).join("\n")}`;
+        const diagnostics = lines.filter((line) => /error|FAIL|✗|×|TS\d{4}/i.test(line)).slice(0, 80);
+        feedback = `tests failed:\n${diagnostics.join("\n")}\n${lines.slice(-40).join("\n")}`;
       }
       if (attempt === attempts - 1) return { ok: false, reason };
-      prompt = `${request}\n\nYour previous attempt did not pass:\n${feedback}\n\nMake the gate pass. The test must check the spec's Done when lines. Never delete or weaken existing tests. A test for a screen with no test harness is not possible: then keep the code change precise.`;
+      prompt = `${request}\n\nYour previous attempt did not pass:\n${feedback}\n\nMake the gate pass. Every change needs a test, and each of the spec's Done when lines must be checked by a test. Never delete or weaken existing tests. Web components can be render-tested from v2/apps/api/test using react-dom/server renderToStaticMarkup with a QueryClient.`;
     }
     const sinceBase = (await g(wt, "diff", "--cached", "--name-only", base)).stdout.split("\n").filter(Boolean);
     const migration = sinceBase.some((f) => f.startsWith("v2/apps/api/prisma/migrations/"));

@@ -26,11 +26,12 @@ export async function preflight({ cfg, journal, runner, fetchImpl = fetch }) {
   let lane = cfg.implLane === "local" ? "local" : "codex";
   if (lane === "local") {
     const local = await runner("local-llm", ["status"], { timeoutMs: 30_000 });
-    if (local.code !== 0 || local.timedOut || !/^health:\s*ok\s*$/m.test(local.stdout)) return { ok: false, reason: "local model not healthy" };
     if (/\bq36-cpu\b/.test(local.stdout)) {
       const busy = await codexQuota(runner);
       if (busy) return { ok: false, neutral: true, reason: `skipped: GPU busy and Codex unavailable (${busy})` };
       lane = "codex";
+    } else if (local.code !== 0 || local.timedOut || !/^health:\s*ok\s*$/m.test(local.stdout)) {
+      return { ok: false, reason: "local model not healthy" };
     }
   } else {
     const busy = await codexQuota(runner);

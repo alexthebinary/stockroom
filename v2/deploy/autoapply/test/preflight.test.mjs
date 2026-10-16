@@ -35,6 +35,17 @@ test("GPU busy and Codex out of quota is a neutral skip", async () => {
       statusline_agents: { code: 0, stdout: '{"primary":{"used_percent":100},"secondary":{"used_percent":40}}', stderr: "" } }) });
   assert.deepEqual(out, { ok: false, neutral: true, reason: "skipped: GPU busy and Codex unavailable (codex quota: 5h window at 100%)" });
 });
+test("CPU mode with health down falls back to Codex when it has quota", async () => {
+  const out = await preflight({ cfg: { ...cfg, implLane: "local" }, journal: journal(), fetchImpl: health("a3f40a8"),
+    runner: runner({ "local-llm status": { code: 0, stdout: "mode: q36-cpu  unit: activating\nhealth: down", stderr: "" } }) });
+  assert.deepEqual(out, { ok: true, base: SHA, short: "a3f40a8", baseImage: "sha256:live", lane: "codex" });
+});
+test("CPU mode with health down and no Codex quota is a neutral skip", async () => {
+  const out = await preflight({ cfg: { ...cfg, implLane: "local" }, journal: journal(), fetchImpl: health("a3f40a8"),
+    runner: runner({ "local-llm status": { code: 0, stdout: "mode: q36-cpu  unit: activating\nhealth: down", stderr: "" },
+      statusline_agents: { code: 0, stdout: '{"primary":{"used_percent":100},"secondary":{"used_percent":40}}', stderr: "" } }) });
+  assert.deepEqual(out, { ok: false, neutral: true, reason: "skipped: GPU busy and Codex unavailable (codex quota: 5h window at 100%)" });
+});
 test("local preflight rejects hybrid status without health: ok", async () => {
   const out = await preflight({ cfg: { ...cfg, implLane: "local" }, journal: journal(), fetchImpl: health("a3f40a8"),
     runner: runner({ "local-llm status": { code: 0, stdout: "mode: q36-hybrid  unit: active\nhealth: failed", stderr: "" } }) });
