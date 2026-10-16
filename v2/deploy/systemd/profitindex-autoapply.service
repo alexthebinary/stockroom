@@ -1,0 +1,10 @@
+[Unit]
+Description=ProfitIndex daily auto-apply (feedback → implement → gate → ship)
+After=network-online.target docker.service
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/stockroom/v2/deploy/autoapply
+ExecStart=/home/alex/.nvm/versions/node/v24.18.0/bin/node /opt/stockroom/v2/deploy/autoapply/autoapply.mjs
+Environment=PATH=/home/alex/.local/bin:/home/alex/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+TimeoutStartSec=4h
+KillMode=control-group

@@ -245,6 +245,37 @@ sudo systemctl daemon-reload && sudo systemctl enable --now profitindex-autodepl
   nobody would guess, and set `NOTIFY_URL=https://ntfy.sh/<that topic>` in
   `.env`. You get new feedback as it arrives, and each deploy or failed deploy.
 
+## Daily auto-apply
+
+The daily job applies eligible feedback at 03:00 local time, checks each change,
+then ships it through auto-deploy. Install its units for the current user:
+
+```bash
+cd /opt/stockroom/v2/deploy
+mkdir -p ~/.config/systemd/user
+cp systemd/profitindex-autoapply.service systemd/profitindex-autoapply.timer ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now profitindex-autoapply.timer
+```
+
+The service uses the Node and repository paths in its unit file; adjust those
+paths if the installation differs. A missed run catches up when the timer next
+starts. Watch runs with `journalctl --user -u profitindex-autoapply`.
+
+Four consecutive failed runs trigger a warning. At six, the job writes `*` to
+`~/.local/state/profitindex-autoapply/HALT` and disables its timer. HALT blocks
+auto-apply and deploys; `deploy/.halted` records a blocked deployment. After
+checking the report in the vault logs and fixing the cause, resume with:
+
+```bash
+rm ~/.local/state/profitindex-autoapply/HALT
+systemctl --user enable --now profitindex-autoapply.timer
+```
+
+To preview a run, use `node autoapply/autoapply.mjs --dry-run` from the deploy
+directory. It keeps candidate worktrees for inspection, skips feedback writes
+and shipping, and leaves recovery and the failure streak unchanged.
+
 ## Plainly stated
 
 - **The app is open to anyone on the internet.** That's the operator's decision

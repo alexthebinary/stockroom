@@ -14,3 +14,4 @@ deploy/.env
 deploy/backups/
 deploy/.deployed
 deploy/.failed
+deploy/.halted
