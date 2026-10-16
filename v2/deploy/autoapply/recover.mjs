@@ -1,12 +1,14 @@
-import { complete, resolveStuck } from "./ship.mjs";
+import { resolveStuck } from "./ship.mjs";
 import { withLock } from "./lock.mjs";
 
 const git = (runner, repo, ...args) => runner("git", ["-C", repo, ...args], { timeoutMs: 120_000 });
 
-/** Reconcile every run that started but never finished, BEFORE any new work (spec Part 2: recovery on start). */
+/** Reconcile unfinished runs and stranded release manifests BEFORE any new work. */
 export async function recover({ cfg, journal, feedback, runner, fetchImpl = fetch, sleep, dryRun = false }) {
   const recovered = [];
-  for (const runId of journal.unfinished()) {
+  const inFlight = ["PREPARED", "PUSHING", "AWAITING_DEPLOY", "ROLLING_BACK", "COMPLETING"];
+  const runIds = new Set([...journal.unfinished(), ...journal.manifests().filter((m) => inFlight.includes(m.phase)).map((m) => m.runId)]);
+  for (const runId of runIds) {
     const m = journal.readManifest(runId);
     const phase = m?.phase ?? "NO_MANIFEST";
     const list = await feedback.list();
@@ -17,7 +19,7 @@ export async function recover({ cfg, journal, feedback, runner, fetchImpl = fetc
     if (!list.ok) { recovered.push({ runId, phase, result: "PENDING" }); continue; }
     let result = "released";
     let man = m;
-    if (phase === "PUSHING") {
+    if (["PREPARED", "PUSHING"].includes(phase)) {
       const reconciled = await withLock(cfg.deployLock, async () => {
         const fetched = await git(runner, cfg.repo, "fetch", "--quiet", "origin", cfg.branch);
         if (fetched.code !== 0) throw new Error("could not fetch the deployment branch");
@@ -30,17 +32,22 @@ export async function recover({ cfg, journal, feedback, runner, fetchImpl = fetc
       if (reconciled?.busy) { recovered.push({ runId, phase, result: "PENDING" }); continue; }
       man = reconciled;
     }
-    if (man && ["AWAITING_DEPLOY", "ROLLING_BACK"].includes(man.phase)) {
+    if (man && ["AWAITING_DEPLOY", "ROLLING_BACK", "COMPLETING"].includes(man.phase)) {
       result = (await resolveStuck({ manifest: man, cfg, journal, feedback, runner, fetchImpl, sleep })).outcome;
-    } else if (man?.phase === "COMPLETING") {
-      result = (await complete({ manifest: man, journal, feedback })).outcome;
     }
     if (result === "PENDING") { recovered.push({ runId, phase, result }); continue; }
     for (const [id, revision] of claimed) {
       const released = await feedback.release(id, runId, revision);
       if (!released.ok) result = "PENDING";
     }
-    if (result === "PENDING") { recovered.push({ runId, phase, result }); continue; }
+    if (result === "PENDING") {
+      // Legacy FINISHED rows cannot keep a failed cleanup discoverable by themselves.
+      const current = journal.readManifest(runId);
+      if (m && inFlight.includes(phase) && current && !inFlight.includes(current.phase)) {
+        journal.writeManifest({ ...current, phase: current.revert ? "ROLLING_BACK" : phase });
+      }
+      recovered.push({ runId, phase, result }); continue;
+    }
     journal.finish(runId, "FAILED", `recovered: ${phase} → ${result}`);
     recovered.push({ runId, phase, result });
   }

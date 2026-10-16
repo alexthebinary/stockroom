@@ -11,6 +11,12 @@ const tip = async (runner, cfg) => {
   if (remote.code !== 0) throw new Error("could not read the deployment branch");
   return remote.stdout.trim();
 };
+async function reachedOrigin(runner, cfg, sha) {
+  await tip(runner, cfg);
+  const result = await git(runner, cfg.repo, "merge-base", "--is-ancestor", sha, `origin/${cfg.branch}`);
+  if (![0, 1].includes(result.code)) throw new Error("could not classify the deployment branch");
+  return result.code === 0;
+}
 async function live(cfg, fetchImpl) {
   try {
     const h = await (await fetchImpl(`${cfg.api}/api/health`, { signal: AbortSignal.timeout(10_000) })).json();
@@ -76,13 +82,24 @@ export async function resolveStuck({ manifest, cfg, journal, feedback, runner, f
       return "halted";
     }
     const wt = join(cfg.workDir, manifest.runId, "revert");
-    await git(runner, cfg.repo, "worktree", "add", "--detach", "--force", wt, manifest.candidate);
-    const reverted = await runner("git", ["-C", wt, "-c", "user.name=ProfitIndex auto-apply", "-c", "user.email=noreply@stockroom.local", "revert", "--no-edit", `${manifest.base}..${manifest.candidate}`], { timeoutMs: 120_000 });
-    const revertSha = (await git(runner, wt, "rev-parse", "HEAD")).stdout.trim();
-    const pushed = reverted.code === 0 && (await git(runner, wt, "push", "origin", `${revertSha}:refs/heads/${cfg.branch}`)).code === 0;
-    await git(runner, cfg.repo, "worktree", "remove", "--force", wt);
-    if (!pushed) { journal.halt("*", "rollback push failed"); journal.writeManifest({ ...manifest, phase: "HALTED" }); await notify(cfg, "Auto-apply HALTED", "The automatic rollback could not be pushed. Deploys are halted.", fetchImpl); return "halted"; }
-    journal.writeManifest({ ...manifest, phase: "ROLLING_BACK", revert: revertSha });
+    let rollback = manifest;
+    let pushed = false;
+    const added = await git(runner, cfg.repo, "worktree", "add", "--detach", "--force", wt, manifest.candidate);
+    if (added.code === 0) {
+      try {
+        const reverted = await runner("git", ["-C", wt, "-c", "user.name=ProfitIndex auto-apply", "-c", "user.email=noreply@stockroom.local", "revert", "--no-edit", `${manifest.base}..${manifest.candidate}`], { timeoutMs: 120_000 });
+        if (reverted.code === 0) {
+          const head = await git(runner, wt, "rev-parse", "HEAD");
+          if (head.code !== 0) throw new Error("could not read the rollback commit");
+          rollback = { ...manifest, phase: "ROLLING_BACK", revert: head.stdout.trim() };
+          journal.writeManifest(rollback);
+          try { pushed = (await git(runner, wt, "push", "origin", `${rollback.revert}:refs/heads/${cfg.branch}`)).code === 0; }
+          catch { /* The remote may have accepted the push before the error. */ }
+          if (!pushed) pushed = await reachedOrigin(runner, cfg, rollback.revert);
+        }
+      } finally { await git(runner, cfg.repo, "worktree", "remove", "--force", wt); }
+    }
+    if (!pushed) { journal.halt("*", "rollback push failed"); journal.writeManifest({ ...rollback, phase: "HALTED" }); await notify(cfg, "Auto-apply HALTED", "The automatic rollback could not be pushed. Deploys are halted.", fetchImpl); return "halted"; }
     return "rolling-back";
   }, { sleep });
   if (decided?.busy) return { outcome: "PENDING", shipped: [], failed: [], deferred: [] };
@@ -113,30 +130,38 @@ export async function resolveStuck({ manifest, cfg, journal, feedback, runner, f
 }
 
 export async function ship({ runId, base, accepted, cfg, journal, feedback, runner, fetchImpl = fetch, sleep }) {
-  const list = await feedback.list();
-  const fresh = new Map((list.ok ? list.row : []).map((n) => [n.id, n.revision]));
-  const prefix = pushablePrefix(accepted, fresh);
-  const deferred = accepted.slice(prefix.length);
-  for (const d of deferred) await feedback.release(d.note.id, runId, d.note.revision);
-  if (!prefix.length) return { outcome: "NOTHING", shipped: [], failed: [], deferred: deferred.map((d) => d.note.id) };
-  const manifest = {
+  const prepare = (prefix) => ({
     runId, base, candidate: prefix.at(-1).sha, migration: prefix.some((a) => a.migration), phase: "PREPARED",
     notes: prefix.map((a) => ({ id: a.note.id, revision: a.note.revision, sha: a.sha, payload: { runId, revision: a.note.revision, autoState: "SHIPPED", autoCommit: a.sha, status: "DONE" } })),
-  };
+  });
+  let manifest = prepare(accepted);
+  let deferred = [];
+  // Keep a durable intent even if the lock remains busy until the next run.
   journal.writeManifest(manifest);
   const pushed = await withLock(cfg.deployLock, async () => {
     const remote = await tip(runner, cfg);
     const halted = journal.halted();
     await live(cfg, fetchImpl);
+    const list = await feedback.list();
+    if (!list.ok) throw new Error("could not re-read feedback before pushing");
+    const prefix = pushablePrefix(accepted, new Map(list.row.map((n) => [n.id, n.revision])));
+    deferred = accepted.slice(prefix.length);
+    if (!prefix.length) { journal.writeManifest({ ...manifest, phase: "ABANDONED" }); return "nothing"; }
+    manifest = prepare(prefix);
+    journal.writeManifest(manifest);
     if (halted) return "halted";
     if (remote !== base) return "moved";
     journal.writeManifest({ ...manifest, phase: "PUSHING" });
-    const p = await git(runner, cfg.repo, "push", "origin", `${manifest.candidate}:refs/heads/${cfg.branch}`);
-    if (p.code !== 0) return "moved";
+    let landed = false;
+    try { landed = (await git(runner, cfg.repo, "push", "origin", `${manifest.candidate}:refs/heads/${cfg.branch}`)).code === 0; }
+    catch { /* Reconcile origin before deciding the push failed. */ }
+    if (!landed && !(await reachedOrigin(runner, cfg, manifest.candidate))) return "moved";
     journal.writeManifest({ ...manifest, phase: "AWAITING_DEPLOY" });
     return "pushed";
   }, { sleep });
+  for (const d of deferred) await feedback.release(d.note.id, runId, d.note.revision);
   if (pushed?.busy) return { outcome: "PENDING", shipped: [], failed: [], deferred: deferred.map((d) => d.note.id) };
+  if (pushed === "nothing") return { outcome: "NOTHING", shipped: [], failed: [], deferred: deferred.map((d) => d.note.id) };
   if (pushed !== "pushed") {
     await releaseAll(feedback, runId, manifest.notes);
     journal.writeManifest({ ...manifest, phase: "ABANDONED" });

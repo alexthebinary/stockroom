@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -19,8 +20,10 @@ export async function implementNote({ note, spec, runId, parent, base, baseImage
   mkdirSync(dirname(wt), { recursive: true });
   const added = await g(cfg.repo, "worktree", "add", "--detach", "--force", wt, parent);
   if (added.code !== 0) return { ok: false, reason: `worktree: ${added.stderr.trim().slice(0, 200)}` };
+  let promptDir;
   try {
-    const promptFile = join(dirname(wt), `note-${note.id}.md`);
+    promptDir = mkdtempSync(join(tmpdir(), `profitindex-autoapply-${runId}-`));
+    const promptFile = join(promptDir, `note-${note.id}.md`);
     writeFileSync(promptFile, [
       "IMPLEMENT (bounded), in THIS worktree only. No git writes.",
       "ProfitIndex v2 (v2/). Read v2/README.md and v2/DESIGN.md first and match the existing code.",
@@ -54,6 +57,7 @@ export async function implementNote({ note, spec, runId, parent, base, baseImage
     if (committed.code !== 0) return { ok: false, reason: `commit: ${committed.stderr.trim().slice(0, 200)}` };
     return { ok: true, sha: (await g(wt, "rev-parse", "HEAD")).stdout.trim(), migration, title };
   } finally {
+    if (promptDir) rmSync(promptDir, { recursive: true, force: true });
     if (!keepWorktree) { await g(cfg.repo, "worktree", "remove", "--force", wt); await g(cfg.repo, "worktree", "prune"); }
   }
 }

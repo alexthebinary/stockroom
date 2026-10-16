@@ -62,7 +62,7 @@ function harness(t) {
       return json({ ok: true, build: state.build });
     }
     if (method === "GET" && parsed.pathname === "/api/books/check") return json({ sound: state.sound });
-    if (method === "GET" && parsed.pathname + parsed.search === "/api/feedback?turns=1") return json(state.notes);
+    if (method === "GET" && parsed.pathname + parsed.search === "/api/feedback?turns=1") return json(state.onList?.() ?? state.notes);
     const job = parsed.pathname.match(/^\/api\/feedback\/(\d+)\/auto\/(claim|outcome|release|question)$/);
     if (method === "POST" && job) {
       const [, id, action] = job;
@@ -272,4 +272,100 @@ test("dry-run recover", { timeout: 10_000 }, async (t) => {
   assert.equal(result.recovered[0].runId, h.runId);
   assert.equal(result.recovered[0].phase, "NO_MANIFEST");
   assert.match(result.recovered[0].result, /would.*1 claim/);
+});
+
+test("F4: rollback intent is durable before a crashing revert push and recovery recognizes it", { timeout: 10_000 }, async (t) => {
+  const h = harness(t);
+  h.journal.start(h.runId);
+  const crash = new Error("connection lost after remote accepted revert push");
+  let beforePush, revert;
+  const runner = async (cmd, args, opts) => {
+    if (cmd === "git" && args.includes("push") && args[1].endsWith("/revert")) {
+      beforePush = h.journal.readManifest(h.runId);
+      revert = args.at(-1).split(":")[0];
+      const pushed = await h.args.runner(cmd, args, opts);
+      assert.equal(pushed.code, 0, "the real local revert push landed before the error");
+      assert.equal(h.originTip(), revert);
+      throw crash;
+    }
+    return h.args.runner(cmd, args, opts);
+  };
+  h.state.onSleep = () => {
+    if (revert) h.state.build = short(h.originTip());
+  };
+  const result = await ship({ ...h.args, runner });
+  assert.match(revert, /^[0-9a-f]{40}$/);
+  assert.equal(beforePush.phase, "ROLLING_BACK", "persist rollback intent before attempting its push");
+  assert.equal(beforePush.revert, revert, "persist the revert SHA before attempting its push");
+  assert.equal(h.originTip(), revert);
+  assert.equal(h.state.build, short(revert), "the revert is live before resolving");
+  assert.equal(result.outcome, "ROLLED_BACK", "ship reconciles a landed revert push despite the error");
+  assert.equal(existsSync(join(h.tmp, "HALT")), false);
+  assertFailed(h, /rolled back/);
+  assert.equal(h.journal.readManifest(h.runId).phase, "ROLLED_BACK");
+});
+
+test("F5: feedback edited while waiting for the deploy lock truncates the pushed prefix", { timeout: 10_000 }, async (t) => {
+  const h = harness(t);
+  h.accepted[1].note.revision = 1;
+  let edited = false;
+  h.state.onList = () => [{ id: 1, revision: 2 }, { id: 2, revision: edited ? 2 : 1 }];
+  let release = await acquire(h.cfg.deployLock);
+  assert.ok(release);
+  t.after(async () => { if (release) await release(); });
+  h.state.onSleep = async () => {
+    if (release) {
+      edited = true;
+      await release();
+      release = null;
+    }
+    h.state.build = short(h.originTip());
+  };
+  const result = await ship(h.args);
+  assert.equal(h.originTip(), h.accepted[0].sha, "only the still-current prefix may be pushed under the deploy lock");
+  assert.equal(result.outcome, "SHIPPED");
+  assert.deepEqual(result.shipped, [1]);
+  assert.deepEqual(result.deferred, [2]);
+  assert.deepEqual(h.state.posts.filter((p) => p.action === "release"), [
+    { id: 2, action: "release", body: { runId: h.runId, revision: 1 } },
+  ]);
+  assert.deepEqual(h.state.posts.filter((p) => p.action === "outcome").map((p) => p.id), [1]);
+});
+
+test("F6: COMPLETING recovery fails notes when the live release has been reverted", { timeout: 10_000 }, async (t) => {
+  const h = harness(t);
+  h.pushCandidate();
+  h.journal.start(h.runId);
+  h.journal.writeManifest(h.manifest("COMPLETING"));
+  git(h.repo, "revert", "--no-edit", h.candidate);
+  const revert = git(h.repo, "rev-parse", "HEAD");
+  git(h.repo, "push", "--quiet", "origin", `${revert}:refs/heads/main`);
+  h.state.build = short(revert);
+  await recover(h.args);
+  assertFailed(h, /reverted after shipping/);
+  assert.equal(h.state.posts.some((p) => p.body.autoState === "SHIPPED" || p.body.status === "DONE"), false);
+  assert.equal(h.journal.readManifest(h.runId).phase, "ROLLED_BACK");
+});
+
+test("F7: a candidate push that lands despite nonzero exit still ships without releases", { timeout: 10_000 }, async (t) => {
+  const h = harness(t);
+  let ambiguousPush = false;
+  const runner = async (cmd, args, opts) => {
+    const result = await h.args.runner(cmd, args, opts);
+    if (cmd === "git" && args.includes("push") && args.at(-1) === `${h.candidate}:refs/heads/main`) {
+      assert.equal(result.code, 0, "the real local push landed before its exit was lost");
+      ambiguousPush = true;
+      return { ...result, code: 1, stderr: "connection lost after remote accepted push" };
+    }
+    return result;
+  };
+  h.state.onSleep = () => { h.state.build = short(h.originTip()); };
+  const result = await ship({ ...h.args, runner });
+  assert.ok(ambiguousPush);
+  assert.equal(h.originTip(), h.candidate);
+  assert.equal(result.outcome, "SHIPPED", "a landed push must be reconciled rather than retried");
+  assert.equal(h.state.build, short(h.candidate));
+  assertShipped(h);
+  assert.deepEqual(h.state.posts.filter((p) => p.action === "release"), []);
+  assert.equal(h.journal.readManifest(h.runId).phase, "DONE");
 });

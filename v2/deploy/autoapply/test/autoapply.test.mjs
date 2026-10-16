@@ -7,9 +7,10 @@ import { join } from "node:path";
 import { main } from "../autoapply.mjs";
 import { createJournal } from "../journal.mjs";
 import { run } from "../run.mjs";
+import { acquire } from "../lock.mjs";
 
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, "-c", "user.email=t@t", "-c", "user.name=t", ...args], { encoding: "utf8", stdio: "pipe" }).trim();
-const json = (body) => new Response(JSON.stringify(body));
+const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
 const ok = (stdout = "") => ({ code: 0, stdout, stderr: "" });
 const envelope = (result) => ok(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: JSON.stringify(result) }));
 const spec = { problem: "The brand filter resets", expected: "Remember the brand filter", where: "/items", doneWhen: ["The filter survives a reload"] };
@@ -59,7 +60,7 @@ function harness(t) {
     }
     if (parsed.origin !== cfg.api) throw new Error(`Unexpected fetch: ${method} ${url}`);
     // Simulate a healthy deployer following the actual local origin, including after push.
-    if (method === "GET" && parsed.pathname === "/api/health") return json({ ok: true, build: originTip().slice(0, 7) });
+    if (method === "GET" && parsed.pathname === "/api/health") return json({ ok: true, build: state.build ?? originTip().slice(0, 7) });
     if (method === "GET" && parsed.pathname === "/api/books/check") return json({ sound: true });
     if (method === "GET" && parsed.pathname + parsed.search === "/api/feedback?turns=1") return json(state.lists.length ? state.lists.shift() : state.notes);
     const action = parsed.pathname.match(/^\/api\/feedback\/(\d+)\/auto\/(claim|outcome|question|release)$/);
@@ -68,7 +69,13 @@ function harness(t) {
       const body = JSON.parse(init.body);
       state.posts.push({ id, action: action[2], body });
       if (action[2] === "release") state.releaseRows.push(rows());
-      return json({ id });
+      const status = state.postStatus?.(id, action[2]) ?? 200;
+      if (status === 200) {
+        const n = state.notes.find((n) => n.id === id);
+        if (n && action[2] === "claim") { n.autoClaim = body.runId; n.autoRevision = body.revision; }
+        if (n && ["release", "question", "outcome"].includes(action[2])) n.autoClaim = null;
+      }
+      return json({ id }, status);
     }
     throw new Error(`Unexpected fetch: ${method} ${url}`);
   };
@@ -214,7 +221,10 @@ test("crash then restart: recovery releases the claim and journals FAILED before
   const h = harness(t);
   h.state.notes = [note(1)];
   h.state.crashOnModel = true;
-  await assert.rejects(main(h.args), (err) => err === h.state.crash);
+  await assert.doesNotReject(() => main(h.args), "main contains the crash after claiming");
+  const alert = h.state.alerts.find((a) => a.title === "Auto-apply crashed");
+  assert.ok(alert, "the contained crash sends an alert");
+  assert.ok(alert.body.includes(h.state.crash.message), "the alert identifies the crash");
   assert.equal(h.state.posts.length, 1);
   const claim = h.state.posts[0];
   assert.equal(claim.action, "claim");
@@ -240,4 +250,99 @@ test("crash then restart: recovery releases the claim and journals FAILED before
   assert.equal(h.journal.failureStreak(), 1);
   assert.ok(!h.state.calls.some((c) => c.startsWith("dispatch ")));
   assert.equal(h.originTip(), h.base);
+});
+
+test("F2: a busy deploy lock leaves main PENDING and the first run recoverable", { timeout: 15_000 }, async (t) => {
+  const h = harness(t);
+  h.state.notes = [note(1)];
+  h.cfg.timeouts.deploy = 20;
+  let release = await acquire(h.cfg.deployLock);
+  assert.ok(release);
+  t.after(async () => { if (release) await release(); });
+  const first = await main(h.args);
+  const unfinished = h.journal.unfinished();
+  const firstRows = h.rows();
+  const manifest = h.journal.readManifest(first.runId);
+  assert.ok(manifest?.candidate, "ship prepared a candidate while the deploy lock was busy");
+  assert.equal(h.originTip(), h.base, "the busy lock prevented the candidate push");
+  await release();
+  release = null;
+  // Simulate the queued release reaching origin and the live app before restart.
+  git(h.cfg.repo, "push", "--quiet", "origin", `${manifest.candidate}:refs/heads/main`);
+  h.state.build = manifest.candidate.slice(0, 7);
+  h.state.lists = [[{ ...note(1), autoClaim: first.runId, autoRevision: 2 }], []];
+  await main({ ...h.args, now: () => new Date("2026-10-17T07:00:00Z") });
+  assert.equal(first.outcome, "PENDING", "a busy deploy lock must remain PENDING");
+  assert.ok(unfinished.includes(first.runId), "PENDING runs must remain unfinished");
+  assert.equal(firstRows.some((r) => r.runId === first.runId && r.phase === "FINISHED"), false);
+  assert.deepEqual(h.state.posts.filter((p) => p.action === "outcome"), [
+    { id: 1, action: "outcome", body: { runId: first.runId, revision: 2, autoState: "SHIPPED", autoCommit: manifest.candidate, status: "DONE" } },
+  ]);
+  assert.equal(h.journal.readManifest(first.runId).phase, "DONE");
+});
+
+test("F3: rejected outcome and question writes release their claims", async (t) => {
+  await t.test("outcome 409 after implement failure releases the note", async (t) => {
+    const h = harness(t);
+    h.state.notes = [note(1)];
+    h.state.failDispatch.add(1);
+    h.state.postStatus = (_id, action) => action === "outcome" ? 409 : 200;
+    const result = await main(h.args);
+    assert.deepEqual(h.state.posts.map((p) => p.action), ["claim", "outcome", "release"], "failed outcome POST must be followed by release POST");
+    assert.deepEqual(h.state.posts.at(-1), { id: 1, action: "release", body: { runId: result.runId, revision: 2 } });
+  });
+  await t.test("question 500 releases the note without reporting it waiting", async (t) => {
+    const h = harness(t);
+    h.state.notes = [note(1)];
+    h.state.triage = { clear: false, question: "Which filter?" };
+    h.state.postStatus = (_id, action) => action === "question" ? 500 : 200;
+    const result = await main(h.args);
+    assert.deepEqual(h.state.posts.map((p) => p.action), ["claim", "question", "release"], "failed question POST must be followed by release POST");
+    assert.deepEqual(h.state.posts.at(-1), { id: 1, action: "release", body: { runId: result.runId, revision: 2 } });
+    assert.deepEqual(result.waiting, [], "an undelivered question is not waiting on the tester");
+  });
+});
+
+test("F8: main contains implement and recovery crashes and alerts", async (t) => {
+  await t.test("implement runner throws: resolve, alert and leave the run unfinished", async (t) => {
+    const h = harness(t);
+    h.state.notes = [note(1)];
+    const runner = (cmd, args, opts) => {
+      if (cmd === "dispatch") throw new Error("simulated implement runner crash");
+      return h.args.runner(cmd, args, opts);
+    };
+    await assert.doesNotReject(() => main({ ...h.args, runner }), "main must contain implement runner exceptions");
+    const runId = h.state.posts.find((p) => p.action === "claim").body.runId;
+    assert.ok(h.state.alerts.some((a) => a.title === "Auto-apply crashed"), "implementation crash must alert");
+    assert.ok(h.journal.unfinished().includes(runId), "crashed run must remain recoverable");
+    assert.equal(h.rows().some((r) => r.runId === runId && r.phase === "FINISHED"), false);
+  });
+  await t.test("corrupt recovery manifest: journal a FINISHED FAILED run and alert", async (t) => {
+    const h = harness(t);
+    h.journal.start("interrupted");
+    writeFileSync(join(h.cfg.stateDir, "release-interrupted.json"), "{corrupt manifest");
+    await assert.doesNotReject(() => main(h.args), "main must contain recovery exceptions");
+    const finished = h.rows().find((r) => r.phase === "FINISHED" && r.outcome === "FAILED" && /recovery failed/i.test(r.detail));
+    assert.ok(finished, "recovery failed must be journaled as FINISHED FAILED");
+    assert.equal(h.journal.failureStreak(), 1);
+    assert.ok(h.state.alerts.length > 0, "recovery failure must alert");
+    assert.ok(!h.state.calls.some((c) => c.startsWith("dispatch ")), "recovery failure must prevent new implementations");
+  });
+});
+
+test("F9: ship NOTHING after every accepted note is edited leaves the failure streak unchanged", { timeout: 15_000 }, async (t) => {
+  const h = harness(t);
+  h.seedFailures(2);
+  h.state.notes = [note(1)];
+  h.state.lists = [[note(1)], [{ ...note(1), revision: 3 }]];
+  const result = await main(h.args);
+  assert.ok(h.state.calls.some((c) => c.startsWith("dispatch ")), "the note was implemented before it was edited");
+  assert.ok(h.journal.readNotes(result.runId).some((e) => e.event === "accepted"));
+  assert.equal(h.originTip(), h.base);
+  assert.deepEqual(h.state.posts.filter((p) => p.action === "release"), [
+    { id: 1, action: "release", body: { runId: result.runId, revision: 2 } },
+  ]);
+  assert.equal(result.outcome, "NOTHING", "editing all accepted notes is a neutral run");
+  assert.equal(h.journal.failureStreak(), 2);
+  assert.equal(h.rows().at(-1).outcome, "NOTHING");
 });

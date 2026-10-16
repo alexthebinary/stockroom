@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { implementNote } from "../implement.mjs";
@@ -28,6 +28,22 @@ const note = { id: 9, kind: "IDEA", revision: 4, note: "n" };
 const spec = { problem: "p", expected: "Remember the brand filter", where: "/items", doneWhen: ["d"] };
 const pass = async () => ({ pass: true, reasons: "ok" });
 const withTest = (wt) => { writeFileSync(join(wt, "v2/apps/api/a.ts"), "2\n"); writeFileSync(join(wt, "v2/apps/api/test/a.test.ts"), "t\n"); };
+
+test("F1: dispatch receives a prompt under tmpdir outside the worktree directory", async (t) => {
+  const { r, cfg } = repo();
+  t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+  const parent = git(r, "rev-parse", "HEAD");
+  const delegate = fake(withTest);
+  let promptFile;
+  const runner = async (cmd, args, opts) => {
+    if (cmd === "dispatch") promptFile = args.at(-1);
+    return delegate(cmd, args, opts);
+  };
+  const out = await implementNote({ note, spec, runId: "prompt-location", parent, base: parent, baseImage: "base", cfg, runner, reviewFn: pass });
+  assert.equal(out.ok, true);
+  assert.ok(promptFile.startsWith(`${tmpdir()}/`), "dispatch prompt must live under os.tmpdir()");
+  assert.equal(promptFile.startsWith(`${cfg.workDir}/`), false, "dispatch prompt must not live under cfg.workDir");
+});
 
 test("a passing candidate becomes one commit with trailers; the worktree is removed", async () => {
   const { r, cfg } = repo(); const parent = git(r, "rev-parse", "HEAD");
