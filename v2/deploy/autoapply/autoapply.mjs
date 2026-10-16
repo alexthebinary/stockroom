@@ -61,7 +61,8 @@ export async function main({ cfg, runner = run, fetchImpl = fetch, sleep = (ms) 
   };
   try {
     const pre = await preflight({ cfg, journal, runner, fetchImpl });
-    if (!pre.ok) { result.outcome = "FAILED"; result.failed.push({ id: null, reason: pre.reason }); }
+    if (!pre.ok && pre.neutral) { result.outcome = "NOTHING"; result.skipped = pre.reason; }
+    else if (!pre.ok) { result.outcome = "FAILED"; result.failed.push({ id: null, reason: pre.reason }); }
     else {
       const list = await live.list();
       const notes = eligible(list.ok ? list.row : [], cfg);

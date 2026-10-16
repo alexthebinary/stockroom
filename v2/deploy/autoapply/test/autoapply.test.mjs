@@ -346,3 +346,23 @@ test("F9: ship NOTHING after every accepted note is edited leaves the failure st
   assert.equal(h.journal.failureStreak(), 2);
   assert.equal(h.rows().at(-1).outcome, "NOTHING");
 });
+
+test("GPU busy is a neutral skip, not a failed run", async () => {
+  const { main } = await import("../autoapply.mjs");
+  const { createJournal } = await import("../journal.mjs");
+  const { mkdtempSync } = await import("node:fs"); const { tmpdir } = await import("node:os"); const { join } = await import("node:path");
+  const tmp = mkdtempSync(join(tmpdir(), "gpu-busy-"));
+  const cfg = { repo: tmp, branch: "main", api: "http://app", stateDir: join(tmp, "state"), workDir: join(tmp, "work"), deployLock: join(tmp, "lock"), receiptsDir: join(tmp, "rc"), haltFile: join(tmp, "state/HALT"), authors: ["t"], maxPerRun: 3, token: "x", notifyUrl: "", vaultLogDir: join(tmp, "vault"), dryRun: false, implLane: "local", timeouts: { model: 1000, codex: 1000, gate: 1000, migration: 1000, deploy: 1000 } };
+  const runner = async (cmd, args) => {
+    if (cmd === "local-llm") return { code: 0, stdout: "mode: q36-cpu  unit: active\nhealth: ok\n", stderr: "" };
+    if (cmd === "git" && args.includes("rev-parse")) return { code: 0, stdout: "a3f40a8d0000000000000000000000000000000\n", stderr: "" };
+    if (cmd === "docker" && args[0] === "inspect") return { code: 0, stdout: "sha256:live\n", stderr: "" };
+    if (cmd === "docker") return { code: 0, stdout: "APP_VERSION=a3f40a8\n", stderr: "" };
+    return { code: 0, stdout: "", stderr: "" };
+  };
+  const fetchImpl = async (url) => new Response(url.includes("/api/health") ? '{"ok":true,"build":"a3f40a8"}' : "[]");
+  const r = await main({ cfg, runner, fetchImpl, sleep: async () => {} });
+  assert.equal(r.outcome, "NOTHING");
+  assert.equal(createJournal(cfg.stateDir).failureStreak(), 0);
+});
+

@@ -27,7 +27,7 @@ test("local preflight checks local-llm status and skips the Codex quota call", a
 test("local preflight rejects CPU mode even when the model is healthy", async () => {
   const out = await preflight({ cfg: { ...cfg, implLane: "local" }, journal: journal(), fetchImpl: health("a3f40a8"),
     runner: runner({ "local-llm status": { code: 0, stdout: "mode: q36-cpu  unit: active\nhealth: ok", stderr: "" } }) });
-  assert.deepEqual(out, { ok: false, reason: "local model in CPU mode (slow); run: local-llm q36-hybrid" });
+  assert.deepEqual(out, { ok: false, neutral: true, reason: "skipped: GPU busy (local model in CPU mode while a gpu-job runs)" });
 });
 test("local preflight rejects hybrid status without health: ok", async () => {
   const out = await preflight({ cfg: { ...cfg, implLane: "local" }, journal: journal(), fetchImpl: health("a3f40a8"),

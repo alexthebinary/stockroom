@@ -40,7 +40,12 @@ export async function implementNote({ note, spec, runId, parent, base, baseImage
         // Operator 2026-10-16: unattended implementation uses the local model;
         // Codex 0.162 requires wire_api=responses for this provider.
         const local = await runner("codex", ["exec", "--skip-git-repo-check", "-C", wt, "-s", "workspace-write", "-c", "mcp_servers.claude.enabled=false", "-c", "model_provider=localllm", "-c", 'model_providers.localllm={name="local-llm",base_url="http://127.0.0.1:8080/v1",wire_api="responses"}', "-c", "model_context_window=32768", "-c", "model_auto_compact_token_limit=24000", "-m", "local", "-"], { timeoutMs: cfg.timeouts.codex, input: prompt });
-        if (local.code !== 0 || local.timedOut) return { ok: false, reason: `local model: ${local.timedOut ? "timed out" : (local.stdout + local.stderr).trim().split("\n").pop()}` };
+        // Keep the whole transcript: the last line is often just a token count (dry run 3, 2026-10-16).
+        const log = join(dirname(wt), `note-${note.id}.local-${Date.now()}.log`);
+        writeFileSync(log, `exit ${local.code} timedOut ${local.timedOut}\n--- stdout\n${local.stdout}\n--- stderr\n${local.stderr}\n`);
+        const lines = (local.stdout + "\n" + local.stderr).trim().split("\n");
+        const why = lines.filter((l) => /error|failed|exceed|context/i.test(l)).pop() ?? lines.pop();
+        if (local.code !== 0 || local.timedOut) return { ok: false, reason: `local model: ${local.timedOut ? "timed out" : why} (log ${log})` };
       } else {
         const codex = await runner("dispatch", ["codex", `--cd=${wt}`, "--kind=implement", "--write", promptFile], { timeoutMs: cfg.timeouts.codex });
         if (codex.code !== 0 || !/status:\s+answered/.test(codex.stdout)) return { ok: false, reason: `codex: ${codex.timedOut ? "timed out" : (codex.stdout + codex.stderr).trim().split("\n").pop()}` };
