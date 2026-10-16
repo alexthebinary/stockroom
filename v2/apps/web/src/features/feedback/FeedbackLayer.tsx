@@ -93,7 +93,7 @@ export function FeedbackLayer() {
   const [picking, setPicking] = useState(false);
   const [hover, setHover] = useState<DOMRect | null>(null);
   const [draft, setDraft] = useState<Anchor | null>(null);
-  const [chatFor, setChatFor] = useState<number | null>(null);
+  const [savedNote, setSavedNote] = useState<{ id: number; note: string } | null>(null);
   const [kind, setKind] = useState<Kind>("BUG");
   const [text, setText] = useState("");
   const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
@@ -131,6 +131,11 @@ export function FeedbackLayer() {
     setDraft(null);
     setText("");
     setShot(null);
+    setSavedNote(null);
+  };
+  const dismiss = () => {
+    if (savedNote) toastOk("Saved — you can finish it from the Feedback page");
+    close();
   };
   const send = async () => {
     if (!draft) return;
@@ -149,9 +154,12 @@ export function FeedbackLayer() {
       });
       addIds(MINE_KEY, [id]);
       setMine(readIds(MINE_KEY));
-      toastOk("Thanks, your note was sent");
-      close();
-      if (ai.data?.clarify) setChatFor(id);
+      if (ai.data?.clarify) {
+        setSavedNote({ id, note: text });
+      } else {
+        toastOk("Thanks, your note was sent");
+        close();
+      }
       setShowPins(true);
       await queryClient.invalidateQueries({ queryKey: ["feedback"] });
     } catch (error) {
@@ -300,65 +308,61 @@ export function FeedbackLayer() {
 
       <Drawer
         opened={draft != null && !capturing}
-        onClose={close}
+        onClose={dismiss}
         position={phone ? "bottom" : "right"}
         size={phone ? "auto" : 400}
-        title="Leave a note"
+        title={savedNote ? "A few questions about your note" : "Leave a note"}
         overlayProps={{ backgroundOpacity: phone ? 0.3 : 0 }}
         lockScroll={phone}
         zIndex={1002}
         className="fb-ui"
       >
-        <Stack gap="md">
-          {draft?.label ? (
-            <Text size="sm" c="dimmed" lineClamp={2}>
-              On “{draft.label}”
+        {savedNote ? (
+          <Stack gap="md">
+            <Text size="sm" c="dimmed" lineClamp={3} style={{ whiteSpace: "pre-wrap" }}>
+              “{savedNote.note}”
             </Text>
-          ) : null}
-          <Chips label="Kind of note" value={kind} onChange={setKind} options={KIND_OPTIONS} />
-          <Textarea label="What happened, and what did you expect?" autosize minRows={4} value={text} onChange={(e) => setText(e.currentTarget.value)} data-autofocus />
-          {!profile ? <TextInput label="Your name" value={name} onChange={(e) => setName(e.currentTarget.value)} /> : null}
-          {shot ? (
-            <div className="fb-shot">
-              <img src={shot} alt="Screenshot to send" />
-              <CloseButton aria-label="Remove screenshot" onClick={() => setShot(null)} />
-            </div>
-          ) : (
-            <Group gap="xs">
-              {canCapture ? (
-                <Button variant="default" leftSection={<IconCamera size={18} />} onClick={capture}>
-                  Capture this screen
-                </Button>
-              ) : null}
-              <FileButton accept="image/*" onChange={(file) => file && fromFile(file).then(setShot).catch(toastErr)}>
-                {(props) => (
-                  <Button {...props} variant="default" leftSection={<IconPhoto size={18} />}>
-                    Attach an image
+            <ClarifyChat noteId={savedNote.id} mode="compose" onDone={close} />
+          </Stack>
+        ) : (
+          <Stack gap="md">
+            {draft?.label ? (
+              <Text size="sm" c="dimmed" lineClamp={2}>
+                On “{draft.label}”
+              </Text>
+            ) : null}
+            <Chips label="Kind of note" value={kind} onChange={setKind} options={KIND_OPTIONS} />
+            <Textarea label="What happened, and what did you expect?" autosize minRows={4} value={text} onChange={(e) => setText(e.currentTarget.value)} data-autofocus />
+            {!profile ? <TextInput label="Your name" value={name} onChange={(e) => setName(e.currentTarget.value)} /> : null}
+            {shot ? (
+              <div className="fb-shot">
+                <img src={shot} alt="Screenshot to send" />
+                <CloseButton aria-label="Remove screenshot" onClick={() => setShot(null)} />
+              </div>
+            ) : (
+              <Group gap="xs">
+                {canCapture ? (
+                  <Button variant="default" leftSection={<IconCamera size={18} />} onClick={capture}>
+                    Capture this screen
                   </Button>
-                )}
-              </FileButton>
-            </Group>
-          )}
-          <Text size="xs" c="dimmed">
-            We'll include this page, your screen size, browser and any recent errors.
-          </Text>
-          <Button size="md" onClick={send} loading={busy} disabled={!text.trim()}>
-            Send
-          </Button>
-        </Stack>
-      </Drawer>
-      <Drawer
-        opened={chatFor != null}
-        onClose={() => setChatFor(null)}
-        position={phone ? "bottom" : "right"}
-        size={phone ? "auto" : 400}
-        title="A few questions about your note"
-        overlayProps={{ backgroundOpacity: phone ? 0.3 : 0 }}
-        lockScroll={phone}
-        zIndex={1002}
-        className="fb-ui"
-      >
-        {chatFor != null ? <ClarifyChat noteId={chatFor} onDone={() => setChatFor(null)} /> : null}
+                ) : null}
+                <FileButton accept="image/*" onChange={(file) => file && fromFile(file).then(setShot).catch(toastErr)}>
+                  {(props) => (
+                    <Button {...props} variant="default" leftSection={<IconPhoto size={18} />}>
+                      Attach an image
+                    </Button>
+                  )}
+                </FileButton>
+              </Group>
+            )}
+            <Text size="xs" c="dimmed">
+              We'll include this page, your screen size, browser and any recent errors.
+            </Text>
+            <Button size="md" onClick={send} loading={busy} disabled={!text.trim()}>
+              {ai.data?.clarify ? "Next" : "Send"}
+            </Button>
+          </Stack>
+        )}
       </Drawer>
     </div>
   );

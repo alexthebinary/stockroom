@@ -8,7 +8,7 @@ export type Spec = { problem: string; expected: string; where: string; doneWhen:
 export type ClarifyState = { text: string | null; unavailable?: true; spec: Spec | null; specState: "NONE" | "PROPOSED" | "CONFIRMED"; revision: number; turns: { role: "user" | "assistant"; content: string }[] };
 
 /** A few questions about one note, then a spec card the tester confirms. */
-export function ClarifyChat({ noteId, onDone }: { noteId: number; onDone: () => void }) {
+export function ClarifyChat({ noteId, mode = "page", onDone }: { noteId: number; mode?: "compose" | "page"; onDone: () => void }) {
   const queryClient = useQueryClient();
   const [state, setState] = useState<ClarifyState | null>(null);
   const [text, setText] = useState("");
@@ -39,9 +39,14 @@ export function ClarifyChat({ noteId, onDone }: { noteId: number; onDone: () => 
   };
   const confirm = async () => {
     if (!state || !(await call("confirm", { revision: state.revision }))) return;
-    toastOk("Thanks — it's queued to be built");
+    toastOk(mode === "compose" ? "Thanks, your note was sent" : "Thanks — it's queued to be built");
     onDone();
   };
+  const sendAsIs = () => {
+    toastOk("Thanks, your note was sent");
+    onDone();
+  };
+  const composeUnavailable = mode === "compose" && state?.unavailable;
 
   return (
     <Stack gap="sm">
@@ -50,7 +55,7 @@ export function ClarifyChat({ noteId, onDone }: { noteId: number; onDone: () => 
           <Text size="sm">{t.content}</Text>
         </Paper>
       ))}
-      {state?.unavailable ? <Text size="sm" c="dimmed">{state.text}</Text> : null}
+      {state?.unavailable ? <Text size="sm" c="dimmed">{mode === "compose" ? "I'll ask you later — your note is saved." : state.text}</Text> : null}
       {busy ? <Loader size="sm" /> : null}
       {state?.spec && state.specState !== "NONE" ? (
         <Paper withBorder p="sm" radius="md" className="fb-spec">
@@ -61,16 +66,18 @@ export function ClarifyChat({ noteId, onDone }: { noteId: number; onDone: () => 
             {state.spec.doneWhen.map((d) => <Text key={d} size="sm"><b>Done when:</b> {d}</Text>)}
           </Stack>
           {state.specState === "PROPOSED" ? (
-            <Button mt="sm" fullWidth onClick={confirm} loading={busy}>Yes, that's what I mean</Button>
+            <Button mt="sm" fullWidth onClick={confirm} loading={busy}>{mode === "compose" ? "Yes, send this" : "Yes, that's what I mean"}</Button>
           ) : (
             <Text mt="sm" size="sm" c="dimmed">Confirmed. It will be built in the next daily run.</Text>
           )}
         </Paper>
       ) : null}
-      <Textarea placeholder={state?.spec ? "Anything to change?" : "Your answer"} autosize minRows={2} value={text} onChange={(e) => setText(e.currentTarget.value)} disabled={busy} />
+      {!composeUnavailable ? <Textarea placeholder={state?.spec ? "Anything to change?" : "Your answer"} autosize minRows={2} value={text} onChange={(e) => setText(e.currentTarget.value)} disabled={busy} /> : null}
       <Group justify="space-between">
-        <Button variant="subtle" onClick={onDone}>Later</Button>
-        <Button onClick={answer} disabled={!text.trim() || busy}>Send</Button>
+        {mode === "compose" ? (
+          <Button variant={composeUnavailable ? "filled" : "subtle"} onClick={sendAsIs} disabled={busy}>Send as is</Button>
+        ) : <Button variant="subtle" onClick={onDone}>Later</Button>}
+        {!composeUnavailable ? <Button onClick={answer} disabled={!text.trim() || busy}>Reply</Button> : null}
       </Group>
     </Stack>
   );
