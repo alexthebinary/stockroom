@@ -79,7 +79,7 @@ export async function main({ cfg, runner = run, fetchImpl = fetch, sleep = (ms) 
           continue;
         }
         if (t.kind === "error") { await outcome(note, t.reason); continue; }
-        const out = await implementNote({ note, spec: t.spec, runId, parent, base: pre.base, baseImage: pre.baseImage, cfg, runner, keepWorktree: cfg.dryRun,
+        const out = await implementNote({ note, spec: t.spec, runId, parent, base: pre.base, baseImage: pre.baseImage, cfg: { ...cfg, implLane: pre.lane ?? cfg.implLane }, runner, keepWorktree: cfg.dryRun,
           reviewFn: (args) => review({ ...args, runner, cwd: join(cfg.repo, "v2"), timeoutMs: cfg.timeouts.model }) });
         if (!out.ok) { await outcome(note, out.reason); continue; }
         if (!cfg.dryRun) journal.noteEvent(runId, { id: note.id, revision: note.revision, event: "accepted", sha: out.sha });

@@ -22,12 +22,18 @@ test("local preflight checks local-llm status and skips the Codex quota call", a
     runner: async (cmd, args) => { calls.push({ cmd, args }); return delegate(cmd, args); } });
   assert.equal(calls.some(({ args }) => args.some((arg) => arg.includes("statusline_agents"))), false, "local lane must not query Codex quota");
   assert.deepEqual(calls.filter(({ cmd }) => cmd === "local-llm"), [{ cmd: "local-llm", args: ["status"] }]);
-  assert.deepEqual(out, { ok: true, base: SHA, short: "a3f40a8", baseImage: "sha256:live" });
+  assert.deepEqual(out, { ok: true, base: SHA, short: "a3f40a8", baseImage: "sha256:live", lane: "local" });
 });
-test("local preflight rejects CPU mode even when the model is healthy", async () => {
+test("GPU busy falls back to Codex when it has quota", async () => {
   const out = await preflight({ cfg: { ...cfg, implLane: "local" }, journal: journal(), fetchImpl: health("a3f40a8"),
     runner: runner({ "local-llm status": { code: 0, stdout: "mode: q36-cpu  unit: active\nhealth: ok", stderr: "" } }) });
-  assert.deepEqual(out, { ok: false, neutral: true, reason: "skipped: GPU busy (local model in CPU mode while a gpu-job runs)" });
+  assert.deepEqual(out, { ok: true, base: SHA, short: "a3f40a8", baseImage: "sha256:live", lane: "codex" });
+});
+test("GPU busy and Codex out of quota is a neutral skip", async () => {
+  const out = await preflight({ cfg: { ...cfg, implLane: "local" }, journal: journal(), fetchImpl: health("a3f40a8"),
+    runner: runner({ "local-llm status": { code: 0, stdout: "mode: q36-cpu  unit: active\nhealth: ok", stderr: "" },
+      statusline_agents: { code: 0, stdout: '{"primary":{"used_percent":100},"secondary":{"used_percent":40}}', stderr: "" } }) });
+  assert.deepEqual(out, { ok: false, neutral: true, reason: "skipped: GPU busy and Codex unavailable (codex quota: 5h window at 100%)" });
 });
 test("local preflight rejects hybrid status without health: ok", async () => {
   const out = await preflight({ cfg: { ...cfg, implLane: "local" }, journal: journal(), fetchImpl: health("a3f40a8"),
@@ -35,7 +41,7 @@ test("local preflight rejects hybrid status without health: ok", async () => {
   assert.deepEqual(out, { ok: false, reason: "local model not healthy" });
 });
 test("passes when the live build is the deploy tip and Codex has quota", async () => {
-  assert.deepEqual(await preflight({ cfg, journal: journal(), runner: runner(), fetchImpl: health("a3f40a8") }), { ok: true, base: SHA, short: "a3f40a8", baseImage: "sha256:live" });
+  assert.deepEqual(await preflight({ cfg, journal: journal(), runner: runner(), fetchImpl: health("a3f40a8") }), { ok: true, base: SHA, short: "a3f40a8", baseImage: "sha256:live", lane: "codex" });
 });
 test("preflight unhealthy: mid-deploy or down", async () => {
   assert.match((await preflight({ cfg, journal: journal(), runner: runner(), fetchImpl: health("0000000") })).reason, /not the deploy tip/);

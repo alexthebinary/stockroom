@@ -21,25 +21,20 @@ export async function preflight({ cfg, journal, runner, fetchImpl = fetch }) {
   if (!health?.ok) return { ok: false, reason: "health check failed (database?)" };
   if (health.build !== short) return { ok: false, reason: `live build ${health.build} is not the deploy tip ${short} (mid-deploy?)` };
 
-  if (cfg.implLane === "local") {
+  // Implementation lane for tonight: the Dell's local model, or Codex when the local model is busy
+  // (another session's gpu-job moves it to CPU mode by design) and Codex has quota (operator 2026-10-16).
+  let lane = cfg.implLane === "local" ? "local" : "codex";
+  if (lane === "local") {
     const local = await runner("local-llm", ["status"], { timeoutMs: 30_000 });
     if (local.code !== 0 || local.timedOut || !/^health:\s*ok\s*$/m.test(local.stdout)) return { ok: false, reason: "local model not healthy" };
-    // CPU mode = another session's gpu-job holds the GPU (by design). Skip tonight, but do not count it as a failure.
-    if (/\bq36-cpu\b/.test(local.stdout)) return { ok: false, neutral: true, reason: "skipped: GPU busy (local model in CPU mode while a gpu-job runs)" };
-  } else {
-    let limits;
-    try {
-      const quota = await runner("python3", ["-c", "import sys,os,json; sys.path.insert(0, os.path.expanduser('~/.claude')); import statusline_agents as s; print(json.dumps(s.codex_limits() or {}))"], { timeoutMs: 60_000 });
-      if (quota.code !== 0) return { ok: false, reason: "codex quota unreadable" };
-      limits = JSON.parse(quota.stdout);
-    } catch {
-      return { ok: false, reason: "codex quota unreadable" };
+    if (/\bq36-cpu\b/.test(local.stdout)) {
+      const busy = await codexQuota(runner);
+      if (busy) return { ok: false, neutral: true, reason: `skipped: GPU busy and Codex unavailable (${busy})` };
+      lane = "codex";
     }
-    const primary = limits?.primary?.used_percent;
-    const secondary = limits?.secondary?.used_percent;
-    if (!Number.isFinite(primary)) return { ok: false, reason: "codex quota unreadable" };
-    if (primary >= 90) return { ok: false, reason: `codex quota: 5h window at ${Math.round(primary)}%` };
-    if (secondary >= 95) return { ok: false, reason: `codex quota: 7-day window at ${Math.round(secondary)}%` };
+  } else {
+    const busy = await codexQuota(runner);
+    if (busy) return { ok: false, reason: busy };
   }
 
   const image = await runner("docker", ["inspect", "profitindex-app-1", "--format", "{{.Image}}"], { timeoutMs: 30_000 });
@@ -49,5 +44,23 @@ export async function preflight({ cfg, journal, runner, fetchImpl = fetch }) {
   if (imageEnv.code !== 0 || !imageEnv.stdout.split(/\r?\n/).includes(`APP_VERSION=${short}`)) {
     return { ok: false, reason: `live image ${baseImage} is not build ${short}` };
   }
-  return { ok: true, base, short, baseImage };
+  return { ok: true, base, short, baseImage, lane };
+}
+
+/** null when Codex has headroom, else the reason it does not (same snapshot `dispatch` reads). */
+async function codexQuota(runner) {
+  let limits;
+  try {
+    const quota = await runner("python3", ["-c", "import sys,os,json; sys.path.insert(0, os.path.expanduser('~/.claude')); import statusline_agents as s; print(json.dumps(s.codex_limits() or {}))"], { timeoutMs: 60_000 });
+    if (quota.code !== 0) return "codex quota unreadable";
+    limits = JSON.parse(quota.stdout);
+  } catch {
+    return "codex quota unreadable";
+  }
+  const primary = limits?.primary?.used_percent;
+  const secondary = limits?.secondary?.used_percent;
+  if (!Number.isFinite(primary)) return "codex quota unreadable";
+  if (primary >= 90) return `codex quota: 5h window at ${Math.round(primary)}%`;
+  if (secondary >= 95) return `codex quota: 7-day window at ${Math.round(secondary)}%`;
+  return null;
 }
