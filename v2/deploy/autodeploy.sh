@@ -95,7 +95,7 @@ if [ -n "$previous" ] && git cat-file -e "$previous" 2>/dev/null; then
     case " $reverted " in *" $c "*) continue ;; esac
     git log -1 --format=%s "$c" | grep -q '^Revert' && continue
     git log -1 --format=%B "$c" | grep -q '^Auto-apply:' && continue
-    for id in $(git log -1 --format=%B "$c" | grep -oiE 'feedback #[0-9]+((, *| and )#[0-9]+)*' | grep -oE '[0-9]+'); do
+    for id in $(git log -1 --format=%B "$c" | grep -oiE 'feedback #[0-9]+((,? *(and|&) *|, *)#[0-9]+)*' | grep -oE '[0-9]+'); do
       case " $fixed " in *" #$id "*) continue ;; esac
       curl -fsS -m 10 -X PATCH -H 'content-type: application/json' -d '{"status":"DONE"}' "http://127.0.0.1:4100/api/feedback/$id" >/dev/null 2>&1 && fixed="$fixed #$id"
     done

@@ -3,7 +3,12 @@
 echo "$*${APP_VERSION:+ APP_VERSION=$APP_VERSION}" >> "$T/calls.docker"
 case "$*" in
   *"--profile backup run --rm backup"*)
-    mkdir -p "$DEPLOY/backups"; echo dump > "$DEPLOY/backups/profitindex-$(date +%s%N).dump"
+    mkdir -p "$DEPLOY/backups"
+    if [ -e "$T/backup-fixed-name" ]; then
+      echo dump > "$DEPLOY/backups/profitindex-fixed.dump"
+    else
+      echo dump > "$DEPLOY/backups/profitindex-$(date +%s%N).dump"
+    fi
     if [ -x "$T/hook-on-backup" ]; then "$T/hook-on-backup"; rm -f "$T/hook-on-backup"; fi ;;
   *"up -d --build"*)
     if [ -e "$T/health-follows-up" ]; then echo "$APP_VERSION" > "$T/health-build"; fi ;;

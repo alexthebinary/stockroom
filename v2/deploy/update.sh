@@ -9,10 +9,12 @@ cd "$(dirname "$0")"
 STATE_DIR="${PI_STATE_DIR:-$HOME/.local/state}"
 target="${1:-}"
 
-before=$(ls -1t backups/profitindex-*.dump 2>/dev/null | head -n 1 || true)
+# A dump newer than this marker is the one just taken (a backup in the same minute
+# reuses the file name, so comparing names would call a good backup "no new dump").
+mkdir -p backups; marker=$(mktemp); trap 'rm -f "$marker"' EXIT
 docker compose --profile backup run --rm backup
-dump=$(ls -1t backups/profitindex-*.dump 2>/dev/null | head -n 1 || true)
-[ -n "$dump" ] && [ "$dump" != "$before" ] || { echo "the backup made no new dump" >&2; exit 1; }
+dump=$(find backups -maxdepth 1 -name 'profitindex-*.dump' -newer "$marker" | head -n 1)
+[ -n "$dump" ] || { echo "the backup made no new dump" >&2; exit 1; }
 
 if [ -n "$target" ]; then
   git fetch --quiet origin

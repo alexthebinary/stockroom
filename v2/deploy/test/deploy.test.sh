@@ -141,5 +141,38 @@ h_failed=0
   [ "$status" -ne 0 ] || fail "H2: stale health should exit non-zero"
   [ "$elapsed" -le $((3 + 3)) ] || fail "H2: health budget exceeded: ${elapsed}s > 6s"
 ) || h_failed=1
-[ "$h_failed" -eq 0 ] || fail "new deploy regressions failed"
+
+# Run both M regressions even when either one or an H regression fails.
+m_failed=0
+# M1: done scan reads every number, including Oxford commas and ampersands.
+(
+  setup; touch "$T/health-follows-up"
+  trap teardown EXIT
+  commit_remote "fix: a (feedback #11, #12, and #13)" >/dev/null || fail "M1: commit first fix"
+  commit_remote "fix: b (feedback #14 & #15)" >/dev/null || fail "M1: commit second fix"
+  sh "$DEPLOY/autodeploy.sh" || fail "M1: autodeploy exit"
+  assert_eq "PATCH 11
+PATCH 12
+PATCH 13
+PATCH 14
+PATCH 15" "$(calls curl | grep '^PATCH' | sort)" "M1: done scan reads every number"
+) || m_failed=1
+
+# M2: a backup in the same minute is not a failure (the dump name is reused).
+(
+  setup; touch "$T/health-follows-up" "$T/backup-fixed-name"
+  trap teardown EXIT
+  first=$(commit_remote "feat: first same-minute deploy") || fail "M2: commit first candidate"
+  sh "$DEPLOY/autodeploy.sh" || fail "M2: first deploy exit"
+  assert_eq "$first" "$(cat "$DEPLOY/.deployed")" "M2: first deployed sha"
+  assert_file "$DEPLOY/backups/profitindex-fixed.dump"
+  second=$(commit_remote "feat: second same-minute deploy") || fail "M2: commit second candidate"
+  status=0
+  sh "$DEPLOY/autodeploy.sh" || status=$?
+  assert_eq 0 "$status" "M2: second deploy exit"
+  assert_eq "$second" "$(cat "$DEPLOY/.deployed")" "M2: second deployed sha"
+  if calls curl | grep -q '^PUSH Deploy failed'; then fail "M2: unexpected Deploy failed push"; fi
+) || m_failed=1
+
+[ "$h_failed" -eq 0 ] && [ "$m_failed" -eq 0 ] || fail "new deploy regressions failed"
 echo "deploy scenarios ok"
