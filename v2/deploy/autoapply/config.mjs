@@ -14,14 +14,15 @@ export function loadConfig(env = process.env, read = readFileSync) {
   const stateDir = join(base, "profitindex-autoapply");
   const dot = envFile(join(repo, "v2/deploy/.env"), read);
   const minutes = (name, d) => Number(env[name] ?? d) * 60_000;
+  const implLane = env.AUTO_IMPL_LANE ?? "local";
   return {
     repo, branch: env.PI_BRANCH ?? "claude/warehouse-mobile-scanning-8s2d64", api: env.PI_API ?? "http://127.0.0.1:4100",
     base, stateDir, workDir: join(stateDir, "work"), deployLock: join(base, "profitindex-deploy.lock"),
     receiptsDir: join(base, "profitindex-deploy"), haltFile: join(stateDir, "HALT"),
     authors: (env.AUTO_AUTHORS ?? "Serhii,t").split(",").map((s) => s.trim()).filter(Boolean),
-    maxPerRun: Number(env.AUTO_MAX_PER_RUN ?? 5), token: env.AUTO_TOKEN ?? dot.AUTO_TOKEN ?? "", notifyUrl: env.NOTIFY_URL ?? dot.NOTIFY_URL ?? "",
+    implLane, maxPerRun: Number(env.AUTO_MAX_PER_RUN ?? (implLane === "local" ? 3 : 5)), token: env.AUTO_TOKEN ?? dot.AUTO_TOKEN ?? "", notifyUrl: env.NOTIFY_URL ?? dot.NOTIFY_URL ?? "",
     vaultLogDir: env.PI_VAULT_LOGS ?? join(homedir(), "Documents/obsidian-vault/openclaw-vault/logs"),
     dryRun: env.AUTO_DRY_RUN === "1",
-    timeouts: { model: minutes("AUTO_MODEL_MIN", 10), codex: minutes("AUTO_CODEX_MIN", 30), gate: minutes("AUTO_GATE_MIN", 25), migration: minutes("AUTO_MIGRATION_MIN", 30), deploy: minutes("AUTO_DEPLOY_MIN", 20) },
+    timeouts: { model: minutes("AUTO_MODEL_MIN", 10), codex: minutes("AUTO_CODEX_MIN", implLane === "local" ? 90 : 30), gate: minutes("AUTO_GATE_MIN", 25), migration: minutes("AUTO_MIGRATION_MIN", 30), deploy: minutes("AUTO_DEPLOY_MIN", 20) },
   };
 }

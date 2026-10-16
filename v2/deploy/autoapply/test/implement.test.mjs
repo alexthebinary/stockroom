@@ -14,12 +14,16 @@ function repo() {
   mkdirSync(join(r, "v2/apps/api/test"), { recursive: true }); writeFileSync(join(r, "v2/apps/api/a.ts"), "1\n"); writeFileSync(join(r, "v2/apps/api/test/.keep"), ""); // git does not track empty dirs
   git(r, "add", "-A"); git(r, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base");
   const dumps = join(d, "rc/backups"); mkdirSync(dumps, { recursive: true }); writeFileSync(join(dumps, "p.dump"), "x");
-  return { r, cfg: { repo: r, workDir: join(d, "work"), receiptsDir: join(d, "rc"), timeouts: { codex: 5000, gate: 5000, migration: 5000, model: 5000 } } };
+  return { r, cfg: { repo: r, implLane: "codex", workDir: join(d, "work"), receiptsDir: join(d, "rc"), timeouts: { codex: 5000, gate: 5000, migration: 5000, model: 5000 } } };
 }
 const calls = [];
-const fake = (edit, { gate = 0, migration = 0 } = {}) => async (cmd, args, opts) => {
+const fake = (edit, { gate = 0, migration = 0, implementation = { code: 0, stdout: "status:  answered\n", stderr: "" } } = {}) => async (cmd, args, opts) => {
   calls.push([cmd, ...args].join(" "));
-  if (cmd === "dispatch") { edit(args.find((a) => a.startsWith("--cd=")).slice(5)); return { code: 0, stdout: "status:  answered\n", stderr: "" }; }
+  if (cmd === "dispatch" || cmd === "codex") {
+    const wt = cmd === "dispatch" ? args.find((a) => a.startsWith("--cd=")).slice(5) : args[args.indexOf("-C") + 1];
+    edit(wt);
+    return implementation;
+  }
   if (cmd === "sh" && args[0].endsWith("migration-gate.sh")) return { code: migration, stdout: "", stderr: "base image: GET /api/items 500" };
   if (cmd === "sh" && args[0].endsWith("/gate.sh")) return { code: gate, stdout: "tests: 1 failed", stderr: "" };
   return run(cmd, args, opts);
@@ -28,6 +32,60 @@ const note = { id: 9, kind: "IDEA", revision: 4, note: "n" };
 const spec = { problem: "p", expected: "Remember the brand filter", where: "/items", doneWhen: ["d"] };
 const pass = async () => ({ pass: true, reasons: "ok" });
 const withTest = (wt) => { writeFileSync(join(wt, "v2/apps/api/a.ts"), "2\n"); writeFileSync(join(wt, "v2/apps/api/test/a.test.ts"), "t\n"); };
+
+test("local lane runs codex exec with the local responses provider and the prompt on stdin", async (t) => {
+  const { r, cfg } = repo();
+  t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+  cfg.implLane = "local";
+  const parent = git(r, "rev-parse", "HEAD");
+  const delegate = fake(withTest);
+  const modelCalls = [];
+  const runner = async (cmd, args, opts) => {
+    if (cmd === "dispatch" || cmd === "codex") modelCalls.push({ cmd, args, opts });
+    return delegate(cmd, args, opts);
+  };
+  const out = await implementNote({ note, spec, runId: "local-argv", parent, base: parent, baseImage: "base", cfg, runner, reviewFn: pass });
+  assert.equal(out.ok, true);
+  assert.equal(modelCalls.length, 1);
+  const { cmd, args, opts } = modelCalls[0];
+  assert.equal(cmd, "codex");
+  assert.deepEqual(args.slice(0, 6), ["exec", "--skip-git-repo-check", "-C", join(cfg.workDir, "local-argv", "note-9"), "-s", "workspace-write"]);
+  const configEntries = args.flatMap((arg, i) => arg === "-c" ? [args[i + 1]] : []);
+  assert.ok(configEntries.includes("model_provider=localllm"));
+  const provider = configEntries.find((entry) => entry.startsWith("model_providers.localllm="));
+  assert.equal(typeof provider, "string", "local provider must be configured via -c");
+  assert.match(provider, /base_url\s*=\s*"http:\/\/127\.0\.0\.1:8080\/v1"/);
+  assert.match(provider, /wire_api\s*=\s*"responses"/);
+  assert.ok(args.some((arg, i) => arg === "-m" && args[i + 1] === "local"));
+  assert.equal(args.at(-1), "-");
+  assert.equal(opts.timeoutMs, cfg.timeouts.codex);
+  assert.equal(typeof opts.input, "string");
+  assert.match(opts.input, /IMPLEMENT \(bounded\)/);
+  assert.ok(opts.input.includes(`<note>${JSON.stringify({ id: note.id, kind: note.kind, note: note.note, path: note.path })}</note>`));
+  assert.ok(opts.input.includes(`<spec>${JSON.stringify(spec)}</spec>`));
+});
+
+test("local lane accepts exit code zero without a dispatch answered marker", async (t) => {
+  const { r, cfg } = repo();
+  t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+  cfg.implLane = "local";
+  const parent = git(r, "rev-parse", "HEAD");
+  const out = await implementNote({ note, spec, runId: "local-success", parent, base: parent, baseImage: "base", cfg,
+    runner: fake(withTest, { implementation: { code: 0, stdout: "Done.\n", stderr: "", timedOut: false } }), reviewFn: pass });
+  assert.equal(out.ok, true);
+  assert.equal(git(r, "show", `${out.sha}:v2/apps/api/a.ts`), "2");
+});
+
+test("local lane reports a timed-out model as a local model failure", async (t) => {
+  const { r, cfg } = repo();
+  t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+  cfg.implLane = "local";
+  const parent = git(r, "rev-parse", "HEAD");
+  const out = await implementNote({ note, spec, runId: "local-timeout", parent, base: parent, baseImage: "base", cfg,
+    runner: fake(() => {}, { implementation: { code: null, stdout: "", stderr: "", timedOut: true } }), reviewFn: pass });
+  assert.equal(out.ok, false);
+  assert.match(out.reason, /^local model: timed out/);
+});
 
 test("F1: dispatch receives a prompt under tmpdir outside the worktree directory", async (t) => {
   const { r, cfg } = repo();

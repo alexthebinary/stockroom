@@ -7,13 +7,33 @@ const runner = (over = {}) => async (cmd, args) => {
   for (const [k, v] of Object.entries(over)) if (key.includes(k)) return v;
   if (key.includes("rev-parse")) return { code: 0, stdout: `${SHA}\n`, stderr: "" };
   if (key.includes("statusline_agents")) return { code: 0, stdout: '{"primary":{"used_percent":38},"secondary":{"used_percent":40}}', stderr: "" };
+  if (key === "local-llm status") return { code: 0, stdout: "mode: q36-hybrid  unit: active\nhealth: ok", stderr: "" };
   if (key.includes("docker inspect profitindex-app-1")) return { code: 0, stdout: "sha256:live\n", stderr: "" };
   if (key.includes("docker image inspect")) return { code: 0, stdout: "NODE_ENV=production\nAPP_VERSION=a3f40a8\n", stderr: "" };
   return { code: 0, stdout: "", stderr: "" };
 };
 const health = (build) => async () => new Response(JSON.stringify({ ok: true, build }));
-const cfg = { repo: "/r", branch: "b", api: "http://a", timeouts: { model: 1000 } };
+const cfg = { repo: "/r", branch: "b", api: "http://a", implLane: "codex", timeouts: { model: 1000 } };
 const journal = (h = null) => ({ halted: () => h });
+test("local preflight checks local-llm status and skips the Codex quota call", async () => {
+  const calls = [];
+  const delegate = runner();
+  const out = await preflight({ cfg: { ...cfg, implLane: "local" }, journal: journal(), fetchImpl: health("a3f40a8"),
+    runner: async (cmd, args) => { calls.push({ cmd, args }); return delegate(cmd, args); } });
+  assert.equal(calls.some(({ args }) => args.some((arg) => arg.includes("statusline_agents"))), false, "local lane must not query Codex quota");
+  assert.deepEqual(calls.filter(({ cmd }) => cmd === "local-llm"), [{ cmd: "local-llm", args: ["status"] }]);
+  assert.deepEqual(out, { ok: true, base: SHA, short: "a3f40a8", baseImage: "sha256:live" });
+});
+test("local preflight rejects CPU mode even when the model is healthy", async () => {
+  const out = await preflight({ cfg: { ...cfg, implLane: "local" }, journal: journal(), fetchImpl: health("a3f40a8"),
+    runner: runner({ "local-llm status": { code: 0, stdout: "mode: q36-cpu  unit: active\nhealth: ok", stderr: "" } }) });
+  assert.deepEqual(out, { ok: false, reason: "local model in CPU mode (slow); run: local-llm q36-hybrid" });
+});
+test("local preflight rejects hybrid status without health: ok", async () => {
+  const out = await preflight({ cfg: { ...cfg, implLane: "local" }, journal: journal(), fetchImpl: health("a3f40a8"),
+    runner: runner({ "local-llm status": { code: 0, stdout: "mode: q36-hybrid  unit: active\nhealth: failed", stderr: "" } }) });
+  assert.deepEqual(out, { ok: false, reason: "local model not healthy" });
+});
 test("passes when the live build is the deploy tip and Codex has quota", async () => {
   assert.deepEqual(await preflight({ cfg, journal: journal(), runner: runner(), fetchImpl: health("a3f40a8") }), { ok: true, base: SHA, short: "a3f40a8", baseImage: "sha256:live" });
 });
