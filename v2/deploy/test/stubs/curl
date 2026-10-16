@@ -3,6 +3,7 @@
 args="$*"
 case "$args" in
   *"/api/health"*)
+    if [ -f "$T/health-delay" ]; then sleep "$(cat "$T/health-delay")"; fi
     b=$(cat "$T/health-build"); [ "$b" = none ] && exit 7
     printf '{"ok":true,"build":"%s"}' "$b"; exit 0 ;;
   *"-X PATCH"*)

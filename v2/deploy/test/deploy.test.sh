@@ -1,5 +1,13 @@
 . "$(dirname "$0")/lib.sh"
 short() { git -C "$T/repo" rev-parse --short=7 "$1"; }
+commit_file_remote() {
+  git -C "$T/other" pull -q --ff-only || fail "pull before file commit"
+  printf '%s\n' "$1" > "$T/other/fix.txt" || fail "write fix file"
+  git -C "$T/other" add fix.txt || fail "add fix file"
+  git -C "$T/other" -c user.email=t@t -c user.name=t commit -qm "$1" || fail "commit fix file"
+  git -C "$T/other" push -q origin main || fail "push file commit"
+  git -C "$T/other" rev-parse HEAD
+}
 
 # exact SHA: a new commit is deployed, recorded after health reports it, receipt names the backup
 setup; touch "$T/health-follows-up"
@@ -101,4 +109,37 @@ for content in "0123456789abcdef0123456789abcdef01234567" "" "SPACED"; do
   calls curl | grep -q '^PUSH Deploy halted' || fail "no halt push for [$content]"
   teardown
 done
+
+# Run both regressions even when the first one fails.
+h_failed=0
+# H1: revert of a fix in the same range; unrelated fixes must still be marked done.
+(
+  setup; touch "$T/health-follows-up"
+  trap teardown EXIT
+  fix=$(commit_file_remote "fix: thing (feedback #7)") || fail "create non-empty fix"
+  git -C "$T/other" -c user.email=t@t -c user.name=t revert --no-edit "$fix" || fail "revert fix"
+  git -C "$T/other" push -q origin main || fail "push revert"
+  commit_remote "fix: other (feedback #8)" >/dev/null || fail "commit unrelated fix"
+  sh "$DEPLOY/autodeploy.sh" || fail "H1: autodeploy exit"
+  calls curl | grep -q '^PUSH Deployed ' || fail "H1: no Deployed push"
+  calls curl | grep -qx 'PATCH 8' || fail "H1: unrelated feedback #8 not marked done"
+  # The stub records PATCH calls, not push bodies: use this to check the reverted fix.
+  if calls curl | grep -qx 'PATCH 7'; then fail "H1: reverted feedback #7 marked done"; fi
+) || h_failed=1
+
+# H2: health budget includes request time, not just the sleeps between requests.
+(
+  setup
+  trap teardown EXIT
+  export HEALTH_WAIT_S=3 HEALTH_POLL_S=1
+  echo 2 > "$T/health-delay"
+  commit_remote "feat: slow health" >/dev/null || fail "commit slow-health candidate"
+  started=$(date +%s)
+  status=0
+  sh "$DEPLOY/autodeploy.sh" || status=$?
+  elapsed=$(($(date +%s) - started))
+  [ "$status" -ne 0 ] || fail "H2: stale health should exit non-zero"
+  [ "$elapsed" -le $((3 + 3)) ] || fail "H2: health budget exceeded: ${elapsed}s > 6s"
+) || h_failed=1
+[ "$h_failed" -eq 0 ] || fail "new deploy regressions failed"
 echo "deploy scenarios ok"

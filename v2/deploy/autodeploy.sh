@@ -67,17 +67,32 @@ echo "deploying $short"
 ./update.sh "$target" || fail "the update did not finish; the previous version may still be running"
 
 # Recorded only once the running app says it is this build.
-waited=0
-until [ "$(curl -fsS -m 5 http://127.0.0.1:4100/api/health 2>/dev/null | sed -n 's/.*"build":"\([^"]*\)".*/\1/p')" = "$short" ]; do
-  [ "$waited" -ge "${HEALTH_WAIT_S:-300}" ] && fail "the app did not come back on $short within ${HEALTH_WAIT_S:-300}s"
-  sleep "${HEALTH_POLL_S:-3}"; waited=$((waited + ${HEALTH_POLL_S:-3}))
+deadline=$(($(date +%s) + ${HEALTH_WAIT_S:-300}))
+while :; do
+  remaining=$((deadline - $(date +%s)))
+  [ "$remaining" -gt 0 ] || fail "the app did not come back on $short within ${HEALTH_WAIT_S:-300}s"
+  timeout=5
+  [ "$remaining" -ge "$timeout" ] || timeout=$remaining
+  [ "$(curl -fsS -m "$timeout" http://127.0.0.1:4100/api/health 2>/dev/null | sed -n 's/.*"build":"\([^"]*\)".*/\1/p')" = "$short" ] && break
+  remaining=$((deadline - $(date +%s)))
+  [ "$remaining" -gt 0 ] || fail "the app did not come back on $short within ${HEALTH_WAIT_S:-300}s"
+  pause=${HEALTH_POLL_S:-3}
+  [ "$remaining" -ge "$pause" ] || pause=$remaining
+  sleep "$pause"
 done
 echo "$target" > .deployed
 rm -f .failed .halted
 
 fixed=""
 if [ -n "$previous" ] && git cat-file -e "$previous" 2>/dev/null; then
+  reverted=$(
+    for c in $(git rev-list "$previous..$target"); do
+      git log -1 --format=%s "$c" | grep -q '^Revert' || continue
+      git log -1 --format=%B "$c" | sed -n 's/^This reverts commit \([0-9a-f]*\)\.$/\1/p'
+    done | tr '\n' ' '
+  )
   for c in $(git rev-list "$previous..$target"); do
+    case " $reverted " in *" $c "*) continue ;; esac
     git log -1 --format=%s "$c" | grep -q '^Revert' && continue
     git log -1 --format=%B "$c" | grep -q '^Auto-apply:' && continue
     for id in $(git log -1 --format=%B "$c" | grep -oiE 'feedback #[0-9]+((, *| and )#[0-9]+)*' | grep -oE '[0-9]+'); do
