@@ -268,3 +268,32 @@ test("an untracked file from a failed note never reaches the next note", async (
   await implementNote({ note: { ...note, id: 10 }, spec, runId: "r", parent, base: parent, baseImage: "i", cfg, runner: fake((wt) => { seen = existsSync(join(wt, "v2/apps/api/stray.sql")); withTest(wt); }), reviewFn: pass });
   assert.equal(seen, false);
 });
+
+for (const lane of ["local", "codex"]) {
+  test(`${lane}: a failed review is fed back and retried (supervised run 2026-10-19)`, async (t) => {
+    const { r, cfg } = repo();
+    t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+    cfg.implLane = lane;
+    const parent = git(r, "rev-parse", "HEAD");
+    const prompts = [];
+    let reviews = 0;
+    const reviewFn = async () => (++reviews === 1 ? { pass: false, reasons: "No test in the diff renders Items.tsx; the Done when lines are untested." } : { pass: true, reasons: "ok" });
+    const out = await implementNote({ note, spec, runId: "retry-review", parent, base: parent, baseImage: "base", cfg,
+      runner: fake(withTest, { gate: [0, 0], prompts }), reviewFn });
+    assert.equal(out.ok, true, out.reason);
+    assert.equal(reviews, 2);
+    assert.equal(prompts.length, 2);
+    assert.ok(prompts[1].includes("No test in the diff renders Items.tsx"), "the reviewer's reason goes back to the implementer");
+  });
+
+  test(`${lane}: the first prompt already explains how to test a screen`, async (t) => {
+    const { r, cfg } = repo();
+    t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+    cfg.implLane = lane;
+    const parent = git(r, "rev-parse", "HEAD");
+    const prompts = [];
+    await implementNote({ note, spec, runId: "first-prompt", parent, base: parent, baseImage: "base", cfg, runner: fake(withTest, { prompts }), reviewFn: pass });
+    assert.match(prompts[0], /renderToStaticMarkup/);
+    assert.match(prompts[0], /Done when/i);
+  });
+}

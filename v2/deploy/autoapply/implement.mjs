@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
+const TESTING = "Every change needs a test, and each of the spec's Done when lines must be checked by a test that would fail without your change. Never delete or weaken existing tests. Web components can be render-tested from v2/apps/api/test using react-dom/server renderToStaticMarkup with a QueryClient (set the query data the component reads).";
 
 function latestDump(cfg) {
   for (const dir of [join(cfg.receiptsDir, "backups"), join(cfg.repo, "v2/deploy/backups")]) {
@@ -31,8 +32,10 @@ export async function implementNote({ note, spec, runId, parent, base, baseImage
       `<note>${JSON.stringify({ id: note.id, kind: note.kind, note: note.note, path: note.path })}</note>`,
       `<spec>${JSON.stringify(spec)}</spec>`,
       "Rules: add or extend a test that fails without the change (API: v2/apps/api/test/*.test.ts); no unrelated changes; a database change needs a new ADDITIVE Prisma migration the currently deployed app can still run on (never drop or rename a column or table); never weaken existing tests.",
+      TESTING,
     ].join("\n");
     const attempts = 1 + (cfg.retries ?? 2);
+    let migration = false;
     let prompt = request;
     for (let attempt = 0; attempt < attempts; attempt++) {
       writeFileSync(promptFile, prompt);
@@ -57,26 +60,35 @@ export async function implementNote({ note, spec, runId, parent, base, baseImage
       let feedback = reason;
       if (files.some((f) => /^v2\/apps\/[^/]+\/test\//.test(f) || /^v2\/deploy\/.*\/test\//.test(f))) {
         const gate = await runner("sh", [join(HERE, "gate.sh"), join(wt, "v2")], { timeoutMs: cfg.timeouts.gate });
-        if (gate.code === 0) break;
-        const lines = (gate.stdout + "\n" + gate.stderr).trim().split("\n");
-        reason = `tests failed: ${lines.slice(-20).join(" | ").slice(0, 900)}`;
-        const diagnostics = lines.filter((line) => /error|FAIL|✗|×|TS\d{4}/i.test(line)).slice(0, 80);
-        feedback = `tests failed:\n${diagnostics.join("\n")}\n${lines.slice(-40).join("\n")}`;
+        if (gate.code === 0) {
+          // Every later check feeds the same retry loop (supervised run 2026-10-19: a review failure was final,
+          // so the implementer never saw "no test renders the heading").
+          const sinceBase = (await g(wt, "diff", "--cached", "--name-only", base)).stdout.split("\n").filter(Boolean);
+          migration = sinceBase.some((f) => f.startsWith("v2/apps/api/prisma/migrations/"));
+          let later = null;
+          if (migration) {
+            const dump = latestDump(cfg);
+            if (!dump) return { ok: false, reason: "migration gate: no backup to test against" };
+            const mg = await runner("sh", [join(HERE, "migration-gate.sh"), join(wt, "v2"), baseImage, dump], { timeoutMs: cfg.timeouts.migration });
+            if (mg.code !== 0) later = `migration not backward compatible: ${(mg.stdout + mg.stderr).trim().split("\n").pop()}`;
+          }
+          if (!later) {
+            const verdict = await reviewFn({ spec, note, diff: (await g(wt, "diff", "--cached")).stdout });
+            if (verdict.pass) break;
+            later = `review: ${verdict.reasons}`;
+          }
+          reason = later;
+          feedback = later;
+        } else {
+          const lines = (gate.stdout + "\n" + gate.stderr).trim().split("\n");
+          reason = `tests failed: ${lines.slice(-20).join(" | ").slice(0, 900)}`;
+          const diagnostics = lines.filter((line) => /error|FAIL|✗|×|TS\d{4}/i.test(line)).slice(0, 80);
+          feedback = `tests failed:\n${diagnostics.join("\n")}\n${lines.slice(-40).join("\n")}`;
+        }
       }
       if (attempt === attempts - 1) return { ok: false, reason };
-      prompt = `${request}\n\nYour previous attempt did not pass:\n${feedback}\n\nMake the gate pass. Every change needs a test, and each of the spec's Done when lines must be checked by a test. Never delete or weaken existing tests. Web components can be render-tested from v2/apps/api/test using react-dom/server renderToStaticMarkup with a QueryClient.`;
+      prompt = `${request}\n\nYour previous attempt did not pass:\n${feedback}\n\nFix it. Make the gate pass. ${TESTING}`;
     }
-    const sinceBase = (await g(wt, "diff", "--cached", "--name-only", base)).stdout.split("\n").filter(Boolean);
-    const migration = sinceBase.some((f) => f.startsWith("v2/apps/api/prisma/migrations/"));
-    if (migration) {
-      const dump = latestDump(cfg);
-      if (!dump) return { ok: false, reason: "migration gate: no backup to test against" };
-      const mg = await runner("sh", [join(HERE, "migration-gate.sh"), join(wt, "v2"), baseImage, dump], { timeoutMs: cfg.timeouts.migration });
-      if (mg.code !== 0) return { ok: false, reason: `migration not backward compatible: ${(mg.stdout + mg.stderr).trim().split("\n").pop()}` };
-    }
-    const diff = (await g(wt, "diff", "--cached")).stdout;
-    const verdict = await reviewFn({ spec, note, diff });
-    if (!verdict.pass) return { ok: false, reason: `review: ${verdict.reasons}` };
     const title = spec.expected.replace(/\s+/g, " ").trim().replace(/\.$/, "").slice(0, 60);
     const message = `${note.kind === "BUG" ? "fix" : "feat"}(v2): ${title} (feedback #${note.id})\n\nProblem: ${spec.problem}\nExpected: ${spec.expected}\nWhere: ${spec.where}\n${spec.doneWhen.map((d) => `Done when: ${d}`).join("\n")}\n\nAuto-apply: ${runId}\nFeedback-Revision: ${note.id}@${note.revision}\n`;
     const committed = await runner("git", ["-C", wt, "-c", "user.name=ProfitIndex auto-apply", "-c", "user.email=noreply@stockroom.local", "commit", "-q", "-F", "-"], { timeoutMs: 60_000, input: message });
