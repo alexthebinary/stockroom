@@ -182,6 +182,7 @@ test("local lane runs codex exec with the local responses provider and the promp
   assert.equal(typeof provider, "string", "local provider must be configured via -c");
   assert.match(provider, /base_url\s*=\s*"http:\/\/127\.0\.0\.1:8080\/v1"/);
   assert.match(provider, /wire_api\s*=\s*"responses"/);
+  assert.match(provider, /stream_idle_timeout_ms\s*=\s*900000/, "the local model can be silent for minutes on a long context (run 2, 2026-10-19)");
   assert.ok(args.some((arg, i) => arg === "-m" && args[i + 1] === "local"));
   assert.equal(args.at(-1), "-");
   assert.ok(args.includes("model_context_window=32768") && args.includes("model_auto_compact_token_limit=24000"), "codex must know the local window and compact before it (dry run 2026-10-16 died at 32,784 tokens)");
