@@ -35,7 +35,11 @@ export function createLocalClarifier(url: string, fetchImpl: typeof fetch = fetc
           if (call.function.name !== "final_spec") continue;
           try {
             const raw = JSON.parse(call.function.arguments) as Record<string, unknown>;
-            const parsed = specSchema.safeParse(typeof raw.doneWhen === "string" ? { ...raw, doneWhen: [raw.doneWhen] } : raw);
+            // Same leniency as the Worker's parseSpec: split one long string, keep 3 checks, shorten over-long fields.
+            const cut = (v: unknown, max: number) => (typeof v === "string" ? (v.trim().length <= max ? v.trim() : v.trim().slice(0, max - 1).trimEnd() + "…") : v);
+            const list = typeof raw.doneWhen === "string" ? raw.doneWhen.split(/;\s*|\n+/) : Array.isArray(raw.doneWhen) ? raw.doneWhen : [];
+            const done = list.map((d) => cut(d, 200)).filter((d) => typeof d === "string" && d.length > 0).slice(0, 3);
+            const parsed = specSchema.safeParse({ problem: cut(raw.problem, 500), expected: cut(raw.expected, 500), where: cut(raw.where, 500), doneWhen: done });
             if (parsed.success) spec = parsed.data;
           } catch { /* a malformed call is no spec */ }
         }

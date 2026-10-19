@@ -26,12 +26,17 @@ export function parseSpec(raw) {
   let s = raw;
   if (typeof s === "string") { try { s = JSON.parse(s); } catch { return null; } }
   if (!s || typeof s !== "object") return null;
-  // GLM-4.7-flash often sends doneWhen as one string instead of a list (probe 2026-10-15).
-  if (typeof s.doneWhen === "string") s = { ...s, doneWhen: [s.doneWhen] };
-  const str = (v, max) => typeof v === "string" && v.trim().length > 0 && v.length <= max;
-  if (!str(s.problem, 500) || !str(s.expected, 500) || !str(s.where, 500)) return null;
-  if (!Array.isArray(s.doneWhen) || s.doneWhen.length < 1 || s.doneWhen.length > 3 || !s.doneWhen.every((d) => str(d, 200))) return null;
-  return { problem: s.problem.trim(), expected: s.expected.trim(), where: s.where.trim(), doneWhen: s.doneWhen.map((d) => d.trim()) };
+  // Lenient on SHAPE, strict on CONTENT: GLM-4.7-flash sends doneWhen as one string (2026-10-15), packs several
+  // checks into it, or overruns a length (2026-10-19). Split, keep the first 3, shorten — never drop a real spec.
+  const cut = (v, max) => (v.length <= max ? v : v.slice(0, max - 1).trimEnd() + "…");
+  const text = (v, max) => (typeof v === "string" && v.trim() ? cut(v.trim(), max) : null);
+  let done = s.doneWhen;
+  if (typeof done === "string") done = done.split(/;\s*|\n+/);
+  if (!Array.isArray(done)) return null;
+  done = done.map((d) => text(d, 200)).filter(Boolean).slice(0, 3);
+  const problem = text(s.problem, 500), expected = text(s.expected, 500), where = text(s.where, 500);
+  if (!problem || !expected || !where || !done.length) return null;
+  return { problem, expected, where, doneWhen: done };
 }
 
 export function buildMessages(note, turns) {

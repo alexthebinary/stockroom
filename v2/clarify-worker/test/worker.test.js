@@ -35,8 +35,8 @@ test("a final_spec call comes back as a spec", async () => {
 
 test("malformed spec is dropped, text kept", async () => {
   assert.equal(parseSpec({ problem: "x" }), null);
-  assert.equal(parseSpec({ ...spec, doneWhen: ["a", "b", "c", "d"] }), null);
-  assert.equal(parseSpec({ ...spec, problem: "x".repeat(501) }), null);
+  assert.deepEqual(parseSpec({ ...spec, doneWhen: ["a", "b", "c", "d"] }).doneWhen, ["a", "b", "c"], "a 4th check is dropped, not the whole spec (a detailed tester answer got \"tell me more\")");
+  assert.equal(parseSpec({ ...spec, problem: "x".repeat(501) }).problem.length, 500);
   assert.equal(parseSpec({ ...spec, doneWhen: [] }), null);
   assert.deepEqual(parseSpec(JSON.stringify(spec)), spec);
 });
@@ -44,6 +44,15 @@ test("malformed spec is dropped, text kept", async () => {
 test("a doneWhen sent as one string becomes a one-item list (GLM does this)", () => {
   assert.deepEqual(parseSpec({ ...spec, doneWhen: "Open Receive and see PO-00002 listed" }), { ...spec, doneWhen: ["Open Receive and see PO-00002 listed"] });
   assert.equal(parseSpec({ ...spec, doneWhen: "" }), null);
+});
+
+test("one long doneWhen string is split into checks; over-long fields are shortened, not rejected (2026-10-19)", () => {
+  const long = "While loading, the heading says Items; once loaded it says Items (N) where N equals the rows shown; N updates after search or brand/category filters; with no matches it says Items (0).";
+  const out = parseSpec({ ...spec, doneWhen: long, expected: "x".repeat(700) });
+  assert.equal(out.doneWhen.length, 3);
+  assert.match(out.doneWhen[0], /^While loading/);
+  assert.ok(out.doneWhen.every((d) => d.length <= 200));
+  assert.ok(out.expected.length <= 500);
 });
 
 test("conversation is valid: alternating, starts and ends with the user", () => {
