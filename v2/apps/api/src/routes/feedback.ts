@@ -7,6 +7,9 @@ import { idParam, notFound, parse } from "../http";
 import { notify } from "../notify";
 
 export const UNAVAILABLE = "I'll ask you later — your note is saved.";
+const SAVED_AS_IS = "Your note is saved as is.";
+// Match the whole reply: "TEST — change the Items heading" remains actionable.
+const STOP = /^(?:next|stop|skip|done|that['’]?s all|send as is|(?:i['’]?m )?just testing|what['’]?s the question)[.!?]*$/i;
 
 const feedbackBody = z.object({
   kind: z.enum(["BUG", "IDEA", "QUESTION"]),
@@ -71,29 +74,36 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
       if (!row) throw notFound("That note");
       if (message) {
         await tx.feedbackTurn.create({ data: { feedbackId: id, role: "user", content: message } });
-        row = await tx.feedback.update({ where: { id }, data: { revision: { increment: 1 }, ...(row.specState === "CONFIRMED" ? { specState: "PROPOSED" } : {}) } });
+        row = await tx.feedback.update({ where: { id }, data: { revision: { increment: 1 }, specState: "NONE" } });
       }
       const lastTurn = await tx.feedbackTurn.findFirst({ where: { feedbackId: id }, orderBy: { id: "desc" }, select: { id: true, role: true } });
       return { row, rev: row.revision, lastTurn };
     });
     if (!message && lastTurn?.role === "assistant") return state(id, null);
     const lastTurnId = lastTurn?.id ?? null;
+    const turns = await turnsOf(id);
+    // Conservative upper bound: a prior assistant reply consumes one question slot.
+    const questionsAsked = turns.filter((t) => t.role === "assistant").length;
+    const finish = questionsAsked >= 2 || STOP.test(message ?? turns.at(-1)?.content ?? "");
     if (!clarifier) return state(id, UNAVAILABLE, { unavailable: true });
     const anchor = (row.anchor ?? {}) as { label?: string };
     const ctx = row.context as { errors?: { message?: string }[] };
-    const input: ClarifyNote = { kind: row.kind, note: row.note, path: row.path, pageTitle: row.pageTitle, anchorLabel: anchor.label ?? "", errors: (ctx.errors ?? []).map((e) => String(e.message ?? "")).slice(-5) };
-    const result = await clarifier.clarify({ note: input, turns: (await turnsOf(id)).slice(-10) });
-    if (!result.ok) return state(id, UNAVAILABLE, { unavailable: true });
+    const input: ClarifyNote = { kind: row.kind, note: row.note, path: row.path, pageTitle: row.pageTitle, anchorLabel: anchor.label ?? "", previousSpec: row.spec as Spec | null, errors: (ctx.errors ?? []).map((e) => String(e.message ?? "")).slice(-5) };
+    const result = await clarifier.clarify({ note: input, turns: turns.slice(-10), questionsAsked, finish });
+    if (!result.ok && !finish) return state(id, UNAVAILABLE, { unavailable: true });
+    const answer = result.ok ? result : { text: SAVED_AS_IS, spec: null };
+    // Enforce the limit even if the model ignores the prompt. Never invent a spec.
+    const text = answer.spec ? "Here is what I understood. Please confirm it." : finish ? SAVED_AS_IS : answer.text;
     const saved = await db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Feedback" WHERE id = ${id} FOR UPDATE`;
       const current = await tx.feedback.findUniqueOrThrow({ where: { id }, select: { revision: true } });
       const newest = await tx.feedbackTurn.findFirst({ where: { feedbackId: id }, orderBy: { id: "desc" }, select: { id: true } });
       if (current.revision !== rev || (newest?.id ?? null) !== lastTurnId) return false;
-      await tx.feedbackTurn.create({ data: { feedbackId: id, role: "assistant", content: result.text } });
-      if (result.spec) await tx.feedback.update({ where: { id }, data: { spec: result.spec, specState: "PROPOSED", revision: { increment: 1 } } });
+      await tx.feedbackTurn.create({ data: { feedbackId: id, role: "assistant", content: text } });
+      if (answer.spec) await tx.feedback.update({ where: { id }, data: { spec: answer.spec, specState: "PROPOSED", revision: { increment: 1 } } });
       return true;
     });
-    return state(id, saved ? result.text : null);
+    return state(id, saved ? text : null);
   });
 
   app.post("/api/feedback/:id/confirm", async (request) => {

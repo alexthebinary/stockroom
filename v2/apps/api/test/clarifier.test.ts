@@ -25,9 +25,9 @@ describe("the clarifier client", () => {
     expect((fakeFetch.last!.init.headers as Record<string, string>).authorization).toBe("Bearer s");
   });
 
-  it("drops a spec that fails validation, maps capped and errors", async () => {
+  it("treats a spec that fails validation as an error (so the fallback runs), maps capped and errors", async () => {
     process.env.CLARIFY_URL = "https://w/v1/clarify"; process.env.CLARIFY_SECRET = "s";
-    expect(await createClarifier(fakeFetch(200, { status: "ok", text: "Q?", spec: { problem: "p" } }))!.clarify({ note: NOTE, turns: [] })).toEqual({ ok: true, text: "Q?", spec: null });
+    expect(await createClarifier(fakeFetch(200, { status: "ok", text: "Q?", spec: { problem: "p" } }))!.clarify({ note: NOTE, turns: [] })).toEqual({ ok: false, reason: "error" });
     expect(await createClarifier(fakeFetch(200, { status: "capped" }))!.clarify({ note: NOTE, turns: [] })).toEqual({ ok: false, reason: "capped" });
     expect(await createClarifier(fakeFetch(502, { status: "error" }))!.clarify({ note: NOTE, turns: [] })).toEqual({ ok: false, reason: "error" });
     const throwing = (async () => { throw new Error("offline"); }) as unknown as typeof fetch;

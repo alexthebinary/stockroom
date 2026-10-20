@@ -32,4 +32,18 @@ describe("clarify fallback", () => {
     const broken = (async () => new Response("<html>", { status: 500 })) as unknown as typeof fetch;
     expect(await createLocalClarifier("http://llm:8081", broken).clarify({ note: NOTE, turns: [] })).toEqual({ ok: false, reason: "error" });
   });
+
+  it("local: runs as the fallback when the Worker answers error, and never truncates a spec", async () => {
+    const fetchImpl = (async () => new Response(JSON.stringify({ choices: [{ message: { content: "", tool_calls: [{ function: { name: "final_spec", arguments: JSON.stringify({ ...SPEC, doneWhen: ["a", "b", "c", "d"] }) } }] } }] }))) as unknown as typeof fetch;
+    const errored: Clarifier = { clarify: async () => ({ ok: false, reason: "error" }) };
+    const out = await withFallback(errored, createLocalClarifier("http://llm:8081", fetchImpl))!.clarify({ note: NOTE, turns: [], questionsAsked: 2, finish: true });
+    expect(out).toMatchObject({ ok: true, spec: { doneWhen: ["a", "b", "c; d"] } });
+  });
+
+  it("local: an invalid final_spec or an empty reply is an error, so nothing is faked", async () => {
+    const bad = (async () => new Response(JSON.stringify({ choices: [{ message: { content: "", tool_calls: [{ function: { name: "final_spec", arguments: JSON.stringify({ ...SPEC, problem: "x".repeat(900) }) } }] } }] }))) as unknown as typeof fetch;
+    expect(await createLocalClarifier("http://llm:8081", bad).clarify({ note: NOTE, turns: [] })).toEqual({ ok: false, reason: "error" });
+    const empty = (async () => new Response(JSON.stringify({ choices: [{ message: { content: "" } }] }))) as unknown as typeof fetch;
+    expect(await createLocalClarifier("http://llm:8081", empty).clarify({ note: NOTE, turns: [] })).toEqual({ ok: false, reason: "error" });
+  });
 });

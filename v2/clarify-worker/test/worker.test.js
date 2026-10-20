@@ -35,8 +35,9 @@ test("a final_spec call comes back as a spec", async () => {
 
 test("malformed spec is dropped, text kept", async () => {
   assert.equal(parseSpec({ problem: "x" }), null);
-  assert.deepEqual(parseSpec({ ...spec, doneWhen: ["a", "b", "c", "d"] }).doneWhen, ["a", "b", "c"], "a 4th check is dropped, not the whole spec (a detailed tester answer got \"tell me more\")");
-  assert.equal(parseSpec({ ...spec, problem: "x".repeat(501) }).problem.length, 500);
+  assert.deepEqual(parseSpec({ ...spec, doneWhen: ["a", "b", "c", "d"] }).doneWhen, ["a", "b", "c; d"], "extra checks are grouped, no requirement is lost");
+  assert.equal(parseSpec({ ...spec, problem: "x".repeat(501) }), null, "over-long content is no spec, never truncated");
+  assert.equal(parseSpec({ ...spec, doneWhen: ["x".repeat(201)] }), null);
   assert.equal(parseSpec({ ...spec, doneWhen: [] }), null);
   assert.deepEqual(parseSpec(JSON.stringify(spec)), spec);
 });
@@ -46,13 +47,31 @@ test("a doneWhen sent as one string becomes a one-item list (GLM does this)", ()
   assert.equal(parseSpec({ ...spec, doneWhen: "" }), null);
 });
 
-test("one long doneWhen string is split into checks; over-long fields are shortened, not rejected (2026-10-19)", () => {
+test("one long doneWhen string is split and grouped; no requirement is lost, over-long field is no spec", () => {
   const long = "While loading, the heading says Items; once loaded it says Items (N) where N equals the rows shown; N updates after search or brand/category filters; with no matches it says Items (0).";
-  const out = parseSpec({ ...spec, doneWhen: long, expected: "x".repeat(700) });
+  const out = parseSpec({ ...spec, doneWhen: long });
   assert.equal(out.doneWhen.length, 3);
   assert.match(out.doneWhen[0], /^While loading/);
-  assert.ok(out.doneWhen.every((d) => d.length <= 200));
-  assert.ok(out.expected.length <= 500);
+  assert.ok(out.doneWhen.join(" ").includes("with no matches it says Items (0)."));
+  assert.equal(parseSpec({ ...spec, doneWhen: long, expected: "x".repeat(700) }), null);
+});
+
+test("an attempted but invalid final_spec, or an empty reply, is a 502 error (so the API falls back)", async () => {
+  const bad = env(async () => ({ choices: [{ message: { content: "", tool_calls: [{ function: { name: "final_spec", arguments: JSON.stringify({ ...spec, problem: "x".repeat(900) }) } }] } }] }));
+  const r = await worker.fetch(req({ note: NOTE, turns: [] }), bad);
+  assert.equal(r.status, 502);
+  assert.deepEqual(await r.json(), { status: "error" });
+  const empty = await worker.fetch(req({ note: NOTE, turns: [] }), env(async () => ({ choices: [{ message: { content: "" } }] })));
+  assert.equal(empty.status, 502);
+});
+
+test("questionsAsked and finish reach the system message", async () => {
+  let seen;
+  await worker.fetch(req({ note: NOTE, turns: [], questionsAsked: 2, finish: true }), env(async (_m, input) => { seen = input; return { choices: [{ message: { content: "ok" } }] }; }));
+  assert.match(seen.messages[0].content, /Questions asked so far: 2\. Finish now/);
+  const ms = buildMessages(NOTE, [], { questionsAsked: 1 });
+  assert.match(ms[0].content, /Questions asked so far: 1\./);
+  assert.doesNotMatch(ms[0].content, /Finish now/);
 });
 
 test("conversation is valid: alternating, starts and ends with the user", () => {

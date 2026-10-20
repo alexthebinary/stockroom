@@ -136,6 +136,31 @@ describe("clarify my feedback", () => {
     expect(re.revision).toBeGreaterThan(4);
   });
 
+  it("a failed correction after confirming leaves nothing confirmable (409), previous spec is only context", async () => {
+    const id = await note();
+    const { c, calls } = scripted({ ok: true, text: "Got it.", spec: SPEC }, { ok: false, reason: "error" });
+    const api = client(undefined, null, c);
+    const proposed = ok(await api.post(`/api/feedback/${id}/clarify`, { message: "orders hidden" })).body;
+    ok(await api.post(`/api/feedback/${id}/confirm`, { revision: proposed.revision }));
+    const failed = ok(await api.post(`/api/feedback/${id}/clarify`, { message: "actually on the bill" })).body;
+    expect(failed).toMatchObject({ unavailable: true, specState: "NONE" });
+    expect(calls[1]!.note.previousSpec).toEqual(SPEC);
+    expect((await api.post(`/api/feedback/${id}/confirm`, { revision: failed.revision })).status).toBe(409);
+    expect(ok(await api.get("/api/feedback")).body[0]).toMatchObject({ specState: "NONE" });
+  });
+
+  it("the clarifier gets questionsAsked and finish; the third reply is forced to finish", async () => {
+    const id = await note();
+    const { c, calls } = scripted({ ok: true, text: "Q1?", spec: null }, { ok: true, text: "Q2?", spec: null }, { ok: true, text: "Q3?", spec: null });
+    const api = client(undefined, null, c);
+    ok(await api.post(`/api/feedback/${id}/clarify`, {}));
+    ok(await api.post(`/api/feedback/${id}/clarify`, { message: "a" }));
+    const third = ok(await api.post(`/api/feedback/${id}/clarify`, { message: "b" })).body;
+    expect(calls.map((x) => [x.questionsAsked, x.finish])).toEqual([[0, false], [1, false], [2, true]]);
+    expect(third.turns.at(-1)).toEqual({ role: "assistant", content: "Your note is saved as is." });
+    expect(third.spec).toBeNull();
+  });
+
   it("confirm needs a proposed spec; a missing note is 404", async () => {
     const id = await note();
     const current = ok(await client().post(`/api/feedback/${id}/clarify`, {})).body;
@@ -153,7 +178,7 @@ describe("clarify my feedback", () => {
     expect(md).toContain("Spec (confirmed):");
     expect(md).toContain("- Done when: PO shows on the first screen");
     expect(md).toContain("Tester: orders hidden");
-    expect(md).toContain("AI: Got it.");
+    expect(md).toContain("AI: Here is what I understood. Please confirm it.");
   });
 
   it("listing includes ordered chat turns only when requested", async () => {
