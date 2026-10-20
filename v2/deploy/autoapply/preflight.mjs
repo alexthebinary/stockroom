@@ -34,8 +34,14 @@ export async function preflight({ cfg, journal, runner, fetchImpl = fetch }) {
       return { ok: false, reason: "local model not healthy" };
     }
   } else {
+    // Codex first (operator 2026-10-20); out of quota → the local model if it is on the GPU, else skip the night.
     const busy = await codexQuota(runner);
-    if (busy) return { ok: false, reason: busy };
+    if (busy) {
+      const local = await runner("local-llm", ["status"], { timeoutMs: 30_000 });
+      const ready = local.code === 0 && !local.timedOut && /^health:\s*ok\s*$/m.test(local.stdout) && !/\bq36-cpu\b/.test(local.stdout);
+      if (!ready) return { ok: false, neutral: true, reason: `skipped: Codex unavailable (${busy}) and the local model is busy` };
+      lane = "local";
+    }
   }
 
   const image = await runner("docker", ["inspect", "profitindex-app-1", "--format", "{{.Image}}"], { timeoutMs: 30_000 });

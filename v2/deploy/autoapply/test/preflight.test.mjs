@@ -58,17 +58,23 @@ test("preflight unhealthy: mid-deploy or down", async () => {
   assert.match((await preflight({ cfg, journal: journal(), runner: runner(), fetchImpl: health("0000000") })).reason, /not the deploy tip/);
   assert.match((await preflight({ cfg, journal: journal(), runner: runner(), fetchImpl: async () => { throw new Error("down"); } })).reason, /health/);
 });
-test("quota preflight: an exhausted Codex window stops the run before any claim", async () => {
+// Codex first, the local model as fallback (operator 2026-10-20).
+const OK = { ok: true, base: SHA, short: "a3f40a8", baseImage: "sha256:live" };
+test("Codex out of quota falls back to the local model when it is on the GPU", async () => {
   const r = await preflight({ cfg, journal: journal(), runner: runner({ "statusline_agents": { code: 0, stdout: '{"primary":{"used_percent":100},"secondary":{"used_percent":40}}', stderr: "" } }), fetchImpl: health("a3f40a8") });
-  assert.deepEqual(r, { ok: false, reason: "codex quota: 5h window at 100%" });
+  assert.deepEqual(r, { ...OK, lane: "local" });
 });
-test("quota preflight: unreadable output stops the run", async () => {
+test("Codex out of quota and the local model busy is a neutral skip", async () => {
+  const r = await preflight({ cfg, journal: journal(), runner: runner({ "statusline_agents": { code: 0, stdout: '{"primary":{"used_percent":100},"secondary":{"used_percent":40}}', stderr: "" }, "local-llm status": { code: 0, stdout: "mode: q36-cpu  unit: active\nhealth: ok", stderr: "" } }), fetchImpl: health("a3f40a8") });
+  assert.deepEqual(r, { ok: false, neutral: true, reason: "skipped: Codex unavailable (codex quota: 5h window at 100%) and the local model is busy" });
+});
+test("unreadable Codex quota also falls back to the local model", async () => {
   const r = await preflight({ cfg, journal: journal(), runner: runner({ "statusline_agents": { code: 0, stdout: "not json", stderr: "" } }), fetchImpl: health("a3f40a8") });
-  assert.deepEqual(r, { ok: false, reason: "codex quota unreadable" });
+  assert.deepEqual(r, { ...OK, lane: "local" });
 });
-test("quota preflight: an exhausted secondary window stops the run", async () => {
-  const r = await preflight({ cfg, journal: journal(), runner: runner({ "statusline_agents": { code: 0, stdout: '{"primary":{"used_percent":38},"secondary":{"used_percent":96}}', stderr: "" } }), fetchImpl: health("a3f40a8") });
-  assert.deepEqual(r, { ok: false, reason: "codex quota: 7-day window at 96%" });
+test("an exhausted 7-day window with the local model busy is a neutral skip naming the window", async () => {
+  const r = await preflight({ cfg, journal: journal(), runner: runner({ "statusline_agents": { code: 0, stdout: '{"primary":{"used_percent":38},"secondary":{"used_percent":96}}', stderr: "" }, "local-llm status": { code: 0, stdout: "mode: q36-cpu  unit: active\nhealth: ok", stderr: "" } }), fetchImpl: health("a3f40a8") });
+  assert.deepEqual(r, { ok: false, neutral: true, reason: "skipped: Codex unavailable (codex quota: 7-day window at 96%) and the local model is busy" });
 });
 test("halted means no run", async () => {
   assert.match((await preflight({ cfg, journal: journal("abc"), runner: runner(), fetchImpl: health("a3f40a8") })).reason, /halted/);

@@ -2,18 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadConfig } from "../config.mjs";
 
-test("config defaults to the local lane, three notes, and a 90-minute implement timeout", () => {
+test("config defaults to Codex first, three notes, and a 90-minute implement timeout (operator 2026-10-20)", () => {
   const cfg = loadConfig({});
-  assert.deepEqual({ implLane: cfg.implLane, maxPerRun: cfg.maxPerRun, codex: cfg.timeouts.codex }, {
-    implLane: "local", maxPerRun: 3, codex: 5_400_000,
-  });
+  assert.deepEqual({ implLane: cfg.implLane, maxPerRun: cfg.maxPerRun, codex: cfg.timeouts.codex }, { implLane: "codex", maxPerRun: 3, codex: 5_400_000 });
 });
 
-test("config selects the Codex lane with five notes and a 30-minute implement timeout", () => {
-  const cfg = loadConfig({ AUTO_IMPL_LANE: "codex" });
-  assert.deepEqual({ implLane: cfg.implLane, maxPerRun: cfg.maxPerRun, codex: cfg.timeouts.codex }, {
-    implLane: "codex", maxPerRun: 5, codex: 1_800_000,
-  });
+test("AUTO_IMPL_LANE=local makes the local model the first lane, same limits", () => {
+  const cfg = loadConfig({ AUTO_IMPL_LANE: "local" });
+  assert.deepEqual({ implLane: cfg.implLane, maxPerRun: cfg.maxPerRun, codex: cfg.timeouts.codex }, { implLane: "local", maxPerRun: 3, codex: 5_400_000 });
 });
 
 for (const lane of ["local", "codex"]) {

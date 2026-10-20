@@ -187,10 +187,10 @@ test("one ships, one fails: SHIPPED reports both and the FAILED outcome carries 
 test("stop rule at 6: failed preflight writes HALT *, disables the timer and alerts", async (t) => {
   const h = harness(t);
   h.seedFailures(5);
-  h.state.quota = 100;
+  h.state.build = "0000000";   // a real failure: the live app is not the deploy tip (quota is now a fallback, not a failure)
   const result = await main(h.args);
   assert.equal(result.outcome, "FAILED");
-  assert.deepEqual(result.failed, [{ id: null, reason: "codex quota: 5h window at 100%" }]);
+  assert.match(result.failed[0].reason, /not the deploy tip/);
   assert.equal(h.journal.failureStreak(), 6);
   assert.equal(readFileSync(h.cfg.haltFile, "utf8").trim(), "*");
   assert.ok(h.state.calls.includes(DISABLE));
@@ -204,7 +204,7 @@ test("stop rule at 6: failed preflight writes HALT *, disables the timer and ale
 test("warning at 4: alerts without HALT or disabling the timer", async (t) => {
   const h = harness(t);
   h.seedFailures(3);
-  h.state.quota = 100;
+  h.state.build = "0000000";   // a real failure: the live app is not the deploy tip (quota is now a fallback, not a failure)
   const result = await main(h.args);
   assert.equal(result.outcome, "FAILED");
   assert.equal(h.journal.failureStreak(), 4);
