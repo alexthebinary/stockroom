@@ -1,4 +1,4 @@
-import { ActionIcon, Autocomplete, Badge, Button, Card, Group, Modal, Select, Stack, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Autocomplete, Badge, Button, Card, Group, Input, Modal, NumberInput, Select, Stack, Text, TextInput } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconPencil } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -38,6 +38,8 @@ export function Items() {
       <Stack gap="xs">
         {(items.data ?? []).map((i) => {
           const v = valuation.data?.rows.find((r) => r.itemId === i.id);
+          const dimensions = [i.lengthCm, i.widthCm, i.heightCm];
+          const measurements = [i.weightKg != null ? `${i.weightKg} kg` : null, dimensions.some((d) => d != null) ? `${dimensions.map((d) => d ?? "—").join("×")} cm` : null].filter(Boolean).join(" · ");
           return (
             <Card key={i.id} withBorder padding="sm">
               <Group justify="space-between" wrap="nowrap">
@@ -49,6 +51,9 @@ export function Items() {
                     {i.sku}
                     {i.barcodes?.length ? ` · ${i.barcodes.map((b) => b.raw).join(", ")}` : ""}
                   </Text>
+                  {measurements ? (
+                    <Text size="sm" c="dimmed">{measurements}</Text>
+                  ) : null}
                   {i.brand || i.category ? (
                     <Group gap={6} mt={4}>
                       {i.brand ? (
@@ -105,12 +110,28 @@ export function Items() {
 }
 
 function EditItem({ item, facets, onSaved }: { item: Item; facets: Facets | undefined; onSaved: () => void }) {
-  const [form, setForm] = useState({ name: item.name, brand: item.brand ?? "", category: item.category ?? "" });
+  const [form, setForm] = useState({
+    name: item.name,
+    weightKg: item.weightKg ?? "",
+    lengthCm: item.lengthCm ?? "",
+    widthCm: item.widthCm ?? "",
+    heightCm: item.heightCm ?? "",
+    brand: item.brand ?? "",
+    category: item.category ?? "",
+  });
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
     try {
-      await put(`/items/${item.id}`, { name: form.name, brand: form.brand, category: form.category });
+      await put(`/items/${item.id}`, {
+        name: form.name,
+        weightKg: form.weightKg === "" ? null : Number(form.weightKg),
+        lengthCm: form.lengthCm === "" ? null : Number(form.lengthCm),
+        widthCm: form.widthCm === "" ? null : Number(form.widthCm),
+        heightCm: form.heightCm === "" ? null : Number(form.heightCm),
+        brand: form.brand,
+        category: form.category,
+      });
       onSaved();
     } catch (error) {
       toastErr(error);
@@ -121,6 +142,14 @@ function EditItem({ item, facets, onSaved }: { item: Item; facets: Facets | unde
   return (
     <Stack>
       <TextInput label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.currentTarget.value })} required />
+      <NumberInput label="Weight (kg)" value={form.weightKg} onChange={(weightKg) => setForm({ ...form, weightKg })} min={0} allowNegative={false} step={0.1} />
+      <Input.Wrapper label="Length × Width × Height (cm)">
+        <Group grow gap="xs" wrap="nowrap">
+          <NumberInput aria-label="Length (cm)" placeholder="Length" value={form.lengthCm} onChange={(lengthCm) => setForm({ ...form, lengthCm })} min={0} allowNegative={false} />
+          <NumberInput aria-label="Width (cm)" placeholder="Width" value={form.widthCm} onChange={(widthCm) => setForm({ ...form, widthCm })} min={0} allowNegative={false} />
+          <NumberInput aria-label="Height (cm)" placeholder="Height" value={form.heightCm} onChange={(heightCm) => setForm({ ...form, heightCm })} min={0} allowNegative={false} />
+        </Group>
+      </Input.Wrapper>
       <Autocomplete label="Brand" placeholder="e.g. XAG" data={facets?.brands ?? []} value={form.brand} onChange={(brand) => setForm({ ...form, brand })} maxLength={60} />
       <Autocomplete label="Category" placeholder="e.g. Chargers" data={facets?.categories ?? []} value={form.category} onChange={(category) => setForm({ ...form, category })} maxLength={60} />
       <Button onClick={save} loading={busy} disabled={!form.name.trim()}>

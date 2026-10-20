@@ -29,6 +29,10 @@ const label = z
 const itemBody = z.object({
   sku: z.string().trim().min(1).max(64),
   name: z.string().trim().min(1),
+  weightKg: z.number().positive().nullish(),
+  lengthCm: z.number().positive().nullish(),
+  widthCm: z.number().positive().nullish(),
+  heightCm: z.number().positive().nullish(),
   brand: label,
   category: label,
   trackingMode: z.enum(["NONE", "SERIAL"]).default("NONE"),
@@ -201,6 +205,10 @@ function itemFromCsv(row: Record<string, string>, vendors: { id: number; name: s
   return parse(itemBody, {
     sku: row.sku,
     name: row.name,
+    weightKg: row.weight_kg ? Number(row.weight_kg) : undefined,
+    lengthCm: row.length_cm ? Number(row.length_cm) : undefined,
+    widthCm: row.width_cm ? Number(row.width_cm) : undefined,
+    heightCm: row.height_cm ? Number(row.height_cm) : undefined,
     brand: row.brand || undefined,
     category: row.category || undefined,
     trackingMode: (row.tracking || "NONE").toUpperCase() === "SERIAL" ? "SERIAL" : "NONE",

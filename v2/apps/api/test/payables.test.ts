@@ -17,9 +17,9 @@ async function balance(code: string) {
 }
 const pool = (itemId: number) => testDb().costPool.findUniqueOrThrow({ where: { itemId } });
 
-/** PO for `qty` widgets at $500, billed (optionally with freight on the bill), nothing received yet. */
-async function billedPo(c: Company, qty: number, freightCents = 0, invoice = "INV-1") {
-  const po = ok(await c.admin.post("/api/purchase-orders", { vendorId: c.ids.supplier, warehouseId: c.ids.warehouse, lines: [{ itemId: c.ids.widget, qtyOrdered: qty, unitCostCents: 50000 }] })).body;
+/** PO for `qty` widgets at $500 by default, billed (optionally with freight), nothing received yet. */
+async function billedPo(c: Company, qty: number, freightCents = 0, invoice = "INV-1", unitCostCents = 50000) {
+  const po = ok(await c.admin.post("/api/purchase-orders", { vendorId: c.ids.supplier, warehouseId: c.ids.warehouse, lines: [{ itemId: c.ids.widget, qtyOrdered: qty, unitCostCents }] })).body;
   const draft = ok(await c.accountant.post("/api/bills", { poId: po.id })).body;
   const edited = ok(await c.accountant.patch(`/api/bills/${draft.id}`, { version: draft.version, vendorInvoiceNumber: invoice, freightCents })).body;
   const bill = ok(await c.accountant.post(`/api/bills/${draft.id}/post`, { version: edited.version })).body;
@@ -155,13 +155,58 @@ describe("Vendor credits (GAAP guide §II.1 #3, #4, #6, #7, #8)", () => {
     await expectBooksSound();
   });
 
-  it("a credit that differs from average cost books the difference to COGS", async () => {
+  it("a credit below average cost leaves the difference in the remaining inventory", async () => {
     const c = await sampleCompany();
     const bill = await landedBill(c);
     ok(await c.accountant.post(`/api/bills/${bill.id}/credits`, { kind: "RETURN", lines: [{ billLineId: bill.lines[0].id, qty: 1, amountCents: 50000 }] }));
     expect(await balance("2000")).toBe(60000);
-    expect(await balance("5000"), "freight the vendor won't refund").toBe(5000);
+    expect(await balance("5000")).toBe(0);
+    expect(await pool(c.ids.widget)).toMatchObject({ qty: 1, valueCents: 60000 });
+    expect(await inventory("inventoryOnHand")).toBe(60000);
     await expectBooksSound();
+  });
+
+  it("returns 8 of 20 mixed-cost units at the bill's $100 cost, absorbing the variance into the 12 remaining units", async () => {
+    const c = await sampleCompany();
+    const expensive = await billedPo(c, 10, 0, "COST-100", 10000);
+    const cheaper = await billedPo(c, 10, 0, "COST-80", 8000);
+    for (const { po } of [expensive, cheaper]) {
+      const delivery = await deliver(c.clerk, { warehouseId: c.ids.warehouse, poId: po.id }, [{ code: WIDGET, qty: 10 }]);
+      ok(delivery.submitted);
+    }
+    expect(await pool(c.ids.widget)).toMatchObject({ qty: 20, valueCents: 180000 });
+    const bill = ok(await c.accountant.get(`/api/bills/${expensive.bill.id}`)).body;
+    const credit = ok(await c.accountant.post(`/api/bills/${bill.id}/credits`, { kind: "RETURN", lines: [{ billLineId: bill.lines[0].id, qty: 8 }] })).body;
+    expect(credit).toMatchObject({ totalCents: 80000 });
+    expect(credit.lines[0]).toMatchObject({ qty: 8, amountCents: 80000, costCents: 72000 });
+    const entry = await testDb().journalEntry.findFirstOrThrow({ where: { sourceType: "VENDOR_CREDIT", sourceId: credit.id }, include: { lines: { include: { account: true }, orderBy: { id: "asc" } } } });
+    expect(entry.lines.map((l) => [l.side, l.account.code, l.role, l.amountCents])).toEqual([
+      ["DEBIT", "2000", "payable", 80000],
+      ["CREDIT", "1200", "inventoryOnHand", 80000],
+    ]);
+    expect(await balance("5000")).toBe(0);
+    expect(await pool(c.ids.widget)).toMatchObject({ qty: 12, valueCents: 100000 });
+    const valuation = ok(await c.accountant.get("/api/reports/valuation")).body;
+    expect(valuation.rows.find((r: { itemId: number }) => r.itemId === c.ids.widget)).toMatchObject({ onHand: 12, valueCents: 100000, averageCents: 100000 / 12, varianceCents: 0 });
+    expect(ok(await c.admin.get("/api/books/check")).body).toMatchObject({ sound: true, problems: [], figures: { onHandGlCents: 100000, onHandPoolCents: 100000 } });
+  });
+
+  it.each([
+    { amountCents: 100000, side: "DEBIT" },
+    { amountCents: 120000, side: "CREDIT" },
+  ])("an empty pool leaves the $side return variance when the full credit is $amountCents cents", async ({ amountCents, side }) => {
+    const c = await sampleCompany();
+    const bill = await landedBill(c);
+    const credit = ok(await c.accountant.post(`/api/bills/${bill.id}/credits`, { kind: "RETURN", lines: [{ billLineId: bill.lines[0].id, qty: 2, amountCents }] })).body;
+    const entry = await testDb().journalEntry.findFirstOrThrow({ where: { sourceType: "VENDOR_CREDIT", sourceId: credit.id }, include: { lines: { include: { account: true }, orderBy: { id: "asc" } } } });
+    expect(entry.lines.map((l) => [l.side, l.account.code, l.role, l.amountCents])).toEqual([
+      ["DEBIT", "2000", "payable", amountCents],
+      ["CREDIT", "1200", "inventoryOnHand", 110000],
+      [side, "5000", "returnVariance", 10000],
+    ]);
+    expect(await pool(c.ids.widget)).toMatchObject({ qty: 0, valueCents: 0 });
+    expect(await inventory("inventoryOnHand")).toBe(0);
+    expect(ok(await c.admin.get("/api/books/check")).body).toMatchObject({ sound: true, problems: [] });
   });
 
   it("billed units that never arrived come off inventory in transit", async () => {

@@ -1,7 +1,7 @@
 import { DomainError } from "@pi/domain";
 import { postEntry } from "../ledger";
 import { nextNumber } from "../numbering";
-import { issueUnits, type StockCtx } from "../stock";
+import { issueUnits, revaluePool, type StockCtx } from "../stock";
 import { applyLineAdjustment } from "./adjust";
 import { refreshPoStatus } from "./po";
 import { inboundShare } from "./receive";
@@ -22,9 +22,9 @@ export type CreditLineInput = {
  * #6, #7, #8). Every line names its item.
  *
  * RETURN of received units: they leave at AVERAGE cost (WH-OUT); AP is debited
- * by what the vendor credits; any difference between the two is a return
- * variance (COGS by default). In the guide's examples they are equal, so the
- * entry is simply Dr AP / Cr Inventory.
+ * by what the vendor credits. The remaining pool absorbs the difference so
+ * the entry is Dr AP / Cr Inventory for the credit amount. Only a difference
+ * the pool cannot absorb goes to return variance (COGS by default).
  *
  * RETURN of units billed but never received: Dr AP / Cr Inventory Asset (in transit).
  *
@@ -70,6 +70,7 @@ export async function postVendorCredit(
     if (amount < 0) throw new DomainError("A credit can't be negative", 400);
     const received = req.received ?? true;
     let costCents: number;
+    let varianceCents: number;
     if (received) {
       if (req.qty > poLine.qtyLanded) throw new DomainError(`${item.name}: only ${poLine.qtyLanded} unit(s) from this order are in stock to return`, 400);
       if (item.trackingMode === "SERIAL") {
@@ -80,7 +81,10 @@ export async function postVendorCredit(
       }
       const warehouseId = (await tx.purchaseOrder.findUniqueOrThrow({ where: { id: poLine.poId } })).warehouseId;
       costCents = await issueUnits(ctx, { itemId: item.id, warehouseId, qty: req.qty, docNumber: number, counter: { type: "VENDOR_CREDIT", id: credit.id }, preferPoLineId: poLine.id });
-      entryLines.push({ role: "inventoryOnHand" as const, amountCents: costCents, itemId: item.id, poLineId: poLine.id });
+      // revaluePool returns the signed value change it could not apply.
+      // Negate it back to the credit-side sign used by the return entry.
+      varianceCents = -(await revaluePool(tx, item.id, -(amount - costCents)));
+      entryLines.push({ role: "inventoryOnHand" as const, amountCents: amount - varianceCents, itemId: item.id, poLineId: poLine.id });
       await tx.purchaseOrderLine.update({
         where: { id: poLine.id },
         data: { qtyReturned: { increment: req.qty }, qtyOrdered: { decrement: req.qty }, qtyBilled: { decrement: req.qty }, qtyReceived: { decrement: req.qty }, qtyLanded: { decrement: req.qty }, billedCents: { decrement: amount } },
@@ -89,13 +93,14 @@ export async function postVendorCredit(
       const notLanded = poLine.qtyBilled - poLine.qtyLanded;
       if (req.qty > notLanded) throw new DomainError(`${item.name}: only ${notLanded} billed unit(s) have not arrived`, 400);
       costCents = inboundShare(poLine.inboundCents, notLanded, req.qty);
+      varianceCents = amount - costCents;
       entryLines.push({ role: "inventoryInbound" as const, amountCents: costCents, itemId: item.id, poLineId: poLine.id });
       await tx.purchaseOrderLine.update({
         where: { id: poLine.id },
         data: { qtyOrdered: { decrement: req.qty }, qtyBilled: { decrement: req.qty }, inboundCents: { decrement: costCents }, billedCents: { decrement: amount } },
       });
     }
-    entryLines.push({ role: "returnVariance" as const, amountCents: amount - costCents, itemId: item.id, poLineId: poLine.id });
+    entryLines.push({ role: "returnVariance" as const, amountCents: varianceCents, itemId: item.id, poLineId: poLine.id });
     await tx.vendorCreditLine.create({ data: { creditId: credit.id, billLineId: billLine.id, poLineId: poLine.id, itemId: item.id, qty: req.qty, amountCents: amount, costCents } });
     total += amount;
   }

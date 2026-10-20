@@ -5,6 +5,10 @@ export type Item = {
   id: number;
   sku: string;
   name: string;
+  weightKg?: number | null;
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
   brand?: string | null;
   category?: string | null;
   trackingMode: "NONE" | "SERIAL";

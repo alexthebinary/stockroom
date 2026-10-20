@@ -171,6 +171,10 @@ model Item {
   id              Int      @id @default(autoincrement())
   sku             String   @unique
   name            String
+  weightKg        Float?
+  lengthCm        Float?
+  widthCm         Float?
+  heightCm        Float?
   brand           String?
   category        String?
   trackingMode    String   @default("NONE")
