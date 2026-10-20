@@ -17,7 +17,7 @@ import {
   IconSunMoon,
   IconUserCircle,
 } from "@tabler/icons-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, NavLink as RouterNavLink, useLocation } from "react-router-dom";
 import type { Job } from "../lib/api";
 import { JOB_LABEL, useProfile } from "../lib/profile";
@@ -49,9 +49,11 @@ const TABS: Record<Job, (keyof typeof SECTIONS)[]> = {
 /** The desktop rail: everything, grouped, the job's own work first. */
 const RAIL: Record<Job, (keyof typeof SECTIONS)[]> = {
   CLERK: ["home", "receive", "items", "orders", "sheet", "guide"],
-  ACCOUNTING: ["home", "bills", "payables", "orders", "reports", "items", "receive", "settings", "guide", "feedback"],
+  ACCOUNTING: ["home", "bills", "payables", "orders", "items", "reports", "receive", "settings", "guide", "feedback"],
   ADMIN: ["home", "orders", "bills", "payables", "receive", "items", "reports", "settings", "sheet", "guide", "feedback"],
 };
+
+const PURCHASES = ["orders", "bills", "payables", "receive"];
 
 const isActive = (pathname: string, to: string) => (to === "/" ? pathname === "/" : pathname.startsWith(to));
 
@@ -60,6 +62,14 @@ export function Shell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const { colorScheme, setColorScheme } = useMantineColorScheme();
   const job = profile?.job ?? "CLERK";
+  const [purchasesOpened, setPurchasesOpened] = useState(true);
+  const purchases = PURCHASES.filter((key) => RAIL[job].includes(key));
+  const purchasesActive = purchases.some((key) => isActive(pathname, SECTIONS[key]!.to));
+
+  const sectionLink = (key: keyof typeof SECTIONS) => {
+    const s = SECTIONS[key]!;
+    return <NavLink key={key} component={RouterNavLink} to={s.to} label={s.label} leftSection={<s.icon size={18} />} active={isActive(pathname, s.to)} style={{ borderRadius: 8 }} />;
+  };
 
   return (
     <AppShell header={{ height: 56 }} navbar={{ width: 232, breakpoint: "sm", collapsed: { mobile: true } }} padding="md">
@@ -112,10 +122,13 @@ export function Shell({ children }: { children: ReactNode }) {
 
       <AppShell.Navbar p="xs" className="no-print">
         <Stack gap={2}>
-          {RAIL[job].map((key) => {
-            const s = SECTIONS[key]!;
-            return <NavLink key={key} component={RouterNavLink} to={s.to} label={s.label} leftSection={<s.icon size={18} />} active={isActive(pathname, s.to)} style={{ borderRadius: 8 }} />;
-          })}
+          {RAIL[job].filter((key) => key === "home").map(sectionLink)}
+          {purchases.length > 0 && (
+            <NavLink label="Purchases" leftSection={<IconReceipt2 size={18} />} active={purchasesActive} opened={purchasesActive || purchasesOpened} onChange={setPurchasesOpened} style={{ borderRadius: 8 }}>
+              {purchases.map(sectionLink)}
+            </NavLink>
+          )}
+          {RAIL[job].filter((key) => key !== "home" && !PURCHASES.includes(key)).map(sectionLink)}
         </Stack>
       </AppShell.Navbar>
 

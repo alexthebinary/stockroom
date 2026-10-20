@@ -1,9 +1,9 @@
 import { EVENTS, type EventType } from "@pi/domain";
-import { Alert, Button, Card, Group, Select, Stack, Table, Tabs, Text } from "@mantine/core";
+import { Alert, Button, Card, Group, SegmentedControl, Select, Stack, Table, Tabs, Text } from "@mantine/core";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { plural, formatDate, Loading, Money, PageHeader, usd } from "../../components/ui";
 import { get } from "../../lib/api";
 import type { JournalEntry } from "../../lib/types";
@@ -18,38 +18,67 @@ type ToReceive = {
 };
 type Held = { poId: number; poNumber: string; vendor: { name: string } | null; item: { name: string }; qtyHeld: number; estimateCents: number; receivedAt: string; days: number }[];
 
+const REPORT_TABS = {
+  books: { label: "Books check", component: BooksCheck },
+  tb: { label: "Trial balance", component: TrialBalance },
+  journal: { label: "Journal entries", component: Journal },
+  held: { label: "Awaiting bill", component: HeldStock },
+  toReceive: { label: "To receive", component: ToReceiveReport },
+  stock: { label: "Stock value", component: StockValue },
+};
+
+type ReportTab = keyof typeof REPORT_TABS;
+const REPORT_CATEGORIES: { value: string; label: string; tabs: ReportTab[] }[] = [
+  { value: "accounting", label: "Accounting", tabs: ["books", "tb", "journal"] },
+  { value: "sales", label: "Sales", tabs: [] },
+  { value: "purchases", label: "Purchases", tabs: ["held", "toReceive"] },
+  { value: "inventory", label: "Inventory", tabs: ["stock"] },
+];
+
 export function Reports() {
+  const [params, setParams] = useSearchParams();
+  const requestedTab = params.get("tab");
+  const category = REPORT_CATEGORIES.find((c) => c.value === params.get("cat"))
+    ?? REPORT_CATEGORIES.find((c) => c.tabs.some((tab) => tab === requestedTab))
+    ?? REPORT_CATEGORIES[0]!;
+  const tab = category.tabs.find((value) => value === requestedTab) ?? category.tabs[0] ?? null;
+
+  const selectReport = (cat: string, selectedTab: string | null) => {
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set("cat", cat);
+      if (selectedTab) next.set("tab", selectedTab);
+      else next.delete("tab");
+      return next;
+    });
+  };
+
   return (
     <>
       <PageHeader title="Reports" />
-      <Tabs defaultValue="books">
-        <Tabs.List mb="md">
-          <Tabs.Tab value="books">Books check</Tabs.Tab>
-          <Tabs.Tab value="tb">Trial balance</Tabs.Tab>
-          <Tabs.Tab value="journal">Journal entries</Tabs.Tab>
-          <Tabs.Tab value="stock">Stock value</Tabs.Tab>
-          <Tabs.Tab value="held">Awaiting bill</Tabs.Tab>
-          <Tabs.Tab value="toReceive">To receive</Tabs.Tab>
-        </Tabs.List>
-        <Tabs.Panel value="books">
-          <BooksCheck />
-        </Tabs.Panel>
-        <Tabs.Panel value="tb">
-          <TrialBalance />
-        </Tabs.Panel>
-        <Tabs.Panel value="journal">
-          <Journal />
-        </Tabs.Panel>
-        <Tabs.Panel value="stock">
-          <StockValue />
-        </Tabs.Panel>
-        <Tabs.Panel value="held">
-          <HeldStock />
-        </Tabs.Panel>
-        <Tabs.Panel value="toReceive">
-          <ToReceiveReport />
-        </Tabs.Panel>
-      </Tabs>
+      <SegmentedControl
+        mb="md"
+        aria-label="Report category"
+        value={category.value}
+        data={REPORT_CATEGORIES.map(({ value, label }) => ({ value, label }))}
+        onChange={(value) => {
+          const next = REPORT_CATEGORIES.find((c) => c.value === value)!;
+          selectReport(next.value, next.tabs[0] ?? null);
+        }}
+      />
+      {category.value === "sales" ? (
+        <Text c="dimmed">Sales reports arrive with sales orders.</Text>
+      ) : (
+        <Tabs value={tab} onChange={(value) => selectReport(category.value, value)}>
+          <Tabs.List mb="md">
+            {category.tabs.map((value) => <Tabs.Tab key={value} value={value}>{REPORT_TABS[value].label}</Tabs.Tab>)}
+          </Tabs.List>
+          {category.tabs.map((value) => {
+            const Report = REPORT_TABS[value].component;
+            return <Tabs.Panel key={value} value={value}><Report /></Tabs.Panel>;
+          })}
+        </Tabs>
+      )}
     </>
   );
 }
