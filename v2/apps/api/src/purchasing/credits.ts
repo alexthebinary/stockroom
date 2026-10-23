@@ -24,7 +24,7 @@ export type CreditLineInput = {
  * RETURN of received units: they leave at AVERAGE cost (WH-OUT); AP is debited
  * by what the vendor credits. The remaining pool absorbs the difference so
  * the entry is Dr AP / Cr Inventory for the credit amount. Only a difference
- * the pool cannot absorb goes to return variance (COGS by default).
+ * the pool cannot absorb goes to return variance (Vendor Return Variance, 6950, by default).
  *
  * RETURN of units billed but never received: Dr AP / Cr Inventory Asset (in transit).
  *

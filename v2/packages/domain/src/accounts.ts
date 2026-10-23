@@ -32,6 +32,7 @@ export const CHART: AccountDef[] = [
   { code: "4900", name: "Inventory Adjustment Gain", type: "INCOME", normalSide: "CREDIT", purpose: "Inventory overage / found stock" },
   { code: "5000", name: "Cost of Goods Sold", type: "EXPENSE", normalSide: "DEBIT", purpose: "Cost of units sold, at average landed cost" },
   { code: "6100", name: "Outbound Shipping Expense", type: "EXPENSE", normalSide: "DEBIT", purpose: "Actual freight-out billed by third-party carriers" },
+  { code: "6950", name: "Vendor Return Variance", type: "EXPENSE", normalSide: "DEBIT", purpose: "Difference between a vendor credit and the cost of the units sent back (not cost of goods sold)" },
   { code: "6900", name: "Inventory Adjustment Loss", type: "EXPENSE", normalSide: "DEBIT", purpose: "Inventory shortage / shrinkage" },
 ];
 
@@ -68,7 +69,7 @@ export const DEFAULT_ROLE_ACCOUNTS: Record<Role, string> = {
   cogs: "5000",
   openingEquity: "3000",
   outboundShipping: "6100",
-  returnVariance: "5000",
+  returnVariance: "6950",
   adjustmentGain: "4900",
   adjustmentLoss: "6900",
 };

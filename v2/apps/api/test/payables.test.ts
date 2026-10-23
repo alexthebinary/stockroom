@@ -113,7 +113,7 @@ describe("Vendor credits (GAAP guide §II.1 #3, #4, #6, #7, #8)", () => {
     expect(credit.totalCents).toBe(55000);
     expect(await balance("2000")).toBe(55000);
     expect(await inventory("inventoryOnHand")).toBe(55000);
-    expect(await balance("5000"), "no variance when credit = average").toBe(0);
+    expect(await balance("6950"), "no variance when credit = average").toBe(0);
     expect(await pool(c.ids.widget)).toMatchObject({ qty: 1, valueCents: 55000 });
     const out = await testDb().stockMovement.findFirstOrThrow({ where: { register: "WH_OUT" } });
     expect(out).toMatchObject({ qtyDelta: -1, counterType: "VENDOR_CREDIT", valueCents: 55000 });
@@ -202,7 +202,7 @@ describe("Vendor credits (GAAP guide §II.1 #3, #4, #6, #7, #8)", () => {
     expect(entry.lines.map((l) => [l.side, l.account.code, l.role, l.amountCents])).toEqual([
       ["DEBIT", "2000", "payable", amountCents],
       ["CREDIT", "1200", "inventoryOnHand", 110000],
-      [side, "5000", "returnVariance", 10000],
+      [side, "6950", "returnVariance", 10000],
     ]);
     expect(await pool(c.ids.widget)).toMatchObject({ qty: 0, valueCents: 0 });
     expect(await inventory("inventoryOnHand")).toBe(0);
