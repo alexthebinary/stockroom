@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app";
-import { chat, createLocalHelpModel, goTo, HELP_PAGES, readWiki, SCREENS, type HelpModel } from "../src/ai/help";
+import { chat, createLocalHelpModel, goTo, HELP_PAGES, helpSystem, readWiki, SCREENS, type HelpModel } from "../src/ai/help";
 import { createHelpRateLimit } from "../src/routes/help";
 import { resetDb, testDb } from "./helpers";
 
@@ -21,6 +21,13 @@ describe("help wiki and navigation", () => {
       expect(readWiki(page).length).toBeGreaterThan(200);
     }
     expect(() => readWiki("../../.env")).toThrow();
+  });
+  it("includes the complete wiki without an echoable screen map", () => {
+    const prompt = helpSystem("/items");
+    for (const page of HELP_PAGES) expect(prompt).toContain(readWiki(page));
+    expect(prompt).not.toContain("Screens:");
+    expect(prompt).not.toContain(JSON.stringify(SCREENS));
+    expect(prompt).toContain("Never print screen keys");
   });
   it("links only to real static web routes", () => {
     const routes = readFileSync(resolve(import.meta.dirname, "../../web/src/App.tsx"), "utf8");
@@ -59,6 +66,19 @@ describe("help tool loop", () => {
     expect(events).toContainEqual({ type: "text", text: result.reply });
     expect(round).toBe(3);
   });
+  it("preserves an explanation alongside go_to without asking the model to repeat it", async () => {
+    let rounds = 0;
+    const result = await chat(async () => {
+      rounds++;
+      return { role: "assistant", content: "Open Items, choose + Add item, enter SKU and Name, then Save.", tool_calls: [call("go_to", { screen: "items" })] };
+    }, input);
+    expect(rounds).toBe(1);
+    expect(result).toMatchObject({ reply: expect.stringContaining("SKU and Name"), navigate: goTo("items"), unanswered: false });
+  });
+  it("preserves the unanswered marker alongside a navigation link", async () => {
+    const result = await chat(async () => ({ role: "assistant", content: "I don't have that information in the help pages. Open Reports to inspect Stock value.", tool_calls: [call("go_to", { screen: "reports" })] }), input);
+    expect(result).toMatchObject({ unanswered: true, navigate: goTo("reports") });
+  });
   it("returns tool errors to the model without executing data reads or writes", async () => {
     let round = 0;
     let toolResults: unknown[] = [];
@@ -78,6 +98,18 @@ describe("help tool loop", () => {
     const looping: HelpModel = async () => ({ role: "assistant", tool_calls: [call("read_wiki", { page: "items" })] });
     expect((await chat(looping, input)).unanswered).toBe(true);
     expect((await chat(async () => { throw new Error("offline"); }, input)).unanswered).toBe(true);
+  });
+  it("disables further tool calls after a tool result so navigation cannot loop", async () => {
+    const fetchImpl = (async (_url, init) => {
+      expect(JSON.parse(String(init?.body))).toMatchObject({ tool_choice: "none" });
+      return new Response('data: {"choices":[{"delta":{"content":"Open Items, choose + Add item, enter SKU and Name, then Save."}}]}\n\ndata: [DONE]\n\n');
+    }) as typeof fetch;
+    const model = createLocalHelpModel("http://local", fetchImpl);
+    const result = await model([
+      { role: "assistant", tool_calls: [call("go_to", { screen: "items" })] },
+      { role: "tool", tool_call_id: "tool-1", content: JSON.stringify(goTo("items")) },
+    ]);
+    expect(result.content).toContain("Save");
   });
   it("parses fragmented llama-server SSE text and tool arguments", async () => {
     const chunks = [
@@ -111,11 +143,12 @@ describe("help HTTP endpoints", () => {
     expect((await app.inject({ url: "/api/help/status" })).json()).toEqual({ configured: false });
     expect((await app.inject({ method: "POST", url: "/api/help/chat", payload: input })).statusCode).toBe(503);
   });
-  it("saves unanswered questions as feedback with route context", async () => {
-    const app = appWith(async () => ({ role: "assistant", content: "I don't have that information in the help pages." }));
+  it("saves unanswered questions with a navigation link as feedback with route context", async () => {
+    const app = appWith(async () => ({ role: "assistant", content: "I don't have that information in the help pages.", tool_calls: [call("go_to", { screen: "reports" })] }));
     const response = await app.inject({ method: "POST", url: "/api/help/chat", payload: input });
     expect(response.statusCode).toBe(200);
     expect(response.json().feedbackId).toBeTypeOf("number");
+    expect(response.json().navigate).toEqual(goTo("reports"));
     const saved = await testDb().feedback.findFirstOrThrow();
     expect(saved).toMatchObject({ kind: "QUESTION", author: "help-assistant", note: input.messages[0]!.content, path: "/items", specState: "NONE" });
   });
