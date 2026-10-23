@@ -1,6 +1,7 @@
 import { DomainError } from "@pi/domain";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { Clarifier } from "./ai/clarifier";
+import type { HelpModel } from "./ai/help";
 import type { Reader } from "./ai/reader";
 import type { Db } from "./db";
 import type { Profile } from "./generated/prisma/client";
@@ -10,6 +11,7 @@ import { registerAdjustments } from "./routes/adjustments";
 import { registerAi } from "./routes/ai";
 import { registerCatalog } from "./routes/catalog";
 import { registerFeedback } from "./routes/feedback";
+import { registerHelp } from "./routes/help";
 import { registerPayables } from "./routes/payables";
 import { registerPurchasing } from "./routes/purchasing";
 import { registerReports } from "./routes/reports";
@@ -21,7 +23,7 @@ declare module "fastify" {
   }
 }
 
-export type Deps = { db: Db; reader: Reader | null; clarifier?: Clarifier | null };
+export type Deps = { db: Db; reader: Reader | null; clarifier?: Clarifier | null; helpModel?: HelpModel | null };
 
 const OPEN_WITHOUT_PROFILE = ["/api/setup", "/api/profiles", "/api/health", "/api/feedback"];
 
@@ -132,5 +134,6 @@ export function buildApp(deps: Deps): FastifyInstance {
   registerAdjustments(app, deps);
   registerAi(app, deps);
   registerFeedback(app, deps);
+  registerHelp(app, deps);
   return app;
 }

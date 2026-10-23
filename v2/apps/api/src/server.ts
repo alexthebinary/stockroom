@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createClarifier, withFallback } from "./ai/clarifier";
 import { createLocalClarifier } from "./ai/local-clarifier";
+import { createLocalHelpModel } from "./ai/help";
 import { createReader } from "./ai/reader";
 import { buildApp } from "./app";
 import { createDb } from "./db";
@@ -10,7 +11,12 @@ import { serveWeb } from "./web";
 
 const db = createDb();
 await syncChart(db);
-const app = buildApp({ db, reader: createReader(), clarifier: withFallback(createClarifier(), process.env.LOCAL_LLM_URL ? createLocalClarifier(process.env.LOCAL_LLM_URL) : null) });
+const app = buildApp({
+  db,
+  reader: createReader(),
+  helpModel: process.env.LOCAL_LLM_URL ? createLocalHelpModel(process.env.LOCAL_LLM_URL) : null,
+  clarifier: withFallback(createClarifier(), process.env.LOCAL_LLM_URL ? createLocalClarifier(process.env.LOCAL_LLM_URL) : null),
+});
 
 // In production the API also serves the built PWA, so one container is the whole app.
 const webRoot = process.env.WEB_ROOT ?? resolve(import.meta.dirname, "../../web/dist");

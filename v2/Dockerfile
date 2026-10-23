@@ -12,6 +12,7 @@ COPY e2e/package.json e2e/
 RUN npm ci --workspace=@pi/domain --workspace=@pi/api --workspace=@pi/web --include-workspace-root
 COPY packages packages
 COPY apps apps
+COPY docs/help docs/help
 # The commit, named in every feedback report (deploy/start.sh passes it).
 ARG APP_VERSION=dev
 RUN VITE_APP_VERSION=$APP_VERSION npm run build -w @pi/web && npm run build -w @pi/api

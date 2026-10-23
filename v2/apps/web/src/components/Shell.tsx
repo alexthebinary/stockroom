@@ -21,6 +21,7 @@ import { useState, type ReactNode } from "react";
 import { Link, NavLink as RouterNavLink, useLocation } from "react-router-dom";
 import type { Job } from "../lib/api";
 import { JOB_LABEL, useProfile } from "../lib/profile";
+import { HelpPanel } from "../features/help/HelpPanel";
 import { resetCoaching } from "./Coach";
 
 type Section = { to: string; label: string; icon: typeof IconHome };
@@ -83,40 +84,43 @@ export function Shell({ children }: { children: ReactNode }) {
               </Text>
             </Group>
           </Link>
-          <Menu position="bottom-end" width={240}>
-            <Menu.Target>
-              <ActionIcon variant="subtle" size={44} aria-label="Who's working and settings">
-                <Avatar size={32} color="ink" radius="xl">
-                  {profile?.name.slice(0, 1) ?? <IconUserCircle />}
-                </Avatar>
-              </ActionIcon>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Label>
-                {profile?.name} · {JOB_LABEL[job]}
-              </Menu.Label>
-              <Menu.Item leftSection={<IconUserCircle size={16} />} onClick={() => choose(null)}>
-                Switch person
-              </Menu.Item>
-              <Menu.Divider />
-              <Menu.Label>Appearance</Menu.Label>
-              {(
-                [
-                  ["auto", "Match this device", IconSunMoon],
-                  ["light", "Light", IconSun],
-                  ["dark", "Dark", IconMoon],
-                ] as const
-              ).map(([scheme, label, Icon]) => (
-                <Menu.Item key={scheme} leftSection={<Icon size={16} />} onClick={() => setColorScheme(scheme)} fw={colorScheme === scheme ? 600 : undefined}>
-                  {label}
+          <Group gap={4} wrap="nowrap">
+            <HelpPanel />
+            <Menu position="bottom-end" width={240}>
+              <Menu.Target>
+                <ActionIcon variant="subtle" size={44} aria-label="Who's working and settings">
+                  <Avatar size={32} color="ink" radius="xl">
+                    {profile?.name.slice(0, 1) ?? <IconUserCircle />}
+                  </Avatar>
+                </ActionIcon>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Label>
+                  {profile?.name} · {JOB_LABEL[job]}
+                </Menu.Label>
+                <Menu.Item leftSection={<IconUserCircle size={16} />} onClick={() => choose(null)}>
+                  Switch person
                 </Menu.Item>
-              ))}
-              <Menu.Divider />
-              <Menu.Item leftSection={<IconRefresh size={16} />} onClick={resetCoaching}>
-                Show tips again
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
+                <Menu.Divider />
+                <Menu.Label>Appearance</Menu.Label>
+                {(
+                  [
+                    ["auto", "Match this device", IconSunMoon],
+                    ["light", "Light", IconSun],
+                    ["dark", "Dark", IconMoon],
+                  ] as const
+                ).map(([scheme, label, Icon]) => (
+                  <Menu.Item key={scheme} leftSection={<Icon size={16} />} onClick={() => setColorScheme(scheme)} fw={colorScheme === scheme ? 600 : undefined}>
+                    {label}
+                  </Menu.Item>
+                ))}
+                <Menu.Divider />
+                <Menu.Item leftSection={<IconRefresh size={16} />} onClick={resetCoaching}>
+                  Show tips again
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          </Group>
         </Group>
       </AppShell.Header>
 
