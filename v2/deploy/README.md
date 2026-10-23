@@ -68,7 +68,7 @@ once the business depends on it.
 ## 2. Start it
 
 ```bash
-sudo git clone -b claude/warehouse-mobile-scanning-8s2d64 https://github.com/alexthebinary/stockroom.git /opt/stockroom
+sudo git clone -b profitindex https://github.com/alexthebinary/stockroom.git /opt/stockroom
 sudo chown -R "$USER" /opt/stockroom
 cd /opt/stockroom/v2/deploy
 ./start.sh

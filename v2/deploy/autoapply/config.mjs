@@ -16,7 +16,7 @@ export function loadConfig(env = process.env, read = readFileSync) {
   const minutes = (name, d) => Number(env[name] ?? d) * 60_000;
   const implLane = env.AUTO_IMPL_LANE ?? "codex";   // Codex first, local fallback (operator 2026-10-20)
   return {
-    repo, branch: env.PI_BRANCH ?? "claude/warehouse-mobile-scanning-8s2d64", api: env.PI_API ?? "http://127.0.0.1:4100",
+    repo, branch: env.PI_BRANCH ?? "profitindex", api: env.PI_API ?? "http://127.0.0.1:4100",
     base, stateDir, workDir: join(stateDir, "work"), deployLock: join(base, "profitindex-deploy.lock"),
     receiptsDir: join(base, "profitindex-deploy"), haltFile: join(stateDir, "HALT"),
     authors: (env.AUTO_AUTHORS ?? "Serhii,t").split(",").map((s) => s.trim()).filter(Boolean),
