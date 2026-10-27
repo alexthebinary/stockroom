@@ -7,7 +7,7 @@ import { get } from "../../lib/api";
 import { streamHelp, type HelpMessage, type HelpResult } from "./stream";
 
 type Turn = HelpMessage & { navigate?: HelpResult["navigate"] };
-const PAGE_NAMES: Record<string, string> = { "": "Home", receive: "Receive", orders: "Orders", bills: "Bills", payables: "Payables", items: "Items", reports: "Reports", settings: "Settings", guide: "How it works", feedback: "Feedback" };
+const PAGE_NAMES: Record<string, string> = { "": "Home", receive: "Receive", orders: "Orders", bills: "Bills", payables: "Payables", items: "Inventory", reports: "Reports", settings: "Settings", guide: "How it works", feedback: "Feedback" };
 
 /** Route context is sent with each question; no company records or page contents are sent. */
 export function HelpPanel() {

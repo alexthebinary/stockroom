@@ -34,7 +34,8 @@ export function Items() {
   };
   return (
     <>
-      <PageHeader title="Items" action={
+      <title>Inventory · ProfitIndex</title>
+      <PageHeader title="Inventory" action={
         <Group gap="xs">
           <Button onClick={() => setAdding(true)}>+ Add item</Button>
           <ItemCsvImport onImported={refreshItems} />

@@ -11,7 +11,7 @@ export const SCREENS = {
   bills: { to: "/bills", label: "Bills" },
   freight_bill: { to: "/bills/freight/new", label: "Freight bill" },
   payables: { to: "/payables", label: "Payables" },
-  items: { to: "/items", label: "Items" },
+  items: { to: "/items", label: "Inventory" },
   reports: { to: "/reports", label: "Reports" },
   settings: { to: "/settings", label: "Settings" },
   guide: { to: "/guide", label: "How it works" },
