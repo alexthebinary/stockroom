@@ -121,10 +121,12 @@ export function Items() {
   );
 }
 
-function EditItem({ item, facets, onSaved }: { item: Item | null; facets: Facets | undefined; onSaved: () => Promise<void> }) {
+export function EditItem({ item, facets, onSaved }: { item: Item | null; facets: Facets | undefined; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState({
     sku: "",
     name: item?.name ?? "",
+    serialNumber: item?.serialNumber ?? "",
+    modelNumber: item?.modelNumber ?? "",
     weightKg: item?.weightKg ?? "",
     lengthCm: item?.lengthCm ?? "",
     widthCm: item?.widthCm ?? "",
@@ -138,6 +140,8 @@ function EditItem({ item, facets, onSaved }: { item: Item | null; facets: Facets
     try {
       const body = {
         name: form.name,
+        serialNumber: form.serialNumber,
+        modelNumber: form.modelNumber,
         weightKg: form.weightKg === "" ? null : Number(form.weightKg),
         lengthCm: form.lengthCm === "" ? null : Number(form.lengthCm),
         widthCm: form.widthCm === "" ? null : Number(form.widthCm),
@@ -158,6 +162,8 @@ function EditItem({ item, facets, onSaved }: { item: Item | null; facets: Facets
     <Stack>
       {!item ? <TextInput label="SKU" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.currentTarget.value })} maxLength={64} required /> : null}
       <TextInput label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.currentTarget.value })} required />
+      <TextInput type="text" label="Serial number" value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.currentTarget.value })} maxLength={60} />
+      <TextInput type="text" label="Model number" value={form.modelNumber} onChange={(e) => setForm({ ...form, modelNumber: e.currentTarget.value })} maxLength={60} />
       <NumberInput label="Weight (kg)" value={form.weightKg} onChange={(weightKg) => setForm({ ...form, weightKg })} min={0} allowNegative={false} step={0.1} />
       <Input.Wrapper label="Length × Width × Height (cm)">
         <Group grow gap="xs" wrap="nowrap">

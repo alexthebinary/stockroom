@@ -30,6 +30,8 @@ const itemBody = z.object({
   sku: z.string().trim().min(1).max(64),
   name: z.string().trim().min(1),
   weightKg: z.number().positive().nullish(),
+  serialNumber: label,
+  modelNumber: label,
   lengthCm: z.number().positive().nullish(),
   widthCm: z.number().positive().nullish(),
   heightCm: z.number().positive().nullish(),

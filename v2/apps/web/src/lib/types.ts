@@ -5,6 +5,8 @@ export type Item = {
   id: number;
   sku: string;
   name: string;
+  serialNumber?: string | null;
+  modelNumber?: string | null;
   weightKg?: number | null;
   lengthCm?: number | null;
   widthCm?: number | null;
