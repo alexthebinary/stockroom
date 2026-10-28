@@ -68,8 +68,14 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
       take: 200,
     });
     const vendors = await db.vendor.findMany({ where: { id: { in: orders.map((o) => o.vendorId!).filter(Boolean) } } });
+    const items = await db.item.findMany({
+      where: { id: { in: [...new Set(orders.flatMap((o) => o.lines.map((l) => l.itemId)))] } },
+      select: { id: true, sku: true, name: true },
+    });
+    const itemsById = new Map(items.map((item) => [item.id, item]));
     return orders.map((o) => ({
       ...o,
+      lines: o.lines.map((line) => ({ ...line, item: itemsById.get(line.itemId) })),
       vendor: vendors.find((v) => v.id === o.vendorId) ?? null,
       heldUnits: o.lines.reduce((s, l) => s + l.qtyHeld, 0),
       totalEstimateCents: o.lines.reduce((s, l) => s + l.qtyOrdered * l.unitCostCents, 0),

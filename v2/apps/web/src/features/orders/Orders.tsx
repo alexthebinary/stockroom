@@ -1,11 +1,12 @@
-import { ActionIcon, Anchor, Button, Card, Group, NumberInput, Select, SimpleGrid, Stack, Table, Text, Textarea, Title } from "@mantine/core";
+import { ActionIcon, Anchor, Button, Card, Group, NumberInput, Select, SimpleGrid, Stack, Table, Text, Textarea, TextInput, Title } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Ruled, RuledRow } from "../../components/Ruled";
 import { formatDate, Loading, Money, PageHeader, ReceivingBadge, StatusBadge, toastErr, toastOk, usd } from "../../components/ui";
 import { get, post } from "../../lib/api";
+import { filterOrders, orderFilterKeys, orderFilterOptions, readOrderFilters, type OrderFilterKey } from "../../lib/orderFilters";
 import type { Item, PurchaseOrder, Vendor, Warehouse } from "../../lib/types";
 
 function Axes({ po }: { po: PurchaseOrder }) {
@@ -20,8 +21,26 @@ function Axes({ po }: { po: PurchaseOrder }) {
 
 /** Purchase orders. Each shows the WMS doc's three independent statuses: billed, paid, received. */
 export function Orders() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters = readOrderFilters(searchParams);
+  const updateFilter = (key: OrderFilterKey, value: string | null) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value && !(key === "lifecycle" && value === "OPEN")) next.set(key, value);
+      else next.delete(key);
+      return next;
+    }, { replace: true });
+  };
+  const clearFilters = () => setSearchParams((current) => {
+    const next = new URLSearchParams(current);
+    orderFilterKeys.forEach((key) => next.delete(key));
+    return next;
+  });
   const orders = useQuery({ queryKey: ["orders", "ALL"], queryFn: () => get<PurchaseOrder[]>("/purchase-orders?lifecycle=ALL") });
   if (!orders.data) return <Loading />;
+  const filtered = filterOrders(orders.data, filters);
+  const vendors = [...new Map(orders.data.flatMap((po) => po.vendor ? [[String(po.vendor.id), po.vendor.name] as const] : [])).entries()]
+    .map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
   return (
     <>
       <PageHeader
@@ -33,8 +52,24 @@ export function Orders() {
           </Button>
         }
       />
-      <Ruled label="Purchase orders" empty="No orders yet. Create one, or let the dock open one by scanning a surprise delivery.">
-        {orders.data.map((po) => (
+      <Stack gap="sm" mb="lg">
+        <TextInput label="Search orders" placeholder="PO number, vendor, item SKU or name" value={filters.search} onChange={(event) => updateFilter("search", event.currentTarget.value)} />
+        <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }} style={{ minWidth: 0 }}>
+          <Select label="Vendor" placeholder="All vendors" data={vendors} value={filters.vendorId || null} onChange={(value) => updateFilter("vendorId", value)} searchable clearable nothingFoundMessage="No vendors found" />
+          <Select label="Billing" placeholder="All billing statuses" data={orderFilterOptions.billingStatus} value={filters.billingStatus || null} onChange={(value) => updateFilter("billingStatus", value)} clearable />
+          <Select label="Payment" placeholder="All payment statuses" data={orderFilterOptions.paymentStatus} value={filters.paymentStatus || null} onChange={(value) => updateFilter("paymentStatus", value)} clearable />
+          <Select label="Receiving" placeholder="All receiving statuses" data={orderFilterOptions.receivingStatus} value={filters.receivingStatus || null} onChange={(value) => updateFilter("receivingStatus", value)} clearable />
+          <Select label="Lifecycle" data={orderFilterOptions.lifecycle} value={filters.lifecycle} onChange={(value) => updateFilter("lifecycle", value)} allowDeselect={false} />
+          <TextInput type="date" label="Created from" value={filters.from} onChange={(event) => updateFilter("from", event.currentTarget.value)} />
+          <TextInput type="date" label="Created to" value={filters.to} onChange={(event) => updateFilter("to", event.currentTarget.value)} />
+        </SimpleGrid>
+        <Group justify="space-between">
+          <Text size="sm" c="dimmed" role="status">{filtered.length} of {orders.data.length} orders</Text>
+          <Button variant="subtle" onClick={clearFilters}>Clear filters</Button>
+        </Group>
+      </Stack>
+      <Ruled label="Purchase orders" empty={orders.data.length ? "No orders match these filters" : "No orders yet. Create one, or let the dock open one by scanning a surprise delivery."}>
+        {filtered.map((po) => (
           <RuledRow
             key={po.id}
             to={`/orders/${po.id}`}

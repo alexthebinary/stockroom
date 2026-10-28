@@ -12,7 +12,14 @@ describe("list endpoints the screens read", () => {
     const bill = ok(await c.accountant.get(`/api/bills/${bills[0].id}`)).body;
     expect(bill.preview.lines).toHaveLength(1);
     expect(bill.lines[0].item.sku).toBe("SAMPLE-WIDGET");
-    expect(ok(await c.admin.get("/api/purchase-orders?lifecycle=ALL")).body).toHaveLength(1);
+    const orders = ok(await c.admin.get("/api/purchase-orders?lifecycle=ALL")).body;
+    expect(orders).toHaveLength(1);
+    expect(orders[0]).toMatchObject({ vendor: { id: c.ids.supplier }, heldUnits: 2, totalEstimateCents: 100000 });
+    expect(orders[0].lines).toHaveLength(1);
+    const detail = ok(await c.admin.get(`/api/purchase-orders/${orders[0].id}`)).body;
+    const { id, sku, name } = detail.lines[0].item;
+    expect(orders[0].lines[0].item).toEqual({ id, sku, name });
+    expect(orders[0].lines[0].item).toMatchObject({ id: c.ids.widget, sku: "SAMPLE-WIDGET" });
     expect(ok(await c.clerk.get("/api/receiving/expected")).body).toHaveLength(0);
     expect(ok(await c.admin.get("/api/receipts")).body).toHaveLength(1);
     expect(ok(await c.admin.get("/api/registers?register=WH_IN")).body).toHaveLength(1);
