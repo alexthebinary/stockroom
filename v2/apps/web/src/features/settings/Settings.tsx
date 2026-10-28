@@ -66,6 +66,18 @@ function Team() {
 }
 
 function Places() {
+  const queryClient = useQueryClient();
+  const [warehouse, setWarehouse] = useState({ code: "", name: "" });
+  const addWarehouse = async () => {
+    try {
+      const created = await post<Warehouse>("/warehouses", { code: warehouse.code, name: warehouse.name });
+      setWarehouse({ code: "", name: "" });
+      toastOk(`${created.name} added`);
+      await queryClient.invalidateQueries({ queryKey: ["warehouses"] });
+    } catch (error) {
+      toastErr(error);
+    }
+  };
   const warehouses = useQuery({ queryKey: ["warehouses"], queryFn: () => get<Warehouse[]>("/warehouses") });
   const vendors = useQuery({ queryKey: ["vendors"], queryFn: () => get<Vendor[]>("/vendors") });
   return (
@@ -79,6 +91,13 @@ function Places() {
             {w.code} · {w.name}
           </Text>
         ))}
+        <Group align="flex-end" mt="sm" wrap="wrap">
+          <TextInput label="Code" placeholder="e.g. EAST" value={warehouse.code} maxLength={12} onChange={(e) => setWarehouse({ ...warehouse, code: e.currentTarget.value })} w={120} />
+          <TextInput label="Name" placeholder="e.g. East warehouse" value={warehouse.name} onChange={(e) => setWarehouse({ ...warehouse, name: e.currentTarget.value })} style={{ flex: 1, minWidth: 180 }} />
+          <Button onClick={addWarehouse} disabled={!warehouse.code.trim() || !warehouse.name.trim()}>
+            Add warehouse
+          </Button>
+        </Group>
       </Card>
       <Card withBorder>
         <Text fw={600} mb="xs">
