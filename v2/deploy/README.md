@@ -247,7 +247,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now profitindex-autodepl
 
 ## Daily auto-apply
 
-The daily job applies eligible feedback at 03:00 local time, checks each change,
+The job applies eligible feedback (open notes whose spec Serhii confirmed) at 06:00 and 18:00 local time, checks each change,
 then ships it through auto-deploy. Install its units for the current user:
 
 ```bash

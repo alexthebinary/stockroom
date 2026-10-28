@@ -14,7 +14,7 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), { status
 const ok = (stdout = "") => ({ code: 0, stdout, stderr: "" });
 const envelope = (result) => ok(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: JSON.stringify(result) }));
 const spec = { problem: "The brand filter resets", expected: "Remember the brand filter", where: "/items", doneWhen: ["The filter survives a reload"] };
-const note = (id) => ({ id, kind: "IDEA", revision: 2, note: "Remember my brand filter", path: "/items", author: "t", status: "OPEN", autoState: null, autoClaim: null, createdAt: `2026-10-15T00:00:0${id}Z` });
+const note = (id) => ({ id, kind: "IDEA", revision: 2, note: "Remember my brand filter", path: "/items", author: "t", status: "OPEN", autoState: null, specState: "CONFIRMED", autoClaim: null, createdAt: `2026-10-15T00:00:0${id}Z` });
 const DISABLE = "systemctl --user disable --now profitindex-autoapply.timer";
 
 function harness(t) {
