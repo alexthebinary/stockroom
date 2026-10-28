@@ -27,6 +27,21 @@ export function parseSpec(raw: unknown): Spec | null {
   return parsed.success ? parsed.data : null;
 }
 
+/** A final_spec written as text: `<arg_key>k</arg_key><arg_value>v</arg_value>` pairs. Only a complete, valid one counts. */
+export function specFromMarkup(text: string) {
+  const args: Record<string, unknown> = {};
+  for (const [, key, value] of text.matchAll(/<arg_key>\s*([\w]+)\s*<\/arg_key>\s*<arg_value>([\s\S]*?)<\/arg_value>/g)) args[key!] = value!.trim();
+  if (typeof args.doneWhen === "string" && args.doneWhen.startsWith("[")) { try { args.doneWhen = JSON.parse(args.doneWhen); } catch { /* split on ; below */ } }
+  return parseSpec(args);
+}
+
+/** Some models write the tool call out as text. Never show it: keep the words before it, and take a complete spec from it. */
+export function stripToolMarkup(text: string, spec: Spec | null): { text: string; spec: Spec | null; hadMarkup: boolean } {
+  const at = text.search(/<tool_call>|<arg_key>|<\/?arg_value>/);
+  if (at < 0) return { text, spec, hadMarkup: false };
+  return { text: text.slice(0, at).trim(), spec: spec ?? specFromMarkup(text.slice(at)), hadMarkup: true };
+}
+
 /** The clarify Worker (Workers AI, free allocation). Off unless CLARIFY_URL and CLARIFY_SECRET are both set. */
 export function createClarifier(fetchImpl: typeof fetch = fetch): Clarifier | null {
   const url = process.env.CLARIFY_URL;
@@ -44,9 +59,11 @@ export function createClarifier(fetchImpl: typeof fetch = fetch): Clarifier | nu
         const body = (await response.json().catch(() => null)) as { status?: string; text?: unknown; spec?: unknown } | null;
         if (body?.status === "capped") return { ok: false, reason: "capped" };
         if (!response.ok || body?.status !== "ok" || typeof body.text !== "string") return { ok: false, reason: "error" };
-        const spec = parseSpec(body.spec);
-        if (body.spec != null && !spec) return { ok: false, reason: "error" };
-        return { ok: true, text: body.text.slice(0, 2000), spec };
+        const parsed = parseSpec(body.spec);
+        if (body.spec != null && !parsed) return { ok: false, reason: "error" };
+        const clean = stripToolMarkup(body.text, parsed);
+        if (clean.hadMarkup && !clean.spec) return { ok: false, reason: "error" };
+        return { ok: true, text: (clean.text || "Here is what I understood. Please confirm it.").slice(0, 2000), spec: clean.spec };
       } catch {
         return { ok: false, reason: "error" };
       }

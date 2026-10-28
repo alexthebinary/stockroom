@@ -1,4 +1,4 @@
-import { parseSpec, type Clarifier } from "./clarifier";
+import { parseSpec, stripToolMarkup, type Clarifier } from "./clarifier";
 
 /** Same words as the clarify Worker's SYSTEM (a test in clarify-worker keeps them in sync). */
 export const CLARIFY_SYSTEM =
@@ -37,14 +37,10 @@ export function createLocalClarifier(url: string, fetchImpl: typeof fetch = fetc
           attemptedSpec = true;
           spec = parseSpec(call.function.arguments) ?? spec;
         }
-        let content = (msg?.content ?? "").trim();
-        // Some replies write the tool call out as text instead of calling it: take a complete one, never show the markup.
-        const markup = content.search(/<tool_call>|<arg_key>|<\/?arg_value>/);
-        if (markup >= 0) {
-          if (!spec) spec = specFromMarkup(content.slice(markup));
-          attemptedSpec ||= true;
-          content = content.slice(0, markup).trim();
-        }
+        const clean = stripToolMarkup((msg?.content ?? "").trim(), spec);
+        const content = clean.text;
+        spec = clean.spec;
+        attemptedSpec ||= clean.hadMarkup;
         if ((!spec && attemptedSpec) || (!spec && !content)) return { ok: false, reason: "error" };
         const text = content || "Here is what I understood. Please confirm it.";
         return { ok: true, text: text.slice(0, 2000), spec };
@@ -55,10 +51,3 @@ export function createLocalClarifier(url: string, fetchImpl: typeof fetch = fetc
   };
 }
 
-/** A final_spec written as text: `<arg_key>k</arg_key><arg_value>v</arg_value>` pairs. Only a complete, valid one counts. */
-function specFromMarkup(text: string) {
-  const args: Record<string, unknown> = {};
-  for (const [, key, value] of text.matchAll(/<arg_key>\s*([\w]+)\s*<\/arg_key>\s*<arg_value>([\s\S]*?)<\/arg_value>/g)) args[key!] = value!.trim();
-  if (typeof args.doneWhen === "string" && args.doneWhen.startsWith("[")) { try { args.doneWhen = JSON.parse(args.doneWhen); } catch { /* split on ; below */ } }
-  return parseSpec(args);
-}

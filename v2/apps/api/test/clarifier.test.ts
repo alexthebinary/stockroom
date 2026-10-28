@@ -33,4 +33,12 @@ describe("the clarifier client", () => {
     const throwing = (async () => { throw new Error("offline"); }) as unknown as typeof fetch;
     expect(await createClarifier(throwing)!.clarify({ note: NOTE, turns: [] })).toEqual({ ok: false, reason: "error" });
   });
+
+  it("never passes a tool call written as text to the tester: a cut-off one is an error (fallback runs), a complete one becomes the spec", async () => {
+    process.env.CLARIFY_URL = "https://w/v1/clarify"; process.env.CLARIFY_SECRET = "s";
+    const cut = "<tool_call>final_spec<arg_key>problem</arg_key><arg_value>Weight uses kg</arg_value><arg_key>expected</arg_key><arg_value>Weight should accept and display";
+    expect(await createClarifier(fakeFetch(200, { status: "ok", text: cut, spec: null }))!.clarify({ note: NOTE, turns: [] })).toEqual({ ok: false, reason: "error" });
+    const whole = "Got it.<tool_call>final_spec<arg_key>problem</arg_key><arg_value>p</arg_value><arg_key>expected</arg_key><arg_value>e</arg_value><arg_key>where</arg_key><arg_value>/receive</arg_value><arg_key>doneWhen</arg_key><arg_value>d</arg_value></tool_call>";
+    expect(await createClarifier(fakeFetch(200, { status: "ok", text: whole, spec: null }))!.clarify({ note: NOTE, turns: [] })).toEqual({ ok: true, text: "Got it.", spec: SPEC });
+  });
 });
