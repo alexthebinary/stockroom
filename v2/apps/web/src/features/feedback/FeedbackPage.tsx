@@ -21,7 +21,8 @@ export function FeedbackPage() {
   const apiStatus = status === "ATTENTION" ? "OPEN" : status;
   const notes = useQuery({ queryKey: ["feedback", "all", apiStatus], queryFn: () => get<(Note & { turns?: { role: string; content: string }[] })[]>(`/feedback?status=${apiStatus}&turns=1`) });
   const open = useQuery({ queryKey: ["feedback", "all", "OPEN"], queryFn: () => get<(Note & { turns?: { role: string; content: string }[] })[]>("/feedback?status=OPEN&turns=1") });
-  const attention = (note: { status: string; autoState: string }) => note.status === "OPEN" && note.autoState === "NEEDS_ANSWER";
+  /** Serhii signs off on every note: open until its spec is confirmed, or while the AI is waiting on his answer. */
+  const attention = (note: { status: string; autoState: string; specState: string }) => note.status === "OPEN" && (note.autoState === "NEEDS_ANSWER" || note.specState !== "CONFIRMED");
   const sorted = [...(notes.data ?? [])].sort((a, b) => Number(attention(b)) - Number(attention(a)));
   const rows = status === "ATTENTION" ? sorted.filter(attention) : sorted;
   const waiting = (open.data ?? []).filter(attention);
@@ -66,11 +67,11 @@ export function FeedbackPage() {
       />
       {waiting.length && status !== "ATTENTION" ? (
         <Alert color="red" variant="filled" icon={<IconAlertCircle />} mb="md" title="Needs attention">
-          {waiting.length === 1 ? "1 note has" : `${waiting.length} notes have`} a question waiting for an answer: {waiting.map((n) => `#${n.id}`).join(", ")}.
+          {waiting.length === 1 ? "1 note has" : `${waiting.length} notes have`} not clarified with Serhii yet: {waiting.map((n) => `#${n.id}`).join(", ")}.
         </Alert>
       ) : null}
       <div className="ruled">
-        {rows.length === 0 ? <div className="ruled-empty">{status === "ATTENTION" ? "Nothing needs an answer right now." : `No ${STATUS_LABEL[status].toLowerCase()} feedback.`} Testers leave notes from the Feedback tab on the right edge of every screen.</div> : null}
+        {rows.length === 0 ? <div className="ruled-empty">{status === "ATTENTION" ? "Every open note has a confirmed spec." : `No ${STATUS_LABEL[status].toLowerCase()} feedback.`} Testers leave notes from the Feedback tab on the right edge of every screen.</div> : null}
         {rows.map((note) => (
           <div key={note.id} className="ruled-row" style={{ alignItems: "start", ...(attention(note) ? { borderLeft: "4px solid var(--mantine-color-red-6)", paddingLeft: 12 } : {}) }}>
             <div style={{ minWidth: 0 }}>
@@ -82,7 +83,7 @@ export function FeedbackPage() {
                 </Text>
               </Group>
               <Text style={{ whiteSpace: "pre-wrap" }}>{note.note}</Text>
-              {attention(note) && note.turns?.at(-1)?.role === "assistant" ? (
+              {attention(note) && note.autoState === "NEEDS_ANSWER" && note.turns?.at(-1)?.role === "assistant" ? (
                 <Text size="sm" mt={6} p="xs" style={{ whiteSpace: "pre-wrap", borderLeft: "3px solid var(--mantine-color-red-6)", background: "var(--surface-sunken)" }}>
                   {note.turns.at(-1)!.content}
                 </Text>
