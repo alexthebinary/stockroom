@@ -46,4 +46,12 @@ describe("clarify fallback", () => {
     const empty = (async () => new Response(JSON.stringify({ choices: [{ message: { content: "" } }] }))) as unknown as typeof fetch;
     expect(await createLocalClarifier("http://llm:8081", empty).clarify({ note: NOTE, turns: [] })).toEqual({ ok: false, reason: "error" });
   });
+
+  it("local: a tool call written out as text is never shown; a complete one still yields the spec", async () => {
+    const reply = (content: string) => (async () => new Response(JSON.stringify({ choices: [{ message: { content } }] }))) as unknown as typeof fetch;
+    const cut = "<tool_call>final_spec<arg_key>problem</arg_key><arg_value>Weight uses kg</arg_value><arg_key>expected</arg_key><arg_value>Weight should accept and display";
+    expect(await createLocalClarifier("http://llm:8081", reply(cut)).clarify({ note: NOTE, turns: [] })).toEqual({ ok: false, reason: "error" });
+    const whole = `Got it.<tool_call>final_spec<arg_key>problem</arg_key><arg_value>p</arg_value><arg_key>expected</arg_key><arg_value>e</arg_value><arg_key>where</arg_key><arg_value>/receive</arg_value><arg_key>doneWhen</arg_key><arg_value>d</arg_value></tool_call>`;
+    expect(await createLocalClarifier("http://llm:8081", reply(whole)).clarify({ note: NOTE, turns: [] })).toEqual({ ok: true, text: "Got it.", spec: SPEC });
+  });
 });

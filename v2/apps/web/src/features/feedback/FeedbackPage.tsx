@@ -94,7 +94,7 @@ export function FeedbackPage() {
               <Text size="xs" c="dimmed">
                 {note.specState === "CONFIRMED" ? "Spec confirmed" : note.specState === "PROPOSED" ? "Spec waiting for confirmation" : ""}
                 {note.autoState === "SHIPPED" && note.autoCommit ? ` · Shipped in ${note.autoCommit.slice(0, 7)}` : ""}
-                {note.autoState === "FAILED" && note.autoNote ? ` · Not built yet: ${note.autoNote}` : ""}
+                {note.autoState === "FAILED" && note.autoNote ? ` · Not built yet: ${note.autoNote.replace(/\s*\(log [^)]*\)/, "")}` : ""}
                 {note.autoState === "NEEDS_ANSWER" ? " · Waiting for your answer" : ""}
               </Text>
               <Text size="sm" c="dimmed" mt={4}>
