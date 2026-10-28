@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import { PageHeader, toastErr, toastOk } from "../../components/ui";
 import { get, post, put } from "../../lib/api";
 import type { Item } from "../../lib/types";
+import { cmToIn, formatMeasurements, inToCm, kgToLb, lbToKg } from "../../lib/units";
 
 type Valuation = { rows: { itemId: number; onHand: number; held: number; valueCents: number; averageCents: number }[] };
 type Facets = { brands: string[]; categories: string[] };
@@ -51,8 +52,7 @@ export function Items() {
       <Stack gap="xs">
         {(items.data ?? []).map((i) => {
           const v = valuation.data?.rows.find((r) => r.itemId === i.id);
-          const dimensions = [i.lengthCm, i.widthCm, i.heightCm];
-          const measurements = [i.weightKg != null ? `${i.weightKg} kg` : null, dimensions.some((d) => d != null) ? `${dimensions.map((d) => d ?? "—").join("×")} cm` : null].filter(Boolean).join(" · ");
+          const measurements = formatMeasurements(i);
           return (
             <Card key={i.id} withBorder padding="sm">
               <Group justify="space-between" wrap="nowrap">
@@ -128,10 +128,10 @@ export function EditItem({ item, facets, onSaved }: { item: Item | null; facets:
     name: item?.name ?? "",
     serialNumber: item?.serialNumber ?? "",
     modelNumber: item?.modelNumber ?? "",
-    weightKg: item?.weightKg ?? "",
-    lengthCm: item?.lengthCm ?? "",
-    widthCm: item?.widthCm ?? "",
-    heightCm: item?.heightCm ?? "",
+    weightLb: item?.weightKg != null ? kgToLb(item.weightKg) : "",
+    lengthIn: item?.lengthCm != null ? cmToIn(item.lengthCm) : "",
+    widthIn: item?.widthCm != null ? cmToIn(item.widthCm) : "",
+    heightIn: item?.heightCm != null ? cmToIn(item.heightCm) : "",
     brand: item?.brand ?? "",
     category: item?.category ?? "",
   });
@@ -143,10 +143,10 @@ export function EditItem({ item, facets, onSaved }: { item: Item | null; facets:
         name: form.name,
         serialNumber: form.serialNumber,
         modelNumber: form.modelNumber,
-        weightKg: form.weightKg === "" ? null : Number(form.weightKg),
-        lengthCm: form.lengthCm === "" ? null : Number(form.lengthCm),
-        widthCm: form.widthCm === "" ? null : Number(form.widthCm),
-        heightCm: form.heightCm === "" ? null : Number(form.heightCm),
+        weightKg: form.weightLb === "" ? null : lbToKg(Number(form.weightLb)),
+        lengthCm: form.lengthIn === "" ? null : inToCm(Number(form.lengthIn)),
+        widthCm: form.widthIn === "" ? null : inToCm(Number(form.widthIn)),
+        heightCm: form.heightIn === "" ? null : inToCm(Number(form.heightIn)),
         brand: form.brand,
         category: form.category,
       };
@@ -165,12 +165,12 @@ export function EditItem({ item, facets, onSaved }: { item: Item | null; facets:
       <TextInput label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.currentTarget.value })} required />
       <TextInput type="text" label="Serial number" value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.currentTarget.value })} maxLength={60} />
       <TextInput type="text" label="Model number" value={form.modelNumber} onChange={(e) => setForm({ ...form, modelNumber: e.currentTarget.value })} maxLength={60} />
-      <NumberInput label="Weight (kg)" value={form.weightKg} onChange={(weightKg) => setForm({ ...form, weightKg })} min={0} allowNegative={false} step={0.1} />
-      <Input.Wrapper label="Length × Width × Height (cm)">
+      <NumberInput label="Weight (lb)" value={form.weightLb} onChange={(weightLb) => setForm({ ...form, weightLb })} min={0} allowNegative={false} step={0.1} />
+      <Input.Wrapper label="Length × Width × Height (in)">
         <Group grow gap="xs" wrap="nowrap">
-          <NumberInput aria-label="Length (cm)" placeholder="Length" value={form.lengthCm} onChange={(lengthCm) => setForm({ ...form, lengthCm })} min={0} allowNegative={false} />
-          <NumberInput aria-label="Width (cm)" placeholder="Width" value={form.widthCm} onChange={(widthCm) => setForm({ ...form, widthCm })} min={0} allowNegative={false} />
-          <NumberInput aria-label="Height (cm)" placeholder="Height" value={form.heightCm} onChange={(heightCm) => setForm({ ...form, heightCm })} min={0} allowNegative={false} />
+          <NumberInput aria-label="Length (in)" placeholder="Length" value={form.lengthIn} onChange={(lengthIn) => setForm({ ...form, lengthIn })} min={0} allowNegative={false} />
+          <NumberInput aria-label="Width (in)" placeholder="Width" value={form.widthIn} onChange={(widthIn) => setForm({ ...form, widthIn })} min={0} allowNegative={false} />
+          <NumberInput aria-label="Height (in)" placeholder="Height" value={form.heightIn} onChange={(heightIn) => setForm({ ...form, heightIn })} min={0} allowNegative={false} />
         </Group>
       </Input.Wrapper>
       <Autocomplete label="Brand" placeholder="e.g. XAG" data={facets?.brands ?? []} value={form.brand} onChange={(brand) => setForm({ ...form, brand })} maxLength={60} />
