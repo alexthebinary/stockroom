@@ -1,6 +1,6 @@
 import { EVENTS, type EventType } from "@pi/domain";
-import { Alert, Button, Card, Group, SegmentedControl, Select, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { Alert, Button, Card, Checkbox, Group, SegmentedControl, Select, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -12,12 +12,44 @@ type Books = { sound: boolean; problems: string[]; figures: Record<string, numbe
 type Tb = { rows: { id: number; code: string; name: string; isHeader: boolean; parentId: number | null; debitCents: number; creditCents: number }[]; totalDebitCents: number; totalCreditCents: number };
 type Valuation = { rows: { itemId: number; sku: string; name: string; onHand: number; held: number; valueCents: number; averageCents: number; glCents: number; varianceCents: number }[]; totalValueCents: number; totalGlCents: number };
 type ToReceive = {
-  orders: { poId: number; poNumber: string; billingStatus: string; vendor: { name: string } | null; warehouse: { name: string } | null; days: number; units: number; valueCents: number; lines: { lineId: number; item: { name: string; sku: string }; ordered: number; received: number; outstanding: number; billed: boolean }[] }[];
+  orders: { poId: number; poNumber: string; billingStatus: string; vendor: { name: string } | null; warehouse: { id: number; code: string; name: string } | null; days: number; units: number; valueCents: number; lines: { lineId: number; item: { name: string; sku: string }; ordered: number; received: number; outstanding: number; billed: boolean }[] }[];
   totalUnits: number;
   totalValueCents: number;
 };
-type Held = { poId: number; poNumber: string; vendor: { name: string } | null; item: { name: string }; qtyHeld: number; estimateCents: number; receivedAt: string; days: number }[];
+type Held = { poId: number; poNumber: string; vendor: { name: string } | null; item: { name: string; sku: string }; qtyHeld: number; estimateCents: number; receivedAt: string; days: number }[];
 type InventoryMovement = { rows: { id: number; itemId: number; transactionDate: string; sku: string; name: string; brand: string | null; category: string | null; inboundQty: number; outboundQty: number; endingBalance: number }[] };
+
+/** Each report owns its URL keys; switching tabs and browser navigation preserve filters. */
+function useReportFilters<T extends Record<string, string>>(prefix: string, defaults: T) {
+  const [params, setParams] = useSearchParams();
+  const values = Object.fromEntries(Object.entries(defaults).map(([key, fallback]) => [key, params.get(`${prefix}_${key}`) ?? fallback])) as T;
+  const set = (key: keyof T & string, value: string) => setParams((previous) => {
+    const next = new URLSearchParams(previous);
+    if (value === defaults[key]) next.delete(`${prefix}_${key}`);
+    else next.set(`${prefix}_${key}`, value);
+    return next;
+  }, { replace: true });
+  const clear = () => setParams((previous) => {
+    const next = new URLSearchParams(previous);
+    for (const key of Object.keys(defaults)) next.delete(`${prefix}_${key}`);
+    return next;
+  }, { replace: true });
+  return { values, set, clear, active: Object.keys(defaults).some((key) => values[key] !== defaults[key]) };
+}
+
+function matches(query: string, ...fields: (string | null | undefined)[]) {
+  const needle = query.trim().toLocaleLowerCase();
+  return fields.some((field) => field?.toLocaleLowerCase().includes(needle));
+}
+
+function FilterSummary({ count, noun, clear }: { count: number; noun: string; clear: () => void }) {
+  return <Group justify="space-between" wrap="wrap">
+    <Text size="sm" c="dimmed" role="status">{plural(count, noun, noun === "entry" ? "entries" : `${noun}s`)} shown</Text>
+    <Button variant="subtle" size="xs" onClick={clear}>Clear filters</Button>
+  </Group>;
+}
+
+const filterStyle = { flex: "1 1 180px", minWidth: 0 };
 
 const REPORT_TABS = {
   books: { label: "Books check", component: BooksCheck },
@@ -170,14 +202,21 @@ const INVENTORY_PART: Record<string, string> = { inventoryOnHand: "on hand", inv
 
 /** The general journal: every entry, newest first, each with its debits and credits. */
 function Journal() {
-  const [event, setEvent] = useState<string | null>(null);
-  const [pages, setPages] = useState(1);
-  const journal = useQuery({
-    queryKey: ["journal", event, pages],
-    queryFn: () => get<JournalEntry[]>(`/journal?take=${PAGE * pages}${event ? `&event=${event}` : ""}`),
-    placeholderData: keepPreviousData,
+  const filters = useReportFilters("journal", { event: "", q: "", from: "", to: "" });
+  const { event, q, from, to } = filters.values;
+  const validRange = !from || !to || from <= to;
+  const journal = useInfiniteQuery({
+    queryKey: ["journal", event, q, from, to],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ take: String(PAGE), skip: String(pageParam) });
+      for (const [key, value] of Object.entries({ event, q, from, to })) if (value) params.set(key, value);
+      return get<JournalEntry[]>(`/journal?${params}`);
+    },
+    getNextPageParam: (last, pages) => last.length === PAGE ? pages.length * PAGE : undefined,
+    enabled: validRange,
   });
-  const entries = journal.data ?? [];
+  const entries = journal.data?.pages.flat() ?? [];
   const receipts = useQuery({
     queryKey: ["journal-receipts"],
     queryFn: () => get<{ id: number; poId: number }[]>("/receipts"),
@@ -203,27 +242,29 @@ function Journal() {
   const total = (side: "DEBIT" | "CREDIT") => lines.filter((l) => l.side === side).reduce((s, l) => s + l.amountCents, 0);
   return (
     <Stack>
-      <Group justify="space-between" align="flex-end">
+      <Group align="flex-end" wrap="wrap">
         <Select
-          aria-label="Transaction type"
+          label="Transaction type"
           placeholder="All transaction types"
           data={Object.entries(EVENTS).map(([value, e]) => ({ value, label: e.label }))}
-          value={event}
-          onChange={(v) => {
-            setEvent(v);
-            setPages(1);
-          }}
+          value={event || null}
+          onChange={(value) => filters.set("event", value ?? "")}
           clearable
-          w={280}
+          style={filterStyle}
         />
-        <Text size="sm" c="dimmed">
-          {plural(entries.length, "entry", "entries")}, newest first
-        </Text>
+        <TextInput label="Search entries" placeholder="Entry, memo, actor or account" value={q} onChange={(e) => filters.set("q", e.currentTarget.value)} style={filterStyle} />
+        <TextInput type="date" label="From (UTC)" value={from} max={to || undefined} onChange={(e) => filters.set("from", e.currentTarget.value)} style={filterStyle} />
+        <TextInput type="date" label="To (UTC)" value={to} min={from || undefined} onChange={(e) => filters.set("to", e.currentTarget.value)} style={filterStyle} />
       </Group>
-      {journal.isLoading ? (
+      <FilterSummary count={entries.length} noun="entry" clear={filters.clear} />
+      {!validRange ? (
+        <Text c="dimmed">End date must be on or after start date.</Text>
+      ) : journal.isError ? (
+        <Alert color="orange" title="Could not load journal entries">{journal.error.message}</Alert>
+      ) : journal.isLoading ? (
         <Loading />
       ) : entries.length === 0 ? (
-        <div className="ruled-empty">{event ? "No entries of this type yet." : "Nothing is posted yet. Entries appear here as bills, receipts and payments post."}</div>
+        <div className="ruled-empty">{filters.active ? "Nothing matches these filters." : "Nothing is posted yet. Entries appear here as bills, receipts and payments post."}</div>
       ) : (
         <Table.ScrollContainer minWidth={720}>
           <Table withRowBorders={false} verticalSpacing={6}>
@@ -291,8 +332,8 @@ function Journal() {
           </Table>
         </Table.ScrollContainer>
       )}
-      {entries.length === PAGE * pages ? (
-        <Button variant="subtle" w="fit-content" onClick={() => setPages(pages + 1)} loading={journal.isFetching}>
+      {validRange && journal.hasNextPage ? (
+        <Button variant="subtle" w="fit-content" onClick={() => void journal.fetchNextPage()} loading={journal.isFetching}>
           Show {PAGE} more
         </Button>
       ) : null}
@@ -301,24 +342,36 @@ function Journal() {
 }
 
 function InventoryMovementReport() {
-  const [range, setRange] = useState(() => {
+  const [defaultRange] = useState(() => {
     const today = new Date();
     const start = new Date(today);
     start.setUTCDate(start.getUTCDate() - 29);
     return { from: start.toISOString().slice(0, 10), to: today.toISOString().slice(0, 10) };
   });
+  const filters = useReportFilters("movement", { ...defaultRange, q: "", brand: "", category: "" });
+  const range = { from: filters.values.from, to: filters.values.to };
   const validRange = Boolean(range.from && range.to && range.from <= range.to);
   const movement = useQuery({
     queryKey: ["inventory-movement", range.from, range.to],
     queryFn: () => get<InventoryMovement>(`/reports/inventory-movement?${new URLSearchParams(range)}`),
     enabled: validRange,
   });
+  const allRows = movement.data?.rows ?? [];
+  // Filter already-computed rows: opening stock and per-item balances stay intact.
+  const rows = allRows.filter((row) => matches(filters.values.q, row.sku, row.name)
+    && (!filters.values.brand || row.brand === filters.values.brand)
+    && (!filters.values.category || row.category === filters.values.category));
+  const options = (key: "brand" | "category") => [...new Set([...allRows.map((row) => row[key]), filters.values[key]].filter((value): value is string => Boolean(value)))].sort();
   return (
     <Stack>
-      <Group align="flex-end">
-        <TextInput type="date" label="Start date" value={range.from} max={range.to || undefined} onChange={(e) => setRange({ ...range, from: e.currentTarget.value })} />
-        <TextInput type="date" label="End date" value={range.to} min={range.from || undefined} onChange={(e) => setRange({ ...range, to: e.currentTarget.value })} />
+      <Group align="flex-end" wrap="wrap">
+        <TextInput style={filterStyle} type="date" label="Start date" value={range.from} max={range.to || undefined} onChange={(e) => filters.set("from", e.currentTarget.value)} />
+        <TextInput style={filterStyle} type="date" label="End date" value={range.to} min={range.from || undefined} onChange={(e) => filters.set("to", e.currentTarget.value)} />
+        <TextInput label="Search items" placeholder="SKU or name" value={filters.values.q} onChange={(e) => filters.set("q", e.currentTarget.value)} style={filterStyle} />
+        <Select label="Brand" placeholder="All brands" data={options("brand")} value={filters.values.brand || null} onChange={(value) => filters.set("brand", value ?? "")} clearable searchable style={filterStyle} />
+        <Select label="Category" placeholder="All categories" data={options("category")} value={filters.values.category || null} onChange={(value) => filters.set("category", value ?? "")} clearable searchable style={filterStyle} />
       </Group>
+      <FilterSummary count={rows.length} noun="movement" clear={filters.clear} />
       <Text size="sm" c="dimmed">On-hand stock across all warehouses, oldest first. Dates use UTC; ending balance is per item after each movement.</Text>
       {!validRange ? (
         <Text c="dimmed">Choose a start and end date, with the end on or after the start.</Text>
@@ -326,8 +379,8 @@ function InventoryMovementReport() {
         <Alert color="orange" title="Could not load inventory movements">{movement.error.message}</Alert>
       ) : !movement.data ? (
         <Loading />
-      ) : movement.data.rows.length === 0 ? (
-        <Text c="dimmed">No inventory movements in this date range.</Text>
+      ) : rows.length === 0 ? (
+        <Text c="dimmed">{filters.active ? "Nothing matches these filters." : "No inventory movements in this date range."}</Text>
       ) : (
         <Table.ScrollContainer minWidth={900}>
           <Table>
@@ -344,7 +397,7 @@ function InventoryMovementReport() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {movement.data.rows.map((row) => (
+              {rows.map((row) => (
                 <Table.Tr key={row.id}>
                   <Table.Td>{row.transactionDate.slice(0, 10)}</Table.Td>
                   <Table.Td>{row.sku}</Table.Td>
@@ -365,64 +418,80 @@ function InventoryMovementReport() {
 }
 
 function StockValue() {
+  const filters = useReportFilters("stock", { q: "", hideZero: "" });
   const v = useQuery({ queryKey: ["valuation"], queryFn: () => get<Valuation>("/reports/valuation") });
   if (!v.data) return <Loading />;
+  const rows = v.data.rows.filter((row) => matches(filters.values.q, row.sku, row.name)
+    && (filters.values.hideZero !== "1" || row.onHand !== 0 || row.held !== 0));
   return (
-    <Table.ScrollContainer minWidth={620}>
-      <Table>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Item</Table.Th>
-            <Table.Th ta="right">On hand</Table.Th>
-            <Table.Th ta="right">Average</Table.Th>
-            <Table.Th ta="right">Value</Table.Th>
-            <Table.Th ta="right">Ledger</Table.Th>
-            <Table.Th ta="right">Awaiting bill</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {v.data.rows.map((r) => (
-            <Table.Tr key={r.itemId}>
-              <Table.Td>
-                {r.sku} · {r.name}
-              </Table.Td>
-              <Table.Td ta="right">{r.onHand}</Table.Td>
-              <Table.Td ta="right">{usd(Math.round(r.averageCents))}</Table.Td>
-              <Table.Td ta="right">
-                <Money cents={r.valueCents} />
-              </Table.Td>
-              <Table.Td ta="right" c={r.varianceCents ? "orange" : undefined}>
-                <Money cents={r.glCents} />
-              </Table.Td>
-              <Table.Td ta="right">{r.held || ""}</Table.Td>
-            </Table.Tr>
-          ))}
-          <Table.Tr fw={700}>
-            <Table.Td>Total</Table.Td>
-            <Table.Td />
-            <Table.Td />
-            <Table.Td ta="right">
-              <Money cents={v.data.totalValueCents} />
-            </Table.Td>
-            <Table.Td ta="right">
-              <Money cents={v.data.totalGlCents} />
-            </Table.Td>
-            <Table.Td />
-          </Table.Tr>
-        </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
+    <Stack>
+      <Group align="flex-end" wrap="wrap">
+        <TextInput label="Search items" placeholder="SKU or name" value={filters.values.q} onChange={(e) => filters.set("q", e.currentTarget.value)} style={filterStyle} />
+        <Checkbox label="Hide zero stock" checked={filters.values.hideZero === "1"} onChange={(e) => filters.set("hideZero", e.currentTarget.checked ? "1" : "")} mb="xs" />
+      </Group>
+      <FilterSummary count={rows.length} noun="item" clear={filters.clear} />
+      {rows.length === 0 ? <Text c="dimmed">{filters.active ? "Nothing matches these filters." : "No stock items yet."}</Text> : (
+        <Table.ScrollContainer minWidth={620}>
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Item</Table.Th>
+                <Table.Th ta="right">On hand</Table.Th>
+                <Table.Th ta="right">Average</Table.Th>
+                <Table.Th ta="right">Value</Table.Th>
+                <Table.Th ta="right">Ledger</Table.Th>
+                <Table.Th ta="right">Awaiting bill</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {rows.map((r) => (
+                <Table.Tr key={r.itemId}>
+                  <Table.Td>
+                    {r.sku} · {r.name}
+                  </Table.Td>
+                  <Table.Td ta="right">{r.onHand}</Table.Td>
+                  <Table.Td ta="right">{usd(Math.round(r.averageCents))}</Table.Td>
+                  <Table.Td ta="right">
+                    <Money cents={r.valueCents} />
+                  </Table.Td>
+                  <Table.Td ta="right" c={r.varianceCents ? "orange" : undefined}>
+                    <Money cents={r.glCents} />
+                  </Table.Td>
+                  <Table.Td ta="right">{r.held || ""}</Table.Td>
+                </Table.Tr>
+              ))}
+              <Table.Tr fw={700}>
+                <Table.Td>Total</Table.Td>
+                <Table.Td />
+                <Table.Td />
+                <Table.Td ta="right">
+                  <Money cents={rows.reduce((sum, row) => sum + row.valueCents, 0)} />
+                </Table.Td>
+                <Table.Td ta="right">
+                  <Money cents={rows.reduce((sum, row) => sum + row.glCents, 0)} />
+                </Table.Td>
+                <Table.Td />
+              </Table.Tr>
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
+    </Stack>
   );
 }
 
 function HeldStock() {
+  const filters = useReportFilters("held", { q: "" });
   const held = useQuery({ queryKey: ["held"], queryFn: () => get<Held>("/reports/held") });
   if (!held.data) return <Loading />;
-  if (held.data.length === 0) return <Text c="dimmed">Nothing is waiting for a bill.</Text>;
+  const rows = held.data.filter((row) => matches(filters.values.q, row.poNumber, row.vendor?.name, row.item.sku, row.item.name));
   return (
     <Stack gap="xs">
+      <TextInput label="Search awaiting bill" placeholder="PO number, vendor or item" value={filters.values.q} onChange={(e) => filters.set("q", e.currentTarget.value)} />
+      <FilterSummary count={rows.length} noun="line" clear={filters.clear} />
+      {rows.length === 0 ? <Text c="dimmed">{filters.active ? "Nothing matches these filters." : "Nothing is waiting for a bill."}</Text> : null}
       <Text c="dimmed">Received at the dock, counted, not yet sellable or valued. Oldest first.</Text>
-      {held.data.map((h, i) => (
+      {rows.map((h, i) => (
         <Card key={i} withBorder padding="sm" component={Link} to={`/orders/${h.poId}`} style={{ textDecoration: "none", color: "inherit" }}>
           <Group justify="space-between" wrap="nowrap">
             <div>
@@ -445,15 +514,27 @@ function HeldStock() {
 
 /** Ordered, not yet at the dock. Each order opens Receive with that order picked. */
 function ToReceiveReport() {
+  const filters = useReportFilters("toReceive", { q: "", warehouse: "" });
   const data = useQuery({ queryKey: ["to-receive"], queryFn: () => get<ToReceive>("/reports/to-receive") });
   if (!data.data) return <Loading />;
-  if (data.data.orders.length === 0) return <Text c="dimmed">Everything ordered has arrived.</Text>;
+  const warehouses = [...new Map(data.data.orders.flatMap((order) => order.warehouse ? [[String(order.warehouse.id), { value: String(order.warehouse.id), label: `${order.warehouse.name} (${order.warehouse.code})` }] as const] : [])).values()];
+  if (filters.values.warehouse && !warehouses.some((warehouse) => warehouse.value === filters.values.warehouse)) {
+    warehouses.push({ value: filters.values.warehouse, label: "Selected warehouse (no open orders)" });
+  }
+  const orders = data.data.orders.filter((order) => matches(filters.values.q, order.poNumber, order.vendor?.name, ...order.lines.flatMap((line) => [line.item.sku, line.item.name]))
+    && (!filters.values.warehouse || String(order.warehouse?.id) === filters.values.warehouse));
   return (
     <Stack gap="xs">
+      <Group align="flex-end" wrap="wrap">
+        <TextInput label="Search orders" placeholder="PO number, vendor or item" value={filters.values.q} onChange={(e) => filters.set("q", e.currentTarget.value)} style={filterStyle} />
+        <Select label="Warehouse" placeholder="All warehouses" data={warehouses} value={filters.values.warehouse || null} onChange={(value) => filters.set("warehouse", value ?? "")} clearable searchable style={filterStyle} />
+      </Group>
+      <FilterSummary count={orders.length} noun="order" clear={filters.clear} />
+      {orders.length === 0 ? <Text c="dimmed">{filters.active ? "Nothing matches these filters." : "Everything ordered has arrived."}</Text> : null}
       <Text c="dimmed">
-        {plural(data.data.totalUnits, "unit")} on order, about {usd(data.data.totalValueCents)} at order cost. Oldest order first. Tap one to receive it.
+        {plural(orders.reduce((sum, order) => sum + order.units, 0), "unit")} on order, about {usd(orders.reduce((sum, order) => sum + order.valueCents, 0))} at order cost. Oldest order first. Tap one to receive it.
       </Text>
-      {data.data.orders.map((o) => (
+      {orders.map((o) => (
         <Card key={o.poId} withBorder padding="sm" component={Link} to={`/receive?po=${o.poId}`} style={{ textDecoration: "none", color: "inherit" }}>
           <Group justify="space-between" wrap="nowrap" align="flex-start">
             <div>

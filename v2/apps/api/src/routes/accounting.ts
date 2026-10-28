@@ -62,13 +62,35 @@ export function registerAccounting(app: FastifyInstance, { db }: Deps) {
         sourceType: z.string().optional(),
         sourceId: z.coerce.number().int().optional(),
         event: z.string().optional(),
+        q: z.string().trim().optional(),
+        from: z.iso.date().optional(),
+        to: z.iso.date().optional(),
         take: z.coerce.number().int().min(1).max(500).default(50),
         skip: z.coerce.number().int().min(0).default(0),
+      }).refine(({ from, to }) => !from || !to || from <= to, {
+        path: ["to"], message: "End date must be on or after start date",
       }),
       request.query,
     );
     const entries = await db.journalEntry.findMany({
-      where: { ...(q.sourceType ? { sourceType: q.sourceType } : {}), ...(q.sourceId != null ? { sourceId: q.sourceId } : {}), ...(q.event ? { event: q.event } : {}) },
+      where: {
+        ...(q.sourceType ? { sourceType: q.sourceType } : {}),
+        ...(q.sourceId != null ? { sourceId: q.sourceId } : {}),
+        ...(q.event ? { event: q.event } : {}),
+        ...((q.from || q.to) ? { date: {
+          ...(q.from ? { gte: new Date(`${q.from}T00:00:00.000Z`) } : {}),
+          ...(q.to ? { lt: new Date(new Date(`${q.to}T00:00:00.000Z`).getTime() + 86_400_000) } : {}),
+        } } : {}),
+        ...(q.q ? { OR: [
+          { number: { contains: q.q, mode: "insensitive" as const } },
+          { memo: { contains: q.q, mode: "insensitive" as const } },
+          { actor: { contains: q.q, mode: "insensitive" as const } },
+          { lines: { some: { account: { OR: [
+            { code: { contains: q.q, mode: "insensitive" as const } },
+            { name: { contains: q.q, mode: "insensitive" as const } },
+          ] } } } },
+        ] } : {}),
+      },
       // Debits first, as a journal reads.
       include: { lines: { include: { account: true }, orderBy: [{ side: "desc" }, { id: "asc" }] }, reverses: { select: { number: true } } },
       orderBy: { id: "desc" },
