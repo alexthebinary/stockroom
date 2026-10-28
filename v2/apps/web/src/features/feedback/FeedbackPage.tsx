@@ -10,17 +10,21 @@ import { ClarifyChat } from "./ClarifyChat";
 import { KIND_LABEL, type Note } from "./FeedbackLayer";
 
 const STATUS_LABEL = { OPEN: "Open", DONE: "Done", WONTFIX: "Won't fix" } as const;
+type Tab = keyof typeof STATUS_LABEL | "ATTENTION";
 
 /** Every note testers left, with what to do about it, and an export to paste into Claude. */
 export function FeedbackPage() {
   const queryClient = useQueryClient();
   const phone = useMediaQuery("(max-width: 640px)");
   const [chatFor, setChatFor] = useState<number | null>(null);
-  const [status, setStatus] = useState<"OPEN" | "DONE" | "WONTFIX">("OPEN");
-  const notes = useQuery({ queryKey: ["feedback", "all", status], queryFn: () => get<(Note & { turns?: { role: string; content: string }[] })[]>(`/feedback?status=${status}&turns=1`) });
+  const [status, setStatus] = useState<Tab>("OPEN");
+  const apiStatus = status === "ATTENTION" ? "OPEN" : status;
+  const notes = useQuery({ queryKey: ["feedback", "all", apiStatus], queryFn: () => get<(Note & { turns?: { role: string; content: string }[] })[]>(`/feedback?status=${apiStatus}&turns=1`) });
+  const open = useQuery({ queryKey: ["feedback", "all", "OPEN"], queryFn: () => get<(Note & { turns?: { role: string; content: string }[] })[]>("/feedback?status=OPEN&turns=1") });
   const attention = (note: { status: string; autoState: string }) => note.status === "OPEN" && note.autoState === "NEEDS_ANSWER";
-  const rows = [...(notes.data ?? [])].sort((a, b) => Number(attention(b)) - Number(attention(a)));
-  const waiting = rows.filter(attention);
+  const sorted = [...(notes.data ?? [])].sort((a, b) => Number(attention(b)) - Number(attention(a)));
+  const rows = status === "ATTENTION" ? sorted.filter(attention) : sorted;
+  const waiting = (open.data ?? []).filter(attention);
   const ai = useQuery({ queryKey: ["ai-clarify"], queryFn: () => get<{ clarify: boolean }>("/ai/status") });
   const setNoteStatus = async (id: number, next: Note["status"]) => {
     try {
@@ -55,14 +59,18 @@ export function FeedbackPage() {
           </Group>
         }
       />
-      <SegmentedControl mb="md" value={status} onChange={(v) => setStatus(v as typeof status)} data={Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }))} />
-      {waiting.length ? (
+      <SegmentedControl mb="md" value={status} onChange={(v) => setStatus(v as typeof status)} data={[
+          { value: "ATTENTION", label: <Text span c="red" fw={700}>Needs attention{waiting.length ? ` (${waiting.length})` : ""}</Text> },
+          ...Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })),
+        ]}
+      />
+      {waiting.length && status !== "ATTENTION" ? (
         <Alert color="red" variant="filled" icon={<IconAlertCircle />} mb="md" title="Needs attention">
           {waiting.length === 1 ? "1 note has" : `${waiting.length} notes have`} a question waiting for an answer: {waiting.map((n) => `#${n.id}`).join(", ")}.
         </Alert>
       ) : null}
       <div className="ruled">
-        {rows.length === 0 ? <div className="ruled-empty">No {STATUS_LABEL[status].toLowerCase()} feedback. Testers leave notes from the Feedback tab on the right edge of every screen.</div> : null}
+        {rows.length === 0 ? <div className="ruled-empty">{status === "ATTENTION" ? "Nothing needs an answer right now." : `No ${STATUS_LABEL[status].toLowerCase()} feedback.`} Testers leave notes from the Feedback tab on the right edge of every screen.</div> : null}
         {rows.map((note) => (
           <div key={note.id} className="ruled-row" style={{ alignItems: "start", ...(attention(note) ? { borderLeft: "4px solid var(--mantine-color-red-6)", paddingLeft: 12 } : {}) }}>
             <div style={{ minWidth: 0 }}>
