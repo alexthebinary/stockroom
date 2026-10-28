@@ -23,8 +23,12 @@ export async function preflight({ cfg, journal, runner, fetchImpl = fetch }) {
 
   // Implementation lane for tonight: the Dell's local model, or Codex when the local model is busy
   // (another session's gpu-job moves it to CPU mode by design) and Codex has quota (operator 2026-10-16).
-  let lane = cfg.implLane === "local" ? "local" : "codex";
-  if (lane === "local") {
+  let lane = cfg.implLane === "local" ? "local" : cfg.implLane === "codex" ? "codex" : "claude";
+  if (lane === "claude") {
+    // Plan login, no quota probe: a failed Claude call falls back to the local model inside implementNote.
+    const found = await runner("claude", ["--version"], { timeoutMs: 30_000 });
+    if (found.code !== 0) return { ok: false, reason: "claude CLI unavailable" };
+  } else if (lane === "local") {
     const local = await runner("local-llm", ["status"], { timeoutMs: 30_000 });
     if (/\bq36-cpu\b/.test(local.stdout)) {
       const busy = await codexQuota(runner);

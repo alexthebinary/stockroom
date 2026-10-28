@@ -36,7 +36,7 @@ function harness(t) {
     stateDir: join(tmp, "state"), workDir: join(tmp, "work"),
     receiptsDir: join(tmp, "receipts"), deployLock: join(tmp, "deploy.lock"),
     haltFile: join(tmp, "state/HALT"), vaultLogDir: join(tmp, "vault-logs"),
-    authors: ["t"], maxPerRun: 5, notifyUrl: "http://ntfy", dryRun: false,
+    authors: ["t"], maxPerRun: 5, notifyUrl: "http://ntfy", dryRun: false, implLane: "codex",
     timeouts: { model: 5000, codex: 5000, gate: 5000, migration: 5000, deploy: 5000 },
   };
   mkdirSync(join(cfg.receiptsDir, "backups"), { recursive: true });

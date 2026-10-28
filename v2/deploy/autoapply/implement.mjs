@@ -14,7 +14,7 @@ function latestDump(cfg) {
   return null;
 }
 
-/** One note: fresh worktree at `parent`, Codex implements, every gate passes, one commit. */
+/** One note: fresh worktree at `parent`, the lane implements, every gate passes, one commit. */
 export async function implementNote({ note, spec, runId, parent, base, baseImage, cfg, runner, reviewFn, keepWorktree = false }) {
   const wt = join(cfg.workDir, runId, `note-${note.id}`);
   const g = (cwd, ...args) => runner("git", ["-C", cwd, ...args], { timeoutMs: 120_000 });
@@ -34,25 +34,55 @@ export async function implementNote({ note, spec, runId, parent, base, baseImage
       "Rules: add or extend a test that fails without the change (API: v2/apps/api/test/*.test.ts); no unrelated changes; a database change needs a new ADDITIVE Prisma migration the currently deployed app can still run on (never drop or rename a column or table); never weaken existing tests.",
       TESTING,
     ].join("\n");
+    // Returns null when the lane edited the worktree, else the reason it did not.
+    const runLocal = async () => {
+      // Operator 2026-10-16: unattended implementation uses the local model;
+      // Codex 0.162 requires wire_api=responses for this provider.
+      const local = await runner("codex", ["exec", "--skip-git-repo-check", "-C", wt, "-s", "workspace-write", "-c", "mcp_servers.claude.enabled=false", "-c", "model_provider=localllm", "-c", 'model_providers.localllm={name="local-llm",base_url="http://127.0.0.1:8080/v1",wire_api="responses",stream_idle_timeout_ms=900000}', "-c", "model_context_window=32768", "-c", "model_auto_compact_token_limit=24000", "-m", "local", "-"], { timeoutMs: cfg.timeouts.codex, input: prompt });
+      // Keep the whole transcript: the last line is often just a token count (dry run 3, 2026-10-16).
+      const log = join(dirname(wt), `note-${note.id}.local-${Date.now()}.log`);
+      writeFileSync(log, `exit ${local.code} timedOut ${local.timedOut}\n--- stdout\n${local.stdout}\n--- stderr\n${local.stderr}\n`);
+      const lines = (local.stdout + "\n" + local.stderr).trim().split("\n");
+      const why = lines.filter((l) => /error|failed|exceed|context/i.test(l)).pop() ?? lines.pop();
+      return local.code !== 0 || local.timedOut ? `local model: ${local.timedOut ? "timed out" : why} (log ${log})` : null;
+    };
+    // Headless Claude on the plan login: no operator hooks (the recall hook would send the note to an outside
+    // reranker), no MCP, no shell. It edits files only; gate.sh runs the tests and its output feeds the retry.
+    const runClaude = async () => {
+      const args = ["-p", prompt, "--model", "sonnet", "--output-format", "json", "--permission-mode", "acceptEdits", "--settings", JSON.stringify({ disableAllHooks: true }), "--strict-mcp-config", "--disable-slash-commands", "--allowedTools", "Read", "Edit", "Write", "Grep", "Glob"];
+      let why = "";
+      for (let tries = 0; tries < 2; tries++) {
+        const r = await runner("claude", args, { cwd: wt, timeoutMs: cfg.timeouts.codex });
+        if (r.timedOut) return "claude: timed out";
+        let out = null;
+        try { out = JSON.parse(r.stdout); } catch { /* not JSON: fall through to the stderr tail */ }
+        if (r.code === 0 && out && out.is_error !== true) return null;
+        why = String(out?.result ?? (r.stdout + r.stderr).trim().split("\n").pop() ?? "").slice(0, 200);
+        if (!/overloaded|high demand|rate.?limit|\b(429|503|529)\b/i.test(why)) break;
+        await new Promise((resolve) => setTimeout(resolve, cfg.retryDelayMs ?? 60_000));
+      }
+      return `claude: ${why}`;
+    };
+    const runCodex = async () => {
+      const codex = await runner("dispatch", ["codex", `--cd=${wt}`, "--kind=implement", "--write", promptFile], { timeoutMs: cfg.timeouts.codex });
+      return codex.code !== 0 || !/status:\s+answered/.test(codex.stdout) ? `codex: ${codex.timedOut ? "timed out" : (codex.stdout + codex.stderr).trim().split("\n").pop()}` : null;
+    };
+    // Claude first, the local model when Claude is unavailable (a lane error, never a gate failure).
+    const runLane = async () => {
+      if (cfg.implLane === "local") return runLocal();
+      if (cfg.implLane === "codex") return runCodex();
+      const claude = await runClaude();
+      if (!claude) return null;
+      const local = await runLocal();
+      return local ? `${claude}; ${local}` : null;
+    };
     const attempts = 1 + (cfg.retries ?? 2);
     let migration = false;
     let prompt = request;
     for (let attempt = 0; attempt < attempts; attempt++) {
       writeFileSync(promptFile, prompt);
-      if (cfg.implLane === "local") {
-        // Operator 2026-10-16: unattended implementation uses the local model;
-        // Codex 0.162 requires wire_api=responses for this provider.
-        const local = await runner("codex", ["exec", "--skip-git-repo-check", "-C", wt, "-s", "workspace-write", "-c", "mcp_servers.claude.enabled=false", "-c", "model_provider=localllm", "-c", 'model_providers.localllm={name="local-llm",base_url="http://127.0.0.1:8080/v1",wire_api="responses",stream_idle_timeout_ms=900000}', "-c", "model_context_window=32768", "-c", "model_auto_compact_token_limit=24000", "-m", "local", "-"], { timeoutMs: cfg.timeouts.codex, input: prompt });
-        // Keep the whole transcript: the last line is often just a token count (dry run 3, 2026-10-16).
-        const log = join(dirname(wt), `note-${note.id}.local-${Date.now()}.log`);
-        writeFileSync(log, `exit ${local.code} timedOut ${local.timedOut}\n--- stdout\n${local.stdout}\n--- stderr\n${local.stderr}\n`);
-        const lines = (local.stdout + "\n" + local.stderr).trim().split("\n");
-        const why = lines.filter((l) => /error|failed|exceed|context/i.test(l)).pop() ?? lines.pop();
-        if (local.code !== 0 || local.timedOut) return { ok: false, reason: `local model: ${local.timedOut ? "timed out" : why} (log ${log})` };
-      } else {
-        const codex = await runner("dispatch", ["codex", `--cd=${wt}`, "--kind=implement", "--write", promptFile], { timeoutMs: cfg.timeouts.codex });
-        if (codex.code !== 0 || !/status:\s+answered/.test(codex.stdout)) return { ok: false, reason: `codex: ${codex.timedOut ? "timed out" : (codex.stdout + codex.stderr).trim().split("\n").pop()}` };
-      }
+      const failed = await runLane();
+      if (failed) return { ok: false, reason: failed };
       await g(wt, "add", "-A");
       const files = (await g(wt, "diff", "--cached", "--name-only")).stdout.split("\n").filter(Boolean);
       if (!files.length) return { ok: false, reason: "no change" };

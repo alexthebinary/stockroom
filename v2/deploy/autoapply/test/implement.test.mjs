@@ -298,3 +298,71 @@ for (const lane of ["local", "codex"]) {
     assert.match(prompts[0], /Done when/i);
   });
 }
+
+// claude lane: headless Claude edits files only, with no hooks; lane errors retry once, then fall back to the local model.
+const claudeRunner = (script, seen, opts = {}) => {
+  const base = fake(withTest, opts);
+  let n = 0;
+  return async (cmd, args, opts) => {
+    if (cmd === "claude") {
+      seen.push({ args, cwd: opts.cwd });
+      const step = script[n++];
+      if (step.edit) step.edit(opts.cwd);
+      return step.res;
+    }
+    return base(cmd, args, opts);
+  };
+};
+const okJson = { code: 0, stdout: JSON.stringify({ is_error: false, result: "done" }), stderr: "" };
+const busyJson = { code: 1, stdout: JSON.stringify({ is_error: true, result: "We\u2019re currently experiencing high demand" }), stderr: "" };
+
+test("claude lane: runs in the worktree with hooks off and file tools only", async (t) => {
+  const { r, cfg } = repo();
+  t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+  cfg.implLane = "claude";
+  const parent = git(r, "rev-parse", "HEAD");
+  const seen = [];
+  const out = await implementNote({ note, spec, runId: "claude-ok", parent, base: parent, baseImage: "base", cfg,
+    runner: claudeRunner([{ edit: withTest, res: okJson }], seen), reviewFn: pass });
+  assert.equal(out.ok, true, out.reason);
+  assert.equal(seen.length, 1);
+  assert.match(seen[0].cwd, /note-9$/);
+  assert.ok(seen[0].args.includes("--strict-mcp-config"));
+  assert.ok(JSON.parse(seen[0].args[seen[0].args.indexOf("--settings") + 1]).disableAllHooks);
+  assert.deepEqual(seen[0].args.slice(seen[0].args.indexOf("--allowedTools") + 1), ["Read", "Edit", "Write", "Grep", "Glob"]);
+});
+
+test("claude lane: a 'high demand' error is retried once", async (t) => {
+  const { r, cfg } = repo();
+  t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+  cfg.implLane = "claude"; cfg.retryDelayMs = 1;
+  const parent = git(r, "rev-parse", "HEAD");
+  const seen = [];
+  const out = await implementNote({ note, spec, runId: "claude-retry", parent, base: parent, baseImage: "base", cfg,
+    runner: claudeRunner([{ res: busyJson }, { edit: withTest, res: okJson }], seen), reviewFn: pass });
+  assert.equal(out.ok, true, out.reason);
+  assert.equal(seen.length, 2);
+});
+
+test("claude lane: a persistent error falls back to the local model", async (t) => {
+  const { r, cfg } = repo();
+  t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+  cfg.implLane = "claude"; cfg.retryDelayMs = 1;
+  const parent = git(r, "rev-parse", "HEAD");
+  const commands = [];
+  const out = await implementNote({ note, spec, runId: "claude-fallback", parent, base: parent, baseImage: "base", cfg,
+    runner: claudeRunner([{ res: busyJson }, { res: busyJson }], [], { commands }), reviewFn: pass });
+  assert.equal(out.ok, true, out.reason);
+  assert.ok(commands.some((c) => c[0] === "codex" && c.join(" ").includes("model_provider=localllm")), "the local model must run after Claude fails twice");
+});
+
+test("claude lane: when the local fallback also fails, the reason names both", async (t) => {
+  const { r, cfg } = repo();
+  t.after(() => rmSync(join(r, ".."), { recursive: true, force: true }));
+  cfg.implLane = "claude"; cfg.retryDelayMs = 1;
+  const parent = git(r, "rev-parse", "HEAD");
+  const out = await implementNote({ note, spec, runId: "claude-both", parent, base: parent, baseImage: "base", cfg,
+    runner: claudeRunner([{ res: busyJson }, { res: busyJson }], [], { implementation: { code: 1, stdout: "", stderr: "ERROR: no model" } }), reviewFn: pass });
+  assert.equal(out.ok, false);
+  assert.match(out.reason, /^claude: .*high demand.*; local model: ERROR: no model/);
+});

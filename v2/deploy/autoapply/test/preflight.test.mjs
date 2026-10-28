@@ -79,3 +79,16 @@ test("an exhausted 7-day window with the local model busy is a neutral skip nami
 test("halted means no run", async () => {
   assert.match((await preflight({ cfg, journal: journal("abc"), runner: runner(), fetchImpl: health("a3f40a8") })).reason, /halted/);
 });
+test("claude lane needs only the claude CLI: no Codex quota call, no local-llm status", async () => {
+  const calls = [];
+  const delegate = runner();
+  const out = await preflight({ cfg: { ...cfg, implLane: "claude" }, journal: journal(), fetchImpl: health("a3f40a8"),
+    runner: async (cmd, args) => { calls.push(cmd); return delegate(cmd, args); } });
+  assert.deepEqual(out, { ok: true, base: SHA, short: "a3f40a8", baseImage: "sha256:live", lane: "claude" });
+  assert.equal(calls.includes("local-llm") || calls.includes("python3"), false);
+});
+test("claude lane fails preflight when the CLI is missing", async () => {
+  const out = await preflight({ cfg: { ...cfg, implLane: "claude" }, journal: journal(), fetchImpl: health("a3f40a8"),
+    runner: runner({ "claude --version": { code: 127, stdout: "", stderr: "not found" } }) });
+  assert.deepEqual(out, { ok: false, reason: "claude CLI unavailable" });
+});

@@ -14,7 +14,7 @@ export function loadConfig(env = process.env, read = readFileSync) {
   const stateDir = join(base, "profitindex-autoapply");
   const dot = envFile(join(repo, "v2/deploy/.env"), read);
   const minutes = (name, d) => Number(env[name] ?? d) * 60_000;
-  const implLane = env.AUTO_IMPL_LANE ?? "codex";   // Codex first, local fallback (operator 2026-10-20)
+  const implLane = env.AUTO_IMPL_LANE ?? "claude";   // claude | local | codex; claude falls back to local (Codex replaced 2026-10-28)
   return {
     repo, branch: env.PI_BRANCH ?? "profitindex", api: env.PI_API ?? "http://127.0.0.1:4100",
     base, stateDir, workDir: join(stateDir, "work"), deployLock: join(base, "profitindex-deploy.lock"),
