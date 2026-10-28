@@ -178,6 +178,27 @@ function Journal() {
     placeholderData: keepPreviousData,
   });
   const entries = journal.data ?? [];
+  const receipts = useQuery({
+    queryKey: ["journal-receipts"],
+    queryFn: () => get<{ id: number; poId: number }[]>("/receipts"),
+    enabled: entries.some((entry) => entry.sourceType === "RECEIPT"),
+  });
+  const poByReceipt = new Map((receipts.data ?? []).map((receipt) => [receipt.id, receipt.poId]));
+  const sourceUrl = (entry: JournalEntry) => {
+    switch (entry.sourceType) {
+      case "BILL":
+      case "BILL_VOID":
+        return `/bills/${entry.sourceId}`;
+      case "PAYMENT":
+        return entry.billId ? `/bills/${entry.billId}` : null;
+      case "RECEIPT": {
+        const poId = poByReceipt.get(entry.sourceId);
+        return poId ? `/orders/${poId}` : null;
+      }
+      default:
+        return null;
+    }
+  };
   const lines = entries.flatMap((e) => e.lines);
   const total = (side: "DEBIT" | "CREDIT") => lines.filter((l) => l.side === side).reduce((s, l) => s + l.amountCents, 0);
   return (
@@ -223,7 +244,7 @@ function Journal() {
                       {i === 0 ? (
                         <>
                           <Text size="sm" fw={600}>
-                            {e.number}
+                            {sourceUrl(e) ? <Link to={sourceUrl(e)!} target="_blank" rel="noopener">{e.number}</Link> : e.number}
                           </Text>
                           <Text size="xs" c="dimmed">
                             {formatDate(e.date)} · {e.actor}

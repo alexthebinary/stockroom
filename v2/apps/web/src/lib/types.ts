@@ -137,4 +137,4 @@ export type Home = {
 };
 
 export type JournalLine = { id: number; side: "DEBIT" | "CREDIT"; amountCents: number; role: string; account: { code: string; name: string } };
-export type JournalEntry = { id: number; number: string; event: string; date: string; memo: string | null; actor: string; reverses: { number: string } | null; lines: JournalLine[] };
+export type JournalEntry = { id: number; number: string; sourceType: string; sourceId: number; billId?: number | null; event: string; date: string; memo: string | null; actor: string; reverses: { number: string } | null; lines: JournalLine[] };

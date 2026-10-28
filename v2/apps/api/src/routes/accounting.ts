@@ -67,7 +67,7 @@ export function registerAccounting(app: FastifyInstance, { db }: Deps) {
       }),
       request.query,
     );
-    return db.journalEntry.findMany({
+    const entries = await db.journalEntry.findMany({
       where: { ...(q.sourceType ? { sourceType: q.sourceType } : {}), ...(q.sourceId != null ? { sourceId: q.sourceId } : {}), ...(q.event ? { event: q.event } : {}) },
       // Debits first, as a journal reads.
       include: { lines: { include: { account: true }, orderBy: [{ side: "desc" }, { id: "asc" }] }, reverses: { select: { number: true } } },
@@ -75,5 +75,15 @@ export function registerAccounting(app: FastifyInstance, { db }: Deps) {
       take: q.take,
       skip: q.skip,
     });
+    // Payments have no detail page; their bill is the source document to open.
+    const paymentIds = entries.filter((entry) => entry.sourceType === "PAYMENT").map((entry) => entry.sourceId);
+    const payments = paymentIds.length
+      ? await db.payment.findMany({ where: { id: { in: paymentIds } }, select: { id: true, billId: true } })
+      : [];
+    const billByPayment = new Map(payments.map((payment) => [payment.id, payment.billId]));
+    return entries.map((entry) => ({
+      ...entry,
+      ...(entry.sourceType === "PAYMENT" ? { billId: billByPayment.get(entry.sourceId) ?? null } : {}),
+    }));
   });
 }
