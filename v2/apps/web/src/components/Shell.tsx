@@ -23,6 +23,7 @@ import type { Job } from "../lib/api";
 import { JOB_LABEL, useProfile } from "../lib/profile";
 import { HelpPanel } from "../features/help/HelpPanel";
 import { resetCoaching } from "./Coach";
+import { GlobalSearch } from "./GlobalSearch";
 
 type Section = { to: string; label: string; icon: typeof IconHome };
 
@@ -85,6 +86,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </Group>
           </Link>
           <Group gap={4} wrap="nowrap">
+            <GlobalSearch />
             <HelpPanel />
             <Menu position="bottom-end" width={240}>
               <Menu.Target>

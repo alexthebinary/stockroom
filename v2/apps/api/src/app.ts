@@ -15,6 +15,7 @@ import { registerHelp } from "./routes/help";
 import { registerPayables } from "./routes/payables";
 import { registerPurchasing } from "./routes/purchasing";
 import { registerReports } from "./routes/reports";
+import { registerSearch } from "./routes/search";
 import { registerSetup } from "./routes/setup";
 
 declare module "fastify" {
@@ -131,6 +132,7 @@ export function buildApp(deps: Deps): FastifyInstance {
   registerPurchasing(app, deps);
   registerPayables(app, deps);
   registerReports(app, deps);
+  registerSearch(app, deps);
   registerAdjustments(app, deps);
   registerAi(app, deps);
   registerFeedback(app, deps);
