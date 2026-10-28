@@ -40,7 +40,7 @@ export function registerSearch(app: FastifyInstance, { db }: Deps) {
     if (accounting) Object.assign(groups, {
       bills: bills.map((b) => ({ type: "bill", id: b.id, title: b.number, subtitle: [vendorName(b.vendorId), b.vendorInvoiceNumber].filter(Boolean).join(" · "), url: `/bills/${b.id}` })),
       vendors: vendors.map((v) => ({ type: "vendor", id: v.id, title: v.name, subtitle: "Settings · Warehouses & vendors", url: "/settings" })),
-      journalEntries: entries.map((e) => ({ type: "journalEntry", id: e.id, title: e.number, subtitle: e.memo ?? "Journal entry", url: `/reports?cat=accounting&tab=journal&q=${encodeURIComponent(e.number)}` })),
+      journalEntries: entries.map((e) => ({ type: "journalEntry", id: e.id, title: e.number, subtitle: e.memo ?? "Journal entry", url: `/reports?cat=accounting&tab=journal&journal_q=${encodeURIComponent(e.number)}` })),
       credits: credits.map((c) => ({ type: "credit", id: c.id, title: c.number, subtitle: "Vendor credit · Open bill", url: `/bills/${c.billId}` })),
       payments: payments.map((p) => ({ type: "payment", id: p.id, title: p.number, subtitle: "Payment · Open bill", url: `/bills/${p.billId}` })),
     });

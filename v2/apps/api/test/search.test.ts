@@ -40,7 +40,7 @@ describe("global search", () => {
       bills: { type: "bill", id: billId, title: "BILL-Needle", url: `/bills/${billId}` },
       vendors: { type: "vendor", id: vendorId, title: "Needle Supply", url: "/settings" },
       items: { type: "item", id: itemId, title: "Search widget", url: "/items" },
-      journalEntries: { type: "journalEntry", id: journalId, title: "JE-000007", url: "/reports?cat=accounting&tab=journal&q=JE-000007" },
+      journalEntries: { type: "journalEntry", id: journalId, title: "JE-000007", url: "/reports?cat=accounting&tab=journal&journal_q=JE-000007" },
       credits: { type: "credit", id: creditId, title: "VC-Needle", url: `/bills/${billId}` },
       payments: { type: "payment", id: paymentId, title: "PAY-Needle", url: `/bills/${billId}` },
     };
