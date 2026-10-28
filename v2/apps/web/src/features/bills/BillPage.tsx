@@ -33,7 +33,7 @@ import type { Bill, PurchaseOrder, Vendor } from "../../lib/types";
 
 type Rule = { role: string; account: { code: string; name: string } };
 type Payment = { id: number; number: string; direction: "OUT" | "IN"; amountCents: number; method: string; paidAt: string; status: string; actor: string };
-type Credit = { id: number; number: string; kind: string; totalCents: number; date: string; memo: string | null; actor: string };
+type Credit = { id: number; number: string; kind: string; totalCents: number; date: string; memo: string | null; actor: string; lines: { id: number; itemId: number; qty: number; amountCents: number }[] };
 type FullBill = Bill & { payments: Payment[]; credits: Credit[]; allocations: { poLineId: number; amountCents: number; inboundCents: number; onHandCents: number; soldCents: number }[] };
 
 const dollars = (cents: number) => (cents / 100).toFixed(2);
@@ -547,32 +547,86 @@ function PostedBill({ bill }: { bill: FullBill }) {
           <Title order={3} mb="sm">
             Payments and credits
           </Title>
-          <Stack gap="xs">
-            {bill.payments.map((p) => (
-              <Group key={p.id} justify="space-between">
-                <Text td={p.status === "VOID" ? "line-through" : undefined}>
-                  {p.number} · {p.direction === "OUT" ? "paid" : "refund received"} {formatDate(p.paidAt)} · {p.method.toLowerCase()} · {p.actor}
-                </Text>
-                <Group gap="xs">
-                  <Money cents={p.amountCents} />
-                  {p.status === "POSTED" ? (
-                    <Button size="compact-xs" variant="subtle" color="red" onClick={() => act(() => post(`/payments/${p.id}/void`), `${p.number} voided`)}>
-                      Void
-                    </Button>
-                  ) : null}
-                </Group>
-              </Group>
-            ))}
-            {bill.credits.map((c) => (
-              <Group key={c.id} justify="space-between">
-                <Text>
-                  {c.number} · {c.kind === "RETURN" ? "return" : "price discount"} {formatDate(c.date)} · {c.actor}
-                  {c.memo ? ` · ${c.memo}` : ""}
-                </Text>
-                <Money cents={c.totalCents} />
-              </Group>
-            ))}
-          </Stack>
+          <Table.ScrollContainer minWidth={560}>
+            <Table withRowBorders={false} verticalSpacing={4}>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Transaction</Table.Th>
+                  <Table.Th ta="right">Quantity</Table.Th>
+                  <Table.Th ta="right">Unit cost</Table.Th>
+                  <Table.Th ta="right">Amount</Table.Th>
+                  <Table.Th />
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {bill.payments.map((p) => (
+                  <Table.Tr key={p.id}>
+                    <Table.Td td={p.status === "VOID" ? "line-through" : undefined}>
+                      {p.number} · {p.direction === "OUT" ? "paid" : "refund received"} {formatDate(p.paidAt)} · {p.method.toLowerCase()} · {p.actor}
+                    </Table.Td>
+                    <Table.Td ta="right" c="dimmed">
+                      {"\u2014"}
+                    </Table.Td>
+                    <Table.Td ta="right" c="dimmed">
+                      {"\u2014"}
+                    </Table.Td>
+                    <Table.Td ta="right">
+                      <Money cents={p.amountCents} />
+                    </Table.Td>
+                    <Table.Td ta="right">
+                      {p.status === "POSTED" ? (
+                        <Button size="compact-xs" variant="subtle" color="red" onClick={() => act(() => post(`/payments/${p.id}/void`), `${p.number} voided`)}>
+                          Void
+                        </Button>
+                      ) : null}
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+                {bill.credits.map((c) => {
+                  const returned = c.lines.filter((l) => l.qty > 0);
+                  const heading = (
+                    <>
+                      {c.number} · {c.kind === "RETURN" ? "return" : "price discount"} {formatDate(c.date)} · {c.actor}
+                      {c.memo ? ` · ${c.memo}` : ""}
+                    </>
+                  );
+                  if (returned.length === 0) {
+                    return (
+                      <Table.Tr key={c.id}>
+                        <Table.Td>{heading}</Table.Td>
+                        <Table.Td ta="right" c="dimmed">
+                          {"\u2014"}
+                        </Table.Td>
+                        <Table.Td ta="right" c="dimmed">
+                          {"\u2014"}
+                        </Table.Td>
+                        <Table.Td ta="right">
+                          <Money cents={c.totalCents} />
+                        </Table.Td>
+                        <Table.Td />
+                      </Table.Tr>
+                    );
+                  }
+                  return returned.map((l, i) => (
+                    <Table.Tr key={`${c.id}-${l.id}`}>
+                      <Table.Td>
+                        {i === 0 ? heading : null}
+                        <Text size="xs" c="dimmed">
+                          {bill.lines.find((bl) => bl.itemId === l.itemId)?.item?.name ?? `Item ${l.itemId}`}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td ta="right">{l.qty}</Table.Td>
+                      <Table.Td ta="right">{usd(Math.round(l.amountCents / l.qty))}</Table.Td>
+                      <Table.Td ta="right">
+                        <Money cents={l.amountCents} />
+                      </Table.Td>
+                      <Table.Td />
+                    </Table.Tr>
+                  ));
+                })}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
         </Card>
       ) : null}
 
