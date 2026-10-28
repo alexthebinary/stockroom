@@ -7,6 +7,41 @@ import { parse } from "../http";
 const DAY = 86_400_000;
 
 export function registerReports(app: FastifyInstance, { db }: Deps) {
+  /** On-hand movements in date/ID order, with each item's balance across warehouses. */
+  app.get("/api/reports/inventory-movement", async (request) => {
+    const date = z.iso.date().transform((value) => new Date(`${value}T00:00:00.000Z`));
+    const { from, to } = parse(z.object({ from: date, to: date }).refine(({ from, to }) => from <= to, {
+      path: ["to"], message: "End date must be on or after start date",
+    }), request.query);
+    const endExclusive = new Date(to.getTime() + DAY);
+    // Read opening totals and movements from the same snapshot during stock posting.
+    const [opening, movements] = await db.$transaction([
+      db.stockMovement.groupBy({ by: ["itemId"], orderBy: { itemId: "asc" }, where: { bucket: "ON_HAND", createdAt: { lt: from } }, _sum: { qtyDelta: true } }),
+      db.stockMovement.findMany({ where: { bucket: "ON_HAND", createdAt: { gte: from, lt: endExclusive } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
+    ], { isolationLevel: "RepeatableRead" });
+    const items = await db.item.findMany({ where: { id: { in: [...new Set(movements.map((m) => m.itemId))] } } });
+    const byId = new Map(items.map((item) => [item.id, item]));
+    const balances = new Map(opening.map((row) => [row.itemId, row._sum?.qtyDelta ?? 0]));
+    const rows = movements.map((movement) => {
+      const item = byId.get(movement.itemId);
+      const endingBalance = (balances.get(movement.itemId) ?? 0) + movement.qtyDelta;
+      balances.set(movement.itemId, endingBalance);
+      return {
+        id: movement.id,
+        itemId: movement.itemId,
+        transactionDate: movement.createdAt,
+        sku: item?.sku ?? "",
+        name: item?.name ?? "Unknown item",
+        brand: item?.brand ?? null,
+        category: item?.category ?? null,
+        inboundQty: Math.max(movement.qtyDelta, 0),
+        outboundQty: Math.max(-movement.qtyDelta, 0),
+        endingBalance,
+      };
+    });
+    return { rows };
+  });
+
   /** Every account's debits and credits; header accounts show their children's sum. */
   app.get("/api/reports/trial-balance", async () => {
     const [accounts, sums] = await Promise.all([db.account.findMany({ orderBy: { code: "asc" } }), db.journalLine.groupBy({ by: ["accountId", "side"], _sum: { amountCents: true } })]);

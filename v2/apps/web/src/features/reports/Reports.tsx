@@ -1,5 +1,5 @@
 import { EVENTS, type EventType } from "@pi/domain";
-import { Alert, Button, Card, Group, SegmentedControl, Select, Stack, Table, Tabs, Text } from "@mantine/core";
+import { Alert, Button, Card, Group, SegmentedControl, Select, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
@@ -17,6 +17,7 @@ type ToReceive = {
   totalValueCents: number;
 };
 type Held = { poId: number; poNumber: string; vendor: { name: string } | null; item: { name: string }; qtyHeld: number; estimateCents: number; receivedAt: string; days: number }[];
+type InventoryMovement = { rows: { id: number; itemId: number; transactionDate: string; sku: string; name: string; brand: string | null; category: string | null; inboundQty: number; outboundQty: number; endingBalance: number }[] };
 
 const REPORT_TABS = {
   books: { label: "Books check", component: BooksCheck },
@@ -25,6 +26,7 @@ const REPORT_TABS = {
   held: { label: "Awaiting bill", component: HeldStock },
   toReceive: { label: "To receive", component: ToReceiveReport },
   stock: { label: "Stock value", component: StockValue },
+  movement: { label: "Inventory movement", component: InventoryMovementReport },
 };
 
 type ReportTab = keyof typeof REPORT_TABS;
@@ -32,7 +34,7 @@ const REPORT_CATEGORIES: { value: string; label: string; tabs: ReportTab[] }[] =
   { value: "accounting", label: "Accounting", tabs: ["books", "tb", "journal"] },
   { value: "sales", label: "Sales", tabs: [] },
   { value: "purchases", label: "Purchases", tabs: ["held", "toReceive"] },
-  { value: "inventory", label: "Inventory", tabs: ["stock"] },
+  { value: "inventory", label: "Inventory", tabs: ["stock", "movement"] },
 ];
 
 export function Reports() {
@@ -273,6 +275,70 @@ function Journal() {
           Show {PAGE} more
         </Button>
       ) : null}
+    </Stack>
+  );
+}
+
+function InventoryMovementReport() {
+  const [range, setRange] = useState(() => {
+    const today = new Date();
+    const start = new Date(today);
+    start.setUTCDate(start.getUTCDate() - 29);
+    return { from: start.toISOString().slice(0, 10), to: today.toISOString().slice(0, 10) };
+  });
+  const validRange = Boolean(range.from && range.to && range.from <= range.to);
+  const movement = useQuery({
+    queryKey: ["inventory-movement", range.from, range.to],
+    queryFn: () => get<InventoryMovement>(`/reports/inventory-movement?${new URLSearchParams(range)}`),
+    enabled: validRange,
+  });
+  return (
+    <Stack>
+      <Group align="flex-end">
+        <TextInput type="date" label="Start date" value={range.from} max={range.to || undefined} onChange={(e) => setRange({ ...range, from: e.currentTarget.value })} />
+        <TextInput type="date" label="End date" value={range.to} min={range.from || undefined} onChange={(e) => setRange({ ...range, to: e.currentTarget.value })} />
+      </Group>
+      <Text size="sm" c="dimmed">On-hand stock across all warehouses, oldest first. Dates use UTC; ending balance is per item after each movement.</Text>
+      {!validRange ? (
+        <Text c="dimmed">Choose a start and end date, with the end on or after the start.</Text>
+      ) : movement.isError ? (
+        <Alert color="orange" title="Could not load inventory movements">{movement.error.message}</Alert>
+      ) : !movement.data ? (
+        <Loading />
+      ) : movement.data.rows.length === 0 ? (
+        <Text c="dimmed">No inventory movements in this date range.</Text>
+      ) : (
+        <Table.ScrollContainer minWidth={900}>
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Transaction date</Table.Th>
+                <Table.Th>Item SKU</Table.Th>
+                <Table.Th>Item name</Table.Th>
+                <Table.Th>Brand</Table.Th>
+                <Table.Th>Category</Table.Th>
+                <Table.Th ta="right">Inbound qty</Table.Th>
+                <Table.Th ta="right">Outbound qty</Table.Th>
+                <Table.Th ta="right">Ending balance</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {movement.data.rows.map((row) => (
+                <Table.Tr key={row.id}>
+                  <Table.Td>{row.transactionDate.slice(0, 10)}</Table.Td>
+                  <Table.Td>{row.sku}</Table.Td>
+                  <Table.Td>{row.name}</Table.Td>
+                  <Table.Td>{row.brand ?? "—"}</Table.Td>
+                  <Table.Td>{row.category ?? "—"}</Table.Td>
+                  <Table.Td ta="right">{row.inboundQty}</Table.Td>
+                  <Table.Td ta="right">{row.outboundQty}</Table.Td>
+                  <Table.Td ta="right">{row.endingBalance}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
     </Stack>
   );
 }
