@@ -6,6 +6,7 @@ import { PageHeader, toastErr, toastOk } from "../../components/ui";
 import { del, get, post, type Profile, put } from "../../lib/api";
 import { JOB_LABEL } from "../../lib/profile";
 import type { Setup, Vendor, Warehouse } from "../../lib/types";
+import { CompaniesPanel, TestCompanyNotice } from "./Companies";
 
 type Account = { id: number; code: string; name: string; type: string; isHeader: boolean; isActive: boolean; parentId: number | null; balanceCents: number };
 type Rule = { id: number; role: string; label: string; locked: boolean; account: Account; changes: { at: string; actor: string }[] };
@@ -206,6 +207,7 @@ function Company() {
   };
   return (
     <Stack>
+      <TestCompanyNotice />
       <Text>{setup.data?.company.name}</Text>
       <Button component={Link} to="/setup" variant="light" w="fit-content">
         Open setup
@@ -236,6 +238,12 @@ function Company() {
           </Button>
         </Alert>
       ) : null}
+      <Card withBorder>
+        <Text fw={600} mb="xs">
+          Test companies
+        </Text>
+        <CompaniesPanel />
+      </Card>
     </Stack>
   );
 }

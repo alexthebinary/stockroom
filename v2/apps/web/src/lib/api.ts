@@ -23,6 +23,39 @@ export function storeProfile(profile: Profile | null) {
   }
 }
 
+/** Which company this device works in (Settings > Company > Test companies). Absent = the main company. */
+const COMPANY_KEY = "pi.company";
+
+export function storedCompany(): string | null {
+  try {
+    return localStorage.getItem(COMPANY_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Move this device into another company: forget who's working there and start over from the first screen. */
+export function switchCompany(id: string | null) {
+  try {
+    if (id && id !== "main") localStorage.setItem(COMPANY_KEY, id);
+    else localStorage.removeItem(COMPANY_KEY);
+    // A delivery in progress and the last warehouse belong to the company being left.
+    localStorage.removeItem("pi.receive");
+    localStorage.removeItem("pi.warehouse");
+  } catch {
+    // Storage blocked: the switch can't be remembered.
+  }
+  storeProfile(null);
+  window.location.assign("/");
+}
+
+/** Headers every request carries: the company, then who's working in it. */
+export function scopeHeaders(): Record<string, string> {
+  const profile = storedProfile();
+  const company = storedCompany();
+  return { ...(company ? { "x-company": company } : {}), ...(profile ? { "x-profile": String(profile.id) } : {}) };
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -36,12 +69,11 @@ let onUnauthorized: (() => void) | null = null;
 export const setUnauthorizedHandler = (fn: () => void) => (onUnauthorized = fn);
 
 export async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const profile = storedProfile();
   let response: Response;
   try {
     response = await fetch(`/api${path}`, {
       method,
-      headers: { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...(profile ? { "x-profile": String(profile.id) } : {}) },
+      headers: { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...scopeHeaders() },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {

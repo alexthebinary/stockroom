@@ -3,12 +3,14 @@ import Fastify, { type FastifyInstance } from "fastify";
 import type { Clarifier } from "./ai/clarifier";
 import type { HelpModel } from "./ai/help";
 import type { Reader } from "./ai/reader";
+import { type Companies, scopedDb } from "./companies";
 import type { Db } from "./db";
 import type { Profile } from "./generated/prisma/client";
 import { sendError } from "./http";
 import { registerAccounting } from "./routes/accounting";
 import { registerAdjustments } from "./routes/adjustments";
 import { registerAi } from "./routes/ai";
+import { registerCompanies } from "./routes/companies";
 import { registerCatalog } from "./routes/catalog";
 import { registerFeedback } from "./routes/feedback";
 import { registerHelp } from "./routes/help";
@@ -24,9 +26,10 @@ declare module "fastify" {
   }
 }
 
-export type Deps = { db: Db; reader: Reader | null; clarifier?: Clarifier | null; helpModel?: HelpModel | null };
+/** db is the request's company (see companies.ts); companies is null in tests and single-company installs. */
+export type Deps = { db: Db; reader: Reader | null; clarifier?: Clarifier | null; helpModel?: HelpModel | null; companies?: Companies | null };
 
-const OPEN_WITHOUT_PROFILE = ["/api/setup", "/api/profiles", "/api/health", "/api/feedback"];
+const OPEN_WITHOUT_PROFILE = ["/api/companies", "/api/setup", "/api/profiles", "/api/health", "/api/feedback"];
 
 /**
  * Sent with every response. The app is reachable from the open internet with
@@ -60,7 +63,9 @@ const SECURITY_HEADERS: Record<string, string> = {
   "X-Robots-Tag": "noindex, nofollow",
 };
 
-export function buildApp(deps: Deps): FastifyInstance {
+export function buildApp(input: Deps): FastifyInstance {
+  const main = input.db;
+  const deps: Deps = { ...input, db: input.companies ? scopedDb(main) : main };
   const app = Fastify({
     logger: process.env.LOG_LEVEL ? { level: process.env.LOG_LEVEL } : false,
     bodyLimit: 15 * 1024 * 1024,
@@ -75,6 +80,7 @@ export function buildApp(deps: Deps): FastifyInstance {
   });
 
   app.decorateRequest("profile", null);
+  if (deps.companies) app.addHook("onRequest", deps.companies.hook);
 
   /**
    * "Who's working" — no sign-in (operator decision). The device sends the
@@ -135,7 +141,9 @@ export function buildApp(deps: Deps): FastifyInstance {
   registerSearch(app, deps);
   registerAdjustments(app, deps);
   registerAi(app, deps);
-  registerFeedback(app, deps);
-  registerHelp(app, deps);
+  registerCompanies(app, deps);
+  // Feedback is one queue for the whole install, whichever company the tester is in.
+  registerFeedback(app, { ...deps, db: main });
+  registerHelp(app, { ...deps, db: main });
   return app;
 }

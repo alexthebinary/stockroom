@@ -5,9 +5,9 @@ export type Db = PrismaClient;
 export type Tx = Prisma.TransactionClient;
 export { Prisma };
 
-export function createDb(url = process.env.DATABASE_URL): Db {
+export function createDb(url = process.env.DATABASE_URL, schema?: string): Db {
   if (!url) throw new Error("DATABASE_URL is not set. Copy .env.example to .env, or run `docker compose up -d db`.");
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString: url }, schema ? { schema } : undefined) });
 }
 
 /**

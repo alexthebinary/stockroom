@@ -2,6 +2,7 @@ import { ActionIcon, AppShell, Avatar, Box, Group, Menu, NavLink, Stack, Text, u
 import {
   IconBarcode,
   IconBook2,
+  IconBuilding,
   IconBox,
   IconCash,
   IconChartBar,
@@ -19,6 +20,7 @@ import {
 } from "@tabler/icons-react";
 import { useState, type ReactNode } from "react";
 import { Link, NavLink as RouterNavLink, useLocation } from "react-router-dom";
+import { CompaniesModal } from "../features/settings/Companies";
 import type { Job } from "../lib/api";
 import { JOB_LABEL, useProfile } from "../lib/profile";
 import { HelpPanel } from "../features/help/HelpPanel";
@@ -65,6 +67,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const { colorScheme, setColorScheme } = useMantineColorScheme();
   const job = profile?.job ?? "CLERK";
   const [purchasesOpened, setPurchasesOpened] = useState(true);
+  const [companiesOpen, setCompaniesOpen] = useState(false);
   const purchases = PURCHASES.filter((key) => RAIL[job].includes(key));
   const purchasesActive = purchases.some((key) => isActive(pathname, SECTIONS[key]!.to));
 
@@ -103,6 +106,9 @@ export function Shell({ children }: { children: ReactNode }) {
                 <Menu.Item leftSection={<IconUserCircle size={16} />} onClick={() => choose(null)}>
                   Switch person
                 </Menu.Item>
+                <Menu.Item leftSection={<IconBuilding size={16} />} onClick={() => setCompaniesOpen(true)}>
+                  Switch company…
+                </Menu.Item>
                 <Menu.Divider />
                 <Menu.Label>Appearance</Menu.Label>
                 {(
@@ -124,6 +130,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </Menu>
           </Group>
         </Group>
+        <CompaniesModal opened={companiesOpen} onClose={() => setCompaniesOpen(false)} />
       </AppShell.Header>
 
       <AppShell.Navbar p="xs" className="no-print">

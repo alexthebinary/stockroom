@@ -172,3 +172,26 @@ a.ruled-row:hover { background: var(--surface-sunken); }
   .printer-machine, .printer-shadow { display: none; }
   .printer-paper { box-shadow: none; clip-path: none; animation: none !important; transform: none !important; opacity: 1 !important; }
 }
+
+/* Test companies: always say which company this is, and offer the way back. */
+.test-company-pill {
+  position: fixed;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 400;
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--mantine-color-orange-7);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.2);
+  cursor: pointer;
+}

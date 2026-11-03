@@ -10,6 +10,7 @@ import { FeedbackPage } from "./features/feedback/FeedbackPage";
 import { Guide } from "./features/home/Guide";
 import { HomePage } from "./features/home/Homes";
 import { ProfilePicker } from "./features/home/ProfilePicker";
+import { TestCompanyPill } from "./features/settings/Companies";
 import { NewOrder, OrderDetail, Orders } from "./features/orders/Orders";
 import { Payables } from "./features/payables/Payables";
 import { ReceiveWizard } from "./features/receive/ReceiveWizard";
@@ -50,6 +51,7 @@ export function App() {
     <>
       <Screens profile={profile != null} required={setup.data.required} pathname={pathname} />
       <FeedbackLayer />
+      <TestCompanyPill />
     </>
   );
 }

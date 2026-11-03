@@ -1,14 +1,13 @@
-import { ApiError, storedProfile } from "../../lib/api";
+import { ApiError, scopeHeaders } from "../../lib/api";
 
 export type HelpMessage = { role: "user" | "assistant"; content: string };
 export type HelpResult = { reply: string; navigate?: { to: string; label: string }; unanswered: boolean; feedbackId?: number };
 type Event = { type: "status" | "text"; text: string } | { type: "reset" } | { type: "done"; result: HelpResult } | { type: "error"; error: string };
 
 export async function streamHelp(messages: HelpMessage[], route: string, signal: AbortSignal, onEvent: (event: Event) => void): Promise<HelpResult> {
-  const profile = storedProfile();
   const response = await fetch("/api/help/chat/stream", {
     method: "POST", signal,
-    headers: { "content-type": "application/json", ...(profile ? { "x-profile": String(profile.id) } : {}) },
+    headers: { "content-type": "application/json", ...scopeHeaders() },
     body: JSON.stringify({ messages, route }),
   });
   if (!response.ok) {

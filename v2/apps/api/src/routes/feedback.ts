@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { ClarifyNote, Spec, Turn } from "../ai/clarifier";
 import type { Deps } from "../app";
+import { currentCompanyId, MAIN } from "../companies";
 import { idParam, notFound, parse } from "../http";
 import { notify } from "../notify";
 
@@ -39,7 +40,7 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
         path: body.path,
         pageTitle: body.pageTitle ?? null,
         anchor: (body.anchor ?? undefined) as never,
-        context: body.context as never,
+        context: (currentCompanyId() === MAIN ? body.context : { ...body.context, company: currentCompanyId() }) as never,
         author: request.profile?.name ?? (body.author || "Tester"),
         authorJob: request.profile?.job ?? null,
         screenshot: shot?.[2] ? new Uint8Array(Buffer.from(shot[2], "base64")) : null,

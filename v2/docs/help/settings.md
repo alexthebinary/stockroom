@@ -9,3 +9,11 @@ Accounts shows Account assignment and Chart of accounts. The Code, Name and type
 Default accounts include 1000 Bank / Cash, 2000 Accounts Payable, 3000 Opening Balance Equity, 5000 Cost of Goods Sold, 6100 Outbound Shipping Expense, 6900 Inventory Adjustment Loss, 4900 Inventory Adjustment Gain and 6950 Vendor Return Variance. A return's difference between the vendor credit and stock cost removed uses the returnVariance role, default 6950, rather than 5000. Unlocked assignments may have been changed; inspect Account assignment for the current configuration.
 
 Some chart accounts support accounting concepts beyond the screens currently shipped. Their presence does not imply a sales or customer invoicing screen exists. The assistant cannot edit settings, inspect assignments or create accounts.
+
+## Test companies
+
+To try ProfitIndex from the very first screen, make a test company: **Settings > Company > Test companies**, type a name and choose **Create and open** (or use **Switch company…** in the menu under your initial at the top right). A test company starts completely empty: setup opens, and you add yourself, a warehouse, vendors and items as a new customer would. The main company and its books are not touched.
+
+While you are in a test company, an orange **Test company: name · Switch** button sits at the bottom of every screen; tap it to go back to the main company or to another test company. Switching companies asks who's working again. A test company can be deleted from the same list; that removes everything in it and can't be undone. The main company can't be deleted.
+
+Feedback notes left in a test company go to the same Feedback list as everything else, marked with the test company they came from.

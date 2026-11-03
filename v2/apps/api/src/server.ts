@@ -5,14 +5,19 @@ import { createLocalClarifier } from "./ai/local-clarifier";
 import { createLocalHelpModel } from "./ai/help";
 import { createReader } from "./ai/reader";
 import { buildApp } from "./app";
+import { Companies } from "./companies";
 import { createDb } from "./db";
 import { syncChart } from "./ledger";
 import { serveWeb } from "./web";
 
 const db = createDb();
 await syncChart(db);
+// Test companies (Settings > Company > New test company), each in its own schema.
+const companies = new Companies(db, process.env.DATABASE_URL!);
+await companies.load();
 const app = buildApp({
   db,
+  companies,
   reader: createReader(),
   helpModel: process.env.LOCAL_LLM_URL ? createLocalHelpModel(process.env.LOCAL_LLM_URL) : null,
   clarifier: withFallback(createClarifier(), process.env.LOCAL_LLM_URL ? createLocalClarifier(process.env.LOCAL_LLM_URL) : null),
