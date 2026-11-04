@@ -4,6 +4,7 @@ import { type StockCtx, unlandLot } from "../stock";
 import { applyLineAdjustment } from "./adjust";
 import { ensureDraftBill } from "./bills";
 import { refreshPoStatus } from "./po";
+import { lockBill } from "./locks";
 import { refreshReceiptState } from "./receive";
 
 /**
@@ -21,7 +22,7 @@ import { refreshReceiptState } from "./receive";
  */
 export async function voidBill(ctx: StockCtx, billId: number) {
   const { tx, actor } = ctx;
-  await tx.$queryRaw`SELECT "id" FROM "VendorBill" WHERE "id" = ${billId} FOR UPDATE`;
+  await lockBill(tx, billId);
   const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id: billId }, include: { lines: true, allocations: true } });
   if (bill.status !== "POSTED") throw new DomainError(`${bill.number} is ${bill.status.toLowerCase()}, not posted`, 409);
   const livePayments = await tx.payment.count({ where: { billId, status: "POSTED" } });
