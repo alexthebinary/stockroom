@@ -23,7 +23,7 @@ import {
 } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { IconPaperclip } from "@tabler/icons-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Coach } from "../../components/Coach";
 import { HoldToConfirmButton } from "../../components/kitchen/HoldToConfirmButton";
@@ -659,18 +659,29 @@ function PostedBill({ bill }: { bill: FullBill }) {
   );
 }
 
-function PayModal({ opened, refund, max, onClose, onSave }: { opened: boolean; refund: boolean; max: number; onClose: () => void; onSave: (body: unknown) => void }) {
+function PayModal({ opened, refund, max, onClose, onSave }: { opened: boolean; refund: boolean; max: number; onClose: () => void; onSave: (body: unknown) => Promise<void> }) {
   const [amount, setAmount] = useState(dollars(max));
   const [method, setMethod] = useState<string | null>("ACH");
   const [paidAt, setPaidAt] = useState(toInputDate(new Date()));
+  const [actionId, setActionId] = useState(() => crypto.randomUUID());
+  const [pending, setPending] = useState(false);
+  const submitting = useRef(false);
+  useEffect(() => { if (opened) setActionId(crypto.randomUUID()); }, [opened]);
   useEffect(() => setAmount(dollars(max)), [max, opened]);
+  const save = async () => {
+    if (submitting.current) return;
+    submitting.current = true;
+    setPending(true);
+    try { await onSave({ actionId, amountCents: cents(amount), method, paidAt }); }
+    finally { submitting.current = false; setPending(false); }
+  };
   return (
-    <Modal opened={opened} onClose={onClose} title={refund ? "Vendor refund received" : "Pay this bill"}>
+    <Modal opened={opened} onClose={() => { if (!submitting.current) onClose(); }} title={refund ? "Vendor refund received" : "Pay this bill"}>
       <Stack>
-        <TextInput label="Amount $" value={amount} onChange={(e) => setAmount(e.currentTarget.value)} inputMode="decimal" description={`Up to ${usd(max)}`} />
-        <Select label="Method" data={["ACH", "WIRE", "CHECK", "CARD", "BANK", "CASH"]} value={method} onChange={setMethod} />
-        <TextInput type="date" label="Date" value={paidAt} onChange={(e) => setPaidAt(e.currentTarget.value)} />
-        <Button onClick={() => onSave({ amountCents: cents(amount), method, paidAt })} disabled={cents(amount) <= 0}>
+        <TextInput label="Amount $" disabled={pending} value={amount} onChange={(e) => setAmount(e.currentTarget.value)} inputMode="decimal" description={`Up to ${usd(max)}`} />
+        <Select label="Method" disabled={pending} data={["ACH", "WIRE", "CHECK", "CARD", "BANK", "CASH"]} value={method} onChange={setMethod} />
+        <TextInput type="date" label="Date" disabled={pending} value={paidAt} onChange={(e) => setPaidAt(e.currentTarget.value)} />
+        <Button onClick={save} loading={pending} disabled={pending || cents(amount) <= 0}>
           {refund ? "Record refund" : "Record payment"}
         </Button>
       </Stack>

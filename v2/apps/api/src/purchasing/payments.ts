@@ -14,15 +14,31 @@ const openOf = (b: { totalCents: number; paidCents: number; creditedCents: numbe
 export async function recordPayment(
   ctx: StockCtx,
   billId: number,
-  input: { direction: "OUT" | "IN"; amountCents: number; paidAt: Date; method: string; memo?: string | null },
+  input: { actionId?: string; direction: "OUT" | "IN"; amountCents: number; paidAt?: Date; method: string; memo?: string | null },
 ) {
   const { tx, actor } = ctx;
+  if (input.actionId) {
+    // Serialize the action across bills as well as repeated requests on one bill.
+    // The unique column is the durable guard; this lock lets a concurrent replay
+    // read the committed result instead of failing a unique constraint.
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${input.actionId}, 0))::text`;
+    const saved = await tx.payment.findUnique({ where: { actionId: input.actionId } });
+    if (saved) {
+      if (saved.billId !== billId || saved.direction !== input.direction || saved.amountCents !== input.amountCents ||
+          saved.method !== input.method || saved.memo !== (input.memo ?? null) ||
+          (input.paidAt && saved.paidAt.getTime() !== input.paidAt.getTime())) {
+        throw new DomainError("This payment action was already used with different details. Reload the bill before recording another payment or refund.", 409);
+      }
+      return saved;
+    }
+  }
+  const paidAt = input.paidAt ?? new Date();
   // Row lock: two payments of the same bill at once queue rather than both pass the "not more than open" check.
   await tx.$queryRaw`SELECT "id" FROM "VendorBill" WHERE "id" = ${billId} FOR UPDATE`;
   const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id: billId } });
   if (bill.status !== "POSTED") throw new DomainError("Only a posted bill can be paid", 409);
   if (input.amountCents <= 0) throw new DomainError("Enter an amount", 400);
-  if (input.paidAt.getTime() > Date.now() + 60_000) throw new DomainError("A payment can't be dated in the future", 400);
+  if (paidAt.getTime() > Date.now() + 60_000) throw new DomainError("A payment can't be dated in the future", 400);
   const open = openOf(bill);
   if (input.direction === "OUT" && input.amountCents > open) {
     throw new DomainError(open <= 0 ? `${bill.number} has nothing left to pay` : `Only $${(open / 100).toFixed(2)} is open on ${bill.number}`, 409);
@@ -32,11 +48,11 @@ export async function recordPayment(
   }
   const number = await nextNumber(tx, "PAY");
   const payment = await tx.payment.create({
-    data: { number, direction: input.direction, vendorId: bill.vendorId!, billId, amountCents: input.amountCents, method: input.method, paidAt: input.paidAt, memo: input.memo, actor },
+    data: { number, actionId: input.actionId, direction: input.direction, vendorId: bill.vendorId!, billId, amountCents: input.amountCents, method: input.method, paidAt, memo: input.memo, actor },
   });
   await postEntry(tx, {
     event: input.direction === "OUT" ? "BILL_PAYMENT" : "VENDOR_REFUND",
-    date: input.paidAt,
+    date: paidAt,
     sourceType: "PAYMENT",
     sourceId: payment.id,
     actor,

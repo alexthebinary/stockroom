@@ -42,7 +42,8 @@ export async function appendEvents(tx: Tx, sessionId: number, events: IncomingEv
       if (match) {
         if (itemId && itemId !== match.itemId) throw new DomainError("This barcode belongs to a different item. Scan it again or enter the item without a barcode.", 409);
         itemId = match.itemId;
-        qty = event.qty * match.packQty;
+        // Camera quantities count packages; manual +/- corrections count units.
+        qty = event.source === "BARCODE" || !event.itemId ? event.qty * match.packQty : event.qty;
         serial ??= match.serial ?? null;
       }
     }
