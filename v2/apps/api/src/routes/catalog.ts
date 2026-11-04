@@ -6,6 +6,7 @@ import { audit } from "../audit";
 import { addBarcode, lookupCode } from "../catalog";
 import { inTx } from "../db";
 import { actorOf, idParam, notFound, parse } from "../http";
+import { withBundleInfo } from "./bundles";
 
 const JOBS = ["CLERK", "ACCOUNTING", "ADMIN"] as const;
 
@@ -83,7 +84,7 @@ export function registerCatalog(app: FastifyInstance, { db }: Deps) {
   // ── Items ──
   app.get("/api/items", async (request) => {
     const { search, brand, category } = parse(z.object({ search: z.string().trim().optional(), brand: z.string().trim().optional(), category: z.string().trim().optional() }), request.query);
-    return db.item.findMany({
+    const found = await db.item.findMany({
       where: {
         isActive: true,
         ...(brand ? { brand } : {}),
@@ -104,6 +105,7 @@ export function registerCatalog(app: FastifyInstance, { db }: Deps) {
       orderBy: { sku: "asc" },
       take: 200,
     });
+    return withBundleInfo(db, found);
   });
   /** The brands and categories in use, for the filter lists and the item form's suggestions. */
   app.get("/api/items/facets", async () => {

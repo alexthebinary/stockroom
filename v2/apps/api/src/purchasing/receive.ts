@@ -51,6 +51,7 @@ export async function receive(
   const items = await tx.item.findMany({ where: { id: { in: arrivals.map((a) => a.itemId) } } });
   for (const a of arrivals) {
     const item = items.find((i) => i.id === a.itemId)!;
+    if (item.isBundle) throw new DomainError(`${item.name} is a bundle; receive its component items instead`, 400);
     if (item.trackingMode === "SERIAL" && a.serials.length !== a.qty) {
       throw new DomainError(`${item.name}: ${a.qty} counted but ${a.serials.length} serial number(s). Scan or type a serial for each unit.`, 400);
     }

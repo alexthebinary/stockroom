@@ -30,6 +30,7 @@ export const EVENTS = {
   },
   INVENTORY_ADJUSTMENT_GAIN: { label: "Inventory adjustment – gain", sides: { inventoryOnHand: "DEBIT", adjustmentGain: "CREDIT" } },
   INVENTORY_ADJUSTMENT_LOSS: { label: "Inventory adjustment – loss", sides: { adjustmentLoss: "DEBIT", inventoryOnHand: "CREDIT" } },
+  BUNDLE_SHIPPED: { label: "Bundle shipped", sides: { cogs: "DEBIT", inventoryOnHand: "CREDIT" } },
   BILL_PAYMENT: { label: "Vendor payment", sides: { payable: "DEBIT", bank: "CREDIT" } },
   VENDOR_REFUND: { label: "Vendor refund", sides: { bank: "DEBIT", payable: "CREDIT" } },
 } as const satisfies Record<string, { label: string; sides: Partial<Record<Role, Side>> }>;

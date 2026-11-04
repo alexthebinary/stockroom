@@ -295,6 +295,7 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
   const byKey = useMemo(() => {
     const map = new Map<string, Item>();
     for (const item of items.data ?? []) {
+      if (item.isBundle) continue;
       for (const b of item.barcodes ?? []) map.set(b.code, item);
       map.set(item.sku.toUpperCase(), item);
     }
@@ -446,7 +447,7 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
             </Group>
           ) : null}
           <LineList lines={lines} onBump={bump} onName={setNaming} />
-          <AddByHand items={items.data ?? []} taken={lines.flatMap((l) => l.serials)} onAdd={(item, qty, serial) => record({ code: null, itemId: item.id, qty, serial, unknownName: null, photo: null, source: "MANUAL" })} />
+          <AddByHand items={(items.data ?? []).filter((i) => !i.isBundle)} taken={lines.flatMap((l) => l.serials)} onAdd={(item, qty, serial) => record({ code: null, itemId: item.id, qty, serial, unknownName: null, photo: null, source: "MANUAL" })} />
           <Group justify="space-between" mt="md">
             <Button variant="subtle" color="red" onClick={onAbandon}>
               Abandon delivery

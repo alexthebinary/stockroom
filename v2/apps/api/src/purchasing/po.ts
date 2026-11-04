@@ -34,6 +34,7 @@ export async function createPo(
   for (const line of input.lines) {
     const item = items.find((i) => i.id === line.itemId);
     if (!item || !item.isActive) throw new DomainError(`Item ${line.itemId} is not an active item`, 400);
+    if (item.isBundle) throw new DomainError(`${item.name} is a bundle; order its component items instead`, 400);
   }
   const number = await nextNumber(tx, "PO");
   return tx.purchaseOrder.create({

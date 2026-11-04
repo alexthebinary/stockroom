@@ -19,6 +19,12 @@ export type Item = {
   defaultVendorId: number | null;
   lastCostCents: number;
   barcodes?: Barcode[];
+  isBundle?: boolean;
+  priceCents?: number | null;
+  /** Bundles only: the recipe, and how many can be made now (all warehouses, and per warehouse id). */
+  components?: { id: number; sku: string; name: string; qty: number }[];
+  available?: number;
+  availableByWarehouse?: Record<string, number>;
 };
 
 export type PoLine = {

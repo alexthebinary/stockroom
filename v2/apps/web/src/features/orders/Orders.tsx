@@ -134,7 +134,7 @@ export function NewOrder() {
       </SimpleGrid>
       {lines.map((line, i) => (
         <Group key={i} align="flex-end" wrap="nowrap">
-          <Select label={i === 0 ? "Item" : undefined} data={(items.data ?? []).map((it) => ({ value: String(it.id), label: `${it.sku} · ${it.name}` }))} value={line.itemId} onChange={(v) => pickItem(i, v)} searchable style={{ flex: 2 }} />
+          <Select label={i === 0 ? "Item" : undefined} data={(items.data ?? []).filter((it) => !it.isBundle).map((it) => ({ value: String(it.id), label: `${it.sku} · ${it.name}` }))} value={line.itemId} onChange={(v) => pickItem(i, v)} searchable style={{ flex: 2 }} />
           <NumberInput label={i === 0 ? "Qty" : undefined} value={line.qty} min={1} onChange={(v) => setLines(lines.map((l, j) => (j === i ? { ...l, qty: Number(v) || 1 } : l)))} w={80} />
           <NumberInput label={i === 0 ? "Unit $" : undefined} value={line.cost} min={0} decimalScale={2} onChange={(v) => setLines(lines.map((l, j) => (j === i ? { ...l, cost: Number(v) || 0 } : l)))} w={110} />
           <ActionIcon variant="subtle" color="red" size="lg" onClick={() => setLines(lines.filter((_, j) => j !== i))} disabled={lines.length === 1} aria-label="Remove line">

@@ -10,6 +10,7 @@ import { sendError } from "./http";
 import { registerAccounting } from "./routes/accounting";
 import { registerAdjustments } from "./routes/adjustments";
 import { registerAi } from "./routes/ai";
+import { registerBundles } from "./routes/bundles";
 import { registerCompanies } from "./routes/companies";
 import { registerCatalog } from "./routes/catalog";
 import { registerFeedback } from "./routes/feedback";
@@ -141,6 +142,7 @@ export function buildApp(input: Deps): FastifyInstance {
   registerReports(app, deps);
   registerSearch(app, deps);
   registerAdjustments(app, deps);
+  registerBundles(app, deps);
   registerAi(app, deps);
   registerCompanies(app, deps);
   // Feedback is one queue for the whole install, whichever company the tester is in.
