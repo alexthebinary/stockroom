@@ -1,4 +1,4 @@
-import type { Db } from "./db";
+import type { Db, Tx } from "./db";
 
 /**
  * Is everything consistent? Run after every test scenario, on demand from the
@@ -21,6 +21,13 @@ export type BooksReport = {
 };
 
 export async function checkBooks(db: Db): Promise<BooksReport> {
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+    return checkSnapshot(tx);
+  }, { isolationLevel: "RepeatableRead", maxWait: 10_000, timeout: 30_000 });
+}
+
+async function checkSnapshot(db: Tx): Promise<BooksReport> {
   const problems: string[] = [];
   const rules = new Map((await db.postingRule.findMany()).map((r) => [r.role, r.accountId]));
 

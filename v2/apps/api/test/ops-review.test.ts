@@ -51,3 +51,67 @@ it("#18 reconciles payable-role history after reassignment and partial payment",
   await testDb().vendorBill.update({ where: { id: bill.id }, data: { paidCents: 2501 } });
   expect((await checkBooks(testDb())).sound).toBe(false);
 });
+
+// Gate later reads until another connection commits valid stock. The same
+// instrumentation wraps the real transaction client; it never mocks a query.
+function interleavedDb(first: string, commit: () => Promise<void>) {
+  let release!: () => void;
+  const committed = new Promise<void>((resolve) => { release = resolve; });
+  let fired = false;
+  let settings: { isolation: string; readOnly: string } | undefined;
+  const wrap = (target: any, transaction = false): any => new Proxy(target, {
+    get(object, prop) {
+      if (prop === "$transaction") return (work: (tx: any) => Promise<unknown>, options: unknown) => object.$transaction((tx: any) => work(wrap(tx, true)), options);
+      const value = Reflect.get(object, prop, object);
+      if (typeof prop === "string" && value && typeof value === "object" && !prop.startsWith("$")) {
+        return new Proxy(value, { get(delegate, method) {
+          const fn = Reflect.get(delegate, method, delegate);
+          if (typeof fn !== "function") return fn;
+          return async (...args: unknown[]) => {
+            const key = `${prop}.${String(method)}`;
+            if (first === "costPool.findMany" && key === "journalLine.groupBy") await committed;
+            const result = await fn.apply(delegate, args);
+            if (key === first && !fired) {
+              fired = true;
+              try {
+                if (transaction) {
+                  const [isolation] = await object.$queryRawUnsafe("SHOW transaction_isolation");
+                  const [readOnly] = await object.$queryRawUnsafe("SHOW transaction_read_only");
+                  settings = { isolation: isolation.transaction_isolation, readOnly: readOnly.transaction_read_only };
+                }
+                await commit();
+              } finally { release(); }
+            }
+            return result;
+          };
+        } });
+      }
+      return typeof value === "function" ? value.bind(object) : value;
+    },
+  });
+  return { db: wrap(testDb()) as ReturnType<typeof testDb>, settings: () => settings };
+}
+
+for (const report of ["books", "valuation"] as const) {
+  it(`#19 ${report} keeps a read-only repeatable snapshot during a concurrent stock posting`, async () => {
+    const c = await sampleCompany();
+    const instrumented = interleavedDb(report === "books" ? "journalLine.findMany" : "costPool.findMany", async () => {
+      ok(await c.admin.post("/api/setup/opening-stock", { lines: [{ itemId: c.ids.widget, warehouseId: c.ids.warehouse, qty: 1, unitCostCents: 10000 }] }));
+    });
+    if (report === "books") {
+      const result = await checkBooks(instrumented.db);
+      expect(result.problems).toEqual([]);
+      expect(result.figures.onHandPoolCents).toBe(0);
+    } else {
+      const { buildApp } = await import("../src/app");
+      const app = buildApp({ db: instrumented.db, reader: null });
+      try {
+        const result = await app.inject({ method: "GET", url: "/api/reports/valuation" });
+        expect(result.statusCode).toBe(200);
+        expect(result.json()).toMatchObject({ totalValueCents: 0, totalGlCents: 0, rows: [] });
+      } finally { await app.close(); }
+    }
+    expect(instrumented.settings()).toEqual({ isolation: "repeatable read", readOnly: "on" });
+    expect((await checkBooks(testDb())).figures.onHandPoolCents).toBe(10000);
+  });
+}

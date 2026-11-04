@@ -59,12 +59,15 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
 
   /** Stock value item by item, against the ledger's on-hand inventory for that item. */
   app.get("/api/reports/valuation", async () => {
-    const [items, balances, pools, gl] = await Promise.all([
-      db.item.findMany({ orderBy: { sku: "asc" } }),
-      db.stockBalance.groupBy({ by: ["itemId"], _sum: { onHand: true, held: true } }),
-      db.costPool.findMany(),
-      db.journalLine.groupBy({ by: ["itemId", "side"], where: { role: "inventoryOnHand" }, _sum: { amountCents: true } }),
-    ]);
+    const [items, balances, pools, gl] = await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+      return Promise.all([
+        tx.item.findMany({ orderBy: { sku: "asc" } }),
+        tx.stockBalance.groupBy({ by: ["itemId"], _sum: { onHand: true, held: true } }),
+        tx.costPool.findMany(),
+        tx.journalLine.groupBy({ by: ["itemId", "side"], where: { role: "inventoryOnHand" }, _sum: { amountCents: true } }),
+      ]);
+    }, { isolationLevel: "RepeatableRead", maxWait: 10_000, timeout: 30_000 });
     const rows = items
       .map((item) => {
         const balance = balances.find((b) => b.itemId === item.id);
