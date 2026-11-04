@@ -103,4 +103,33 @@ describe("purchasing locking regressions", () => {
     await expectBooksSound();
   });
 
+  it("#7 serializes a credit's status check with void", async () => {
+    const c = await fixture();
+    ok(await c.accountant.post(`/api/bills/${c.bill.id}/post`, { version: c.bill.version }));
+    const [credit, voided] = await race((tx, pause) => postVendorCredit(ctx(pauseRead(tx, "vendorBill", "findUniqueOrThrow", pause)), c.bill.id, {
+      kind: "PRICE_ALLOWANCE", date: new Date(), lines: [{ billLineId: c.bill.lines[0].id, qty: 0, amountCents: 100 }],
+    }), () => inTx(testDb(), tx => voidBill(ctx(tx), c.bill.id)));
+    expect(credit).not.toHaveProperty("error");
+    expect(voided).toHaveProperty("error");
+    expect(await testDb().vendorBill.findUniqueOrThrow({ where: { id: c.bill.id } })).toMatchObject({ status: "POSTED", creditedCents: 100 });
+    await expectBooksSound();
+  });
+
+  it("#7 refuses a credit queued behind a successful void", async () => {
+    const c = await fixture();
+    ok(await c.accountant.post(`/api/bills/${c.bill.id}/post`, { version: c.bill.version }));
+    const [voided, credit] = await race(async (tx, pause) => {
+      const result = await voidBill(ctx(tx), c.bill.id);
+      await pause();
+      return result;
+    }, () => c.accountant.post(`/api/bills/${c.bill.id}/credits`, {
+      kind: "PRICE_ALLOWANCE", date: new Date().toISOString(),
+      lines: [{ billLineId: c.bill.lines[0].id, qty: 0, amountCents: 100 }],
+    }));
+    expect(voided).not.toHaveProperty("error");
+    expect(credit).toMatchObject({ value: { status: 409 } });
+    expect(await testDb().vendorCredit.count()).toBe(0);
+    expect(await testDb().vendorBill.findUniqueOrThrow({ where: { id: c.bill.id } })).toMatchObject({ status: "VOID", creditedCents: 0 });
+    await expectBooksSound();
+  });
 });
