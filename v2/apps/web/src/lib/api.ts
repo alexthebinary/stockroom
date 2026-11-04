@@ -34,12 +34,42 @@ export function storedCompany(): string | null {
   }
 }
 
-/** Move this device into another company: forget who's working there and start over from the first screen. */
+/** A page and every form/cache on it belong to the company loaded at boot. */
+export const companyId = storedCompany() || "main";
+let companyChanged = false;
+let onCompanyChange: (() => void) | null = null;
+
+function invalidateCompany() {
+  companyChanged = true;
+  onCompanyChange?.();
+}
+
+/** Clear this page's cache and reload when another tab changes company. */
+export function watchCompanyChanges(onChange: () => void) {
+  onCompanyChange = onChange;
+  window.addEventListener("storage", (event) => {
+    if (event.key === COMPANY_KEY || event.key === null) {
+      const next = event.key === null ? "main" : event.newValue || "main";
+      if (next !== companyId) {
+        invalidateCompany();
+        window.location.assign("/");
+      }
+    }
+  });
+}
+
+export function assertCompany(expected = companyId) {
+  if (companyChanged || expected !== companyId || (storedCompany() || "main") !== companyId) {
+    throw new ApiError("The company changed. Reload this page before continuing.", 409);
+  }
+}
+
+/** Move this device into another company and start with a fresh page and cache. */
 export function switchCompany(id: string | null) {
+  invalidateCompany();
   try {
     if (id && id !== "main") localStorage.setItem(COMPANY_KEY, id);
     else localStorage.removeItem(COMPANY_KEY);
-    // A delivery in progress and the last warehouse belong to the company being left.
     localStorage.removeItem("pi.receive");
     localStorage.removeItem("pi.warehouse");
   } catch {
@@ -49,11 +79,11 @@ export function switchCompany(id: string | null) {
   window.location.assign("/");
 }
 
-/** Headers every request carries: the company, then who's working in it. */
-export function scopeHeaders(): Record<string, string> {
+/** Explicit company headers never follow another tab's mutable choice. */
+export function scopeHeaders(expected = companyId): Record<string, string> {
+  assertCompany(expected);
   const profile = storedProfile();
-  const company = storedCompany();
-  return { ...(company ? { "x-company": company } : {}), ...(profile ? { "x-profile": String(profile.id) } : {}) };
+  return { "x-company": expected, ...(profile ? { "x-profile": String(profile.id) } : {}) };
 }
 
 export class ApiError extends Error {
@@ -68,12 +98,13 @@ export class ApiError extends Error {
 let onUnauthorized: (() => void) | null = null;
 export const setUnauthorizedHandler = (fn: () => void) => (onUnauthorized = fn);
 
-export async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
+export async function api<T>(method: string, path: string, body?: unknown, expectedCompany = companyId): Promise<T> {
+  const headers = scopeHeaders(expectedCompany);
   let response: Response;
   try {
     response = await fetch(`/api${path}`, {
       method,
-      headers: { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...scopeHeaders() },
+      headers: { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...headers },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
@@ -81,6 +112,7 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
     throw new ApiError("No connection. Your work is safe on this device; try again when you're back online.", 0);
   }
   const text = await response.text();
+  assertCompany(expectedCompany);
   const data = text ? JSON.parse(text) : null;
   if (!response.ok) {
     recordProblem(`${method} ${path} → ${response.status} ${data?.error ?? ""}`.trim());
