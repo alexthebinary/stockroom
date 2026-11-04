@@ -489,6 +489,7 @@ model ScanEvent {
 
 /// direction: OUT (we pay a vendor) | IN (a vendor refunds us). status: POSTED | VOID
 model Payment {
+  actionId    String?  @unique @db.Uuid
   id          Int      @id @default(autoincrement())
   number      String   @unique
   direction   String

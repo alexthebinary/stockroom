@@ -10,8 +10,9 @@ import { recordPayment, voidPayment } from "../purchasing/payments";
 import { voidBill } from "../purchasing/void";
 
 const paymentBody = z.object({
+  actionId: z.uuid().transform((id) => id.toLowerCase()).optional(),
   amountCents: z.number().int().positive(),
-  paidAt: z.coerce.date().default(() => new Date()),
+  paidAt: z.coerce.date().optional(),
   method: z.enum(["BANK", "CHECK", "CARD", "CASH", "ACH", "WIRE"]).default("BANK"),
   memo: z.string().max(500).nullish(),
 });
