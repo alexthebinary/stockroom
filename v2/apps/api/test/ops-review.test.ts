@@ -29,3 +29,25 @@ describe("ops review regressions", () => {
     expect(report.problems.join("\n")).toMatch(/Inventory account 1200/);
   });
 });
+
+async function billed(c: Awaited<ReturnType<typeof sampleCompany>>, invoice = "INV-OPS", billDate = "2026-10-01") {
+  const po = ok(await c.admin.post("/api/purchase-orders", { vendorId: c.ids.supplier, warehouseId: c.ids.warehouse, lines: [{ itemId: c.ids.widget, qtyOrdered: 1, unitCostCents: 10000 }] })).body;
+  const draft = ok(await c.accountant.post("/api/bills", { poId: po.id })).body;
+  const edited = ok(await c.accountant.patch(`/api/bills/${draft.id}`, { version: draft.version, vendorInvoiceNumber: invoice, billDate })).body;
+  return ok(await c.accountant.post(`/api/bills/${draft.id}/post`, { version: edited.version })).body;
+}
+
+it("#18 reconciles payable-role history after reassignment and partial payment", async () => {
+  const c = await sampleCompany();
+  const bill = await billed(c);
+  const account = ok(await c.admin.post("/api/accounts", { code: "2010", name: "New payables", type: "LIABILITY", normalSide: "CREDIT" })).body;
+  ok(await c.admin.put("/api/posting-rules/payable", { accountId: account.id }));
+  ok(await c.accountant.post(`/api/bills/${bill.id}/payments`, { amountCents: 2500 }));
+  const report = await checkBooks(testDb());
+  expect(report.problems).toEqual([]);
+  expect(report.figures.payableGlCents).toBe(7500);
+  expect(report.figures.payableOpenCents).toBe(7500);
+  // Role history still detects a real mismatch after reassignment.
+  await testDb().vendorBill.update({ where: { id: bill.id }, data: { paidCents: 2501 } });
+  expect((await checkBooks(testDb())).sound).toBe(false);
+});

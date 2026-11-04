@@ -23,7 +23,6 @@ export type BooksReport = {
 export async function checkBooks(db: Db): Promise<BooksReport> {
   const problems: string[] = [];
   const rules = new Map((await db.postingRule.findMany()).map((r) => [r.role, r.accountId]));
-  const payableAccount = rules.get("payable")!;
 
   // Inventory is one account (1200); each line's role says which part of it,
   // on hand or billed-in-transit, and each part is proved on its own.
@@ -92,7 +91,7 @@ export async function checkBooks(db: Db): Promise<BooksReport> {
 
   // 5. Accounts Payable equals open bills, vendor by vendor.
   const glByVendor = new Map<number, number>();
-  for (const l of lines.filter((l) => l.accountId === payableAccount)) {
+  for (const l of lines.filter((l) => l.role === "payable")) {
     if (l.vendorId == null) problems.push("An Accounts Payable line has no vendor");
     else glByVendor.set(l.vendorId, (glByVendor.get(l.vendorId) ?? 0) - signed(l));
   }
