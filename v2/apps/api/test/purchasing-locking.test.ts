@@ -90,4 +90,17 @@ describe("purchasing locking regressions", () => {
     await expectBooksSound();
   });
 
+  it("#6 serializes two bills for the last ordered unit", async () => {
+    const c = await fixture();
+    const draft = ok(await c.accountant.post("/api/bills", { poId: c.po.id })).body;
+    const other = ok(await c.accountant.patch(`/api/bills/${draft.id}`, { version: draft.version, vendorInvoiceNumber: "LOCK-2" })).body;
+    const results = await race((tx, pause) => postInventoryBill(ctx(pauseRead(tx, "purchaseOrderLine", "findUniqueOrThrow", pause)), c.bill.id, c.bill.version),
+      () => inTx(testDb(), tx => postInventoryBill(ctx(tx), other.id, other.version)));
+    expect(results.filter(r => "value" in r)).toHaveLength(1);
+    expect(results.filter(r => "error" in r)).toHaveLength(1);
+    expect(await testDb().purchaseOrderLine.findUniqueOrThrow({ where: { id: c.po.lines[0].id } })).toMatchObject({ qtyBilled: 1, inboundCents: 50000 });
+    expect(await testDb().vendorBill.count({ where: { status: "POSTED" } })).toBe(1);
+    await expectBooksSound();
+  });
+
 });
