@@ -2,12 +2,12 @@ import { Alert, Badge, Button, Group, Modal, Stack, Text, TextInput } from "@man
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useState } from "react";
 import { toastErr } from "../../components/ui";
-import { del, get, post, storedCompany, switchCompany } from "../../lib/api";
+import { companyId, del, get, post, switchCompany } from "../../lib/api";
 
 export type CompanyInfo = { id: string; name: string; createdAt: string; setupDone: boolean; test: boolean };
 type CompanyList = { enabled: boolean; current: string; companies: CompanyInfo[] };
 
-export const useCompanies = () => useQuery({ queryKey: ["companies"], queryFn: () => get<CompanyList>("/companies"), staleTime: 60_000 });
+export const useCompanies = () => useQuery({ queryKey: ["companies", companyId], queryFn: () => get<CompanyList>("/companies"), staleTime: 60_000 });
 
 /**
  * Test companies: a brand-new, empty set of books to try the product from the
@@ -99,15 +99,30 @@ export function CompaniesModal({ opened, onClose }: { opened: boolean; onClose: 
 export function TestCompanyPill() {
   const list = useCompanies();
   const [open, setOpen] = useState(false);
-  const stored = storedCompany();
+  const [notice, setNotice] = useState(() => {
+    try { return sessionStorage.getItem("pi.company-recovery") === "yes"; } catch { return false; }
+  });
+  const stored = companyId === "main" ? null : companyId;
   const gone = Boolean(stored && list.data && list.data.current !== stored);
   useEffect(() => {
-    if (gone) switchCompany(null);
+    if (gone) {
+      try { sessionStorage.setItem("pi.company-recovery", "yes"); } catch { /* Storage may be blocked. */ }
+      switchCompany(null);
+    }
   }, [gone]);
   const here = list.data?.companies.find((c) => c.id === list.data?.current);
-  if (!stored || !here?.test) return null;
+  const recovery = notice && companyId === "main" ? (
+    <Alert color="orange" title="Company changed" withCloseButton onClose={() => {
+      setNotice(false);
+      try { sessionStorage.removeItem("pi.company-recovery"); } catch { /* Storage may be blocked. */ }
+    }} style={{ position: "fixed", top: 12, left: 12, right: 12, zIndex: 500 }}>
+      That test company no longer exists. You're back in the main company.
+    </Alert>
+  ) : null;
+  if (!stored || !here?.test) return recovery;
   return (
     <>
+      {recovery}
       <button type="button" className="no-print test-company-pill" onClick={() => setOpen(true)} aria-label={`Test company ${here.name}. Switch company`}>
         Test company: {here.name} · Switch
       </button>

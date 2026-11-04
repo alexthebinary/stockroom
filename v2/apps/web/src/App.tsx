@@ -1,4 +1,4 @@
-import { Center, Loader } from "@mantine/core";
+import { Alert, Button, Center, Loader, Stack } from "@mantine/core";
 import { lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
@@ -42,9 +42,17 @@ export function App() {
   const setup = useQuery({ queryKey: ["setup"], queryFn: () => get<Setup>("/setup") });
   if (!setup.data) {
     return (
-      <Center h="100dvh">
-        <Loader />
-      </Center>
+      <>
+        <TestCompanyPill />
+        <Center h="100dvh">
+          {setup.error ? (
+            <Stack>
+              <Alert color="red" title="Couldn't open this company">{setup.error.message}</Alert>
+              <Button onClick={() => void setup.refetch()}>Try again</Button>
+            </Stack>
+          ) : <Loader />}
+        </Center>
+      </>
     );
   }
   return (
