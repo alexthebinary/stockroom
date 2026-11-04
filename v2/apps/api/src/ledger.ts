@@ -125,6 +125,10 @@ export async function repointRole(tx: Tx, role: string, accountId: number, actor
   }
   const account = await tx.account.findUnique({ where: { id: accountId } });
   if (!account || !account.isActive || account.isHeader) throw new DomainError("Pick an active posting account (not a header)", 400);
+  const inventoryRules = await tx.postingRule.findMany({ where: { role: { in: ["inventoryOnHand", "inventoryInbound"] } } });
+  if (account.code === DEFAULT_ROLE_ACCOUNTS.inventoryOnHand || account.code === DEFAULT_ROLE_ACCOUNTS.inventoryInbound || inventoryRules.some((r) => r.accountId === accountId)) {
+    throw new DomainError("Inventory accounts are reserved for stock postings. Pick another account.", 409);
+  }
   const rule = await tx.postingRule.findUniqueOrThrow({ where: { role } });
   if (rule.accountId === accountId) return rule;
   await tx.postingRuleChange.create({ data: { ruleId: rule.id, fromAccountId: rule.accountId, toAccountId: accountId, actor } });

@@ -65,6 +65,19 @@ export async function checkBooks(db: Db): Promise<BooksReport> {
     if (line.inboundCents < 0) problems.push(`PO line ${line.id}: inbound value is negative`);
   }
 
+  // Check the actual accounts too: a non-inventory role may have used one
+  // before inventory accounts were reserved in account assignment.
+  const inventoryAccounts = await db.account.findMany({ where: { OR: [
+    { code: "1200" },
+    { id: { in: [rules.get("inventoryOnHand")!, rules.get("inventoryInbound")!] } },
+  ] } });
+  for (const account of inventoryAccounts) {
+    const actual = lines.filter((l) => l.accountId === account.id).reduce((s, l) => s + signed(l), 0);
+    const expected = (rules.get("inventoryOnHand") === account.id ? pools.reduce((s, p) => s + p.valueCents, 0) : 0)
+      + (rules.get("inventoryInbound") === account.id ? poLines.reduce((s, l) => s + l.inboundCents, 0) : 0);
+    if (actual !== expected) problems.push(`Inventory account ${account.code}: balance is ${actual} but stock and inventory in transit total ${expected}`);
+  }
+
   // 4. Stock balances equal the unit registers.
   const movements = await db.stockMovement.groupBy({ by: ["itemId", "warehouseId", "bucket"], _sum: { qtyDelta: true } });
   for (const b of balances) {
