@@ -31,7 +31,7 @@ import { plural, toastErr } from "../../components/ui";
 import { ApiError, get, patch, post } from "../../lib/api";
 import type { Item, Vendor, Warehouse } from "../../lib/types";
 import { type ScanFeedback, Scanner } from "../scan/Scanner";
-import { enqueue, eventsFor, flush, forget, outbox, type QueuedEvent } from "./outbox";
+import { enqueue, eventsFor, flush, forget, recalled, remember, type QueuedEvent } from "./outbox";
 
 type Expected = { id: number; number: string; warehouseId: number | null; billingStatus: string; vendor: Vendor | null; lines: { id: number; itemId: number; item: Item; outstanding: number }[] }[];
 type Session = { id: number; clientId: string; warehouseId: number; vendorId: number | null; poId: number | null; status: string };
@@ -46,22 +46,6 @@ type SlipRead = {
   lines: { itemId: number | null; item: Item | null; description: string; quantity: number; unitPriceCents: number | null; serials: string[] }[];
 };
 
-const STATE_KEY = "pi.receive";
-const remember = (state: { sessionId: number; step: number } | null) => {
-  try {
-    if (state) localStorage.setItem(STATE_KEY, JSON.stringify(state));
-    else localStorage.removeItem(STATE_KEY);
-  } catch {
-    // storage blocked: the delivery still lives on the server
-  }
-};
-const recalled = (): { sessionId: number; step: number } | null => {
-  try {
-    return JSON.parse(localStorage.getItem(STATE_KEY) ?? "null");
-  } catch {
-    return null;
-  }
-};
 const lastWarehouse = () => {
   try {
     return Number(localStorage.getItem("pi.warehouse")) || null;
@@ -335,7 +319,7 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
   const po = expected.data?.find((p) => p.id === session.poId) ?? null;
 
   const record = useCallback(
-    async (e: Omit<QueuedEvent, "sent" | "clientId" | "capturedAt" | "sessionId">) => {
+    async (e: Omit<QueuedEvent, "sent" | "clientId" | "capturedAt" | "sessionId" | "companyId">) => {
       await enqueue({ ...e, sessionId: session.id });
       void flush(session.id);
     },
@@ -399,7 +383,7 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
     try {
       const left = await flush(session.id);
       if (left > 0) throw new ApiError(`${left} scan(s) are still on this phone. They'll send when you have signal — then finish.`, 0);
-      const total = await outbox.events.where({ sessionId: session.id }).count();
+      const total = (await eventsFor(session.id)).length;
       const result = await post<Result>(`/scan-sessions/${session.id}/submit`, { expectedEventCount: total });
       await forget(session.id);
       onDone(result, lines);
