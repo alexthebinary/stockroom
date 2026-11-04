@@ -3,6 +3,7 @@ import type { Tx } from "../db";
 import { postEntry } from "../ledger";
 import { nextNumber } from "../numbering";
 import { holdUnits, landUnits, type StockCtx } from "../stock";
+import { pendingBillLines } from "./adjust";
 import { ensureDraftBill } from "./bills";
 import { lockPoLinesForOrders } from "./locks";
 import { createPo, estimateCost, refreshPoStatus } from "./po";
@@ -130,22 +131,26 @@ export async function receive(
       const receiptLine = await tx.receiptLine.create({ data: { receiptId: receipt.id, poLineId: line.id, itemId: p.itemId, qty: p.qty } });
       let valueCents = 0;
       if (landable > 0) {
-        const bill = await tx.vendorBill.findFirst({
-          where: { poId, kind: "INVENTORY", status: "POSTED", lines: { some: { poLineId: line.id } } },
-          orderBy: { id: "desc" },
-        });
-        valueCents = inboundShare(line.inboundCents, line.qtyBilled - line.qtyLanded, landable);
-        await landUnits(ctx, {
-          itemId: p.itemId,
-          warehouseId: input.warehouseId,
-          qty: landable,
-          valueCents,
-          fromHeld: false,
-          docNumber,
-          counter: { type: "BILL", id: bill!.id },
-          poLineId: line.id,
-          receiptLineId: receiptLine.id,
-        });
+        let left = landable;
+        let serialOffset = 0;
+        for (const billLine of await pendingBillLines(tx, line.id)) {
+          const qty = Math.min(left, billLine.pending);
+          if (qty === 0) break;
+          const value = inboundShare(billLine.inboundCents, billLine.pending, qty);
+          const lot = await landUnits(ctx, {
+            itemId: p.itemId, warehouseId: input.warehouseId, qty, valueCents: value,
+            fromHeld: false, docNumber, counter: { type: "BILL", id: billLine.billId },
+            poLineId: line.id, receiptLineId: receiptLine.id, billLineId: billLine.id,
+          });
+          for (const serial of p.serials.slice(serialOffset, serialOffset + qty)) {
+            await tx.serialUnit.create({ data: { itemId: p.itemId, serial, warehouseId: input.warehouseId, receiptLineId: receiptLine.id, lotId: lot.id, state: "IN_STOCK" } });
+          }
+          await tx.vendorBillLine.update({ where: { id: billLine.id }, data: { inboundCents: { decrement: value } } });
+          valueCents += value;
+          serialOffset += qty;
+          left -= qty;
+        }
+        if (left !== 0) throw new DomainError("The bill line trail does not cover these units; run the books check", 409);
         landedLines.push({ itemId: p.itemId, poLineId: line.id, valueCents });
         await tx.receiptLine.update({ where: { id: receiptLine.id }, data: { landedQty: landable, valueCents } });
       }
@@ -154,9 +159,9 @@ export async function receive(
         where: { id: line.id },
         data: { qtyReceived: { increment: p.qty }, qtyLanded: { increment: landable }, qtyHeld: { increment: held }, inboundCents: { decrement: valueCents } },
       });
-      for (const [i, serial] of p.serials.entries()) {
+      for (const serial of p.serials.slice(landable)) {
         try {
-          await tx.serialUnit.create({ data: { itemId: p.itemId, serial, warehouseId: input.warehouseId, receiptLineId: receiptLine.id, state: i < landable ? "IN_STOCK" : "HELD" } });
+          await tx.serialUnit.create({ data: { itemId: p.itemId, serial, warehouseId: input.warehouseId, receiptLineId: receiptLine.id, state: "HELD" } });
         } catch {
           throw new DomainError(`Serial ${serial} has already been received`, 409);
         }

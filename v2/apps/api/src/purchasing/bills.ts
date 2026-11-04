@@ -3,6 +3,7 @@ import type { Tx } from "../db";
 import { postEntry } from "../ledger";
 import { nextNumber } from "../numbering";
 import { landUnits, type StockCtx } from "../stock";
+import { billLineStock, unbilledInboundShare } from "./adjust";
 import { refreshPoStatus } from "./po";
 import { lockBill } from "./locks";
 import { inboundShare, refreshReceiptState } from "./receive";
@@ -102,14 +103,13 @@ export async function previewBill(tx: Tx, billId: number) {
   }
   const landed = bill.lines.some((l) => l.qty > 0) ? landedFor(bill) : [];
   const poLines = await tx.purchaseOrderLine.findMany({ where: { id: { in: bill.lines.map((l) => l.poLineId!).filter(Boolean) } } });
-  const landing = landed.map((l) => {
+  const landing = await Promise.all(landed.map(async (l) => {
     const billLine = bill.lines.find((b) => String(b.id) === l.key)!;
     const poLine = poLines.find((p) => p.id === billLine.poLineId)!;
-    const billedAfter = poLine.qtyBilled + l.qty;
-    const units = Math.min(poLine.qtyHeld, billedAfter - poLine.qtyLanded);
-    const inboundAfter = poLine.inboundCents + l.landedCents;
-    return { billLineId: billLine.id, itemId: billLine.itemId!, units, valueCents: units > 0 ? inboundShare(inboundAfter, billedAfter - poLine.qtyLanded, units) : 0 };
-  });
+    const units = Math.min(poLine.qtyHeld, l.qty);
+    const value = l.landedCents + await unbilledInboundShare(tx, poLine.id, l.qty);
+    return { billLineId: billLine.id, itemId: billLine.itemId!, units, valueCents: units > 0 ? inboundShare(value, l.qty, units) : 0 };
+  }));
   const total = landed.reduce((s, l) => s + l.landedCents, 0);
   return {
     kind: bill.kind,
@@ -158,7 +158,8 @@ export async function postInventoryBill(ctx: StockCtx, billId: number, expectedV
     if (poLine.qtyBilled + l.qty > Math.max(poLine.qtyOrdered, poLine.qtyReceived)) {
       throw new DomainError(`Line ${billLine.id} bills ${l.qty} but only ${Math.max(poLine.qtyOrdered, poLine.qtyReceived) - poLine.qtyBilled} are ordered or received and not yet billed`, 400);
     }
-    await tx.vendorBillLine.update({ where: { id: billLine.id }, data: { freightCents: l.freightCents, landedCents: l.landedCents } });
+    const priorFreight = await unbilledInboundShare(tx, poLine.id, l.qty);
+    await tx.vendorBillLine.update({ where: { id: billLine.id }, data: { freightCents: l.freightCents, landedCents: l.landedCents, inboundCents: l.landedCents + priorFreight } });
     await tx.purchaseOrderLine.update({
       where: { id: poLine.id },
       data: { qtyBilled: { increment: l.qty }, billedCents: { increment: l.landedCents }, inboundCents: { increment: l.landedCents } },
@@ -191,15 +192,18 @@ async function landHeldUnits(ctx: StockCtx, billId: number, poId: number, poLine
   const byReceipt = new Map<number, { itemId: number; poLineId: number; valueCents: number }[]>();
   for (const poLineId of poLineIds) {
     let line = await tx.purchaseOrderLine.findUniqueOrThrow({ where: { id: poLineId } });
-    let toLand = Math.min(line.qtyHeld, line.qtyBilled - line.qtyLanded);
+    const owner = await tx.vendorBillLine.findFirstOrThrow({ where: { billId, poLineId } });
+    let pendingQty = (await billLineStock(tx, owner.id)).pending;
+    let inboundCents = owner.inboundCents;
+    let toLand = Math.min(line.qtyHeld, pendingQty);
     if (toLand <= 0) continue;
     const pending = await tx.receiptLine.findMany({ where: { poLineId, receipt: { poId } }, include: { receipt: true }, orderBy: { id: "asc" } });
     for (const receiptLine of pending) {
       const waiting = receiptLine.qty - receiptLine.landedQty;
       if (waiting <= 0 || toLand === 0) continue;
       const n = Math.min(waiting, toLand);
-      const valueCents = inboundShare(line.inboundCents, line.qtyBilled - line.qtyLanded, n);
-      await landUnits(ctx, {
+      const valueCents = inboundShare(inboundCents, pendingQty, n);
+      const lot = await landUnits(ctx, {
         itemId: line.itemId,
         warehouseId: receiptLine.receipt.warehouseId,
         qty: n,
@@ -209,10 +213,14 @@ async function landHeldUnits(ctx: StockCtx, billId: number, poId: number, poLine
         counter: { type: "BILL", id: billId },
         poLineId,
         receiptLineId: receiptLine.id,
+        billLineId: owner.id,
       });
       await tx.receiptLine.update({ where: { id: receiptLine.id }, data: { landedQty: { increment: n }, valueCents: { increment: valueCents } } });
       const heldSerials = await tx.serialUnit.findMany({ where: { receiptLineId: receiptLine.id, state: "HELD" }, orderBy: { id: "asc" }, take: n });
-      await tx.serialUnit.updateMany({ where: { id: { in: heldSerials.map((s) => s.id) } }, data: { state: "IN_STOCK" } });
+      await tx.serialUnit.updateMany({ where: { id: { in: heldSerials.map((s) => s.id) } }, data: { state: "IN_STOCK", lotId: lot.id } });
+      inboundCents -= valueCents;
+      pendingQty -= n;
+      await tx.vendorBillLine.update({ where: { id: owner.id }, data: { inboundCents } });
       line = await tx.purchaseOrderLine.update({
         where: { id: poLineId },
         data: { qtyHeld: { decrement: n }, qtyLanded: { increment: n }, inboundCents: { decrement: valueCents } },

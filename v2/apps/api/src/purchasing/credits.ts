@@ -2,7 +2,7 @@ import { DomainError } from "@pi/domain";
 import { postEntry } from "../ledger";
 import { nextNumber } from "../numbering";
 import { issueUnits, revaluePool, type StockCtx } from "../stock";
-import { applyLineAdjustment } from "./adjust";
+import { applyLineAdjustment, billLineStock } from "./adjust";
 import { refreshPoStatus } from "./po";
 import { lockBill } from "./locks";
 import { inboundShare } from "./receive";
@@ -47,16 +47,19 @@ export async function postVendorCredit(
   const entryLines = [];
   let total = 0;
   for (const req of input.lines) {
-    const billLine = bill.lines.find((l) => l.id === req.billLineId);
-    if (!billLine?.poLineId || !billLine.itemId) throw new DomainError(`Line ${req.billLineId} is not on ${bill.number}`, 400);
+    if (!bill.lines.some(l => l.id === req.billLineId)) throw new DomainError(`Line ${req.billLineId} is not on ${bill.number}`, 400);
+    // Earlier lines in this request may already have returned or discounted it.
+    const billLine = await tx.vendorBillLine.findUniqueOrThrow({ where: { id: req.billLineId } });
+    if (!billLine.poLineId || !billLine.itemId) throw new DomainError(`Line ${req.billLineId} is not on ${bill.number}`, 400);
     const poLine = await tx.purchaseOrderLine.findUniqueOrThrow({ where: { id: billLine.poLineId } });
     const item = await tx.item.findUniqueOrThrow({ where: { id: billLine.itemId } });
 
+    const owned = await billLineStock(tx, billLine.id);
     if (input.kind === "PRICE_ALLOWANCE") {
       const amount = req.amountCents ?? 0;
       if (amount <= 0) throw new DomainError(`${item.name}: enter the discount amount`, 400);
-      if (amount > billLine.landedCents) throw new DomainError(`${item.name}: a discount can't exceed what the line cost`, 400);
-      const effect = await applyLineAdjustment(tx, poLine.id, -amount);
+      if (amount > billLine.landedCents - owned.credited) throw new DomainError(`${item.name}: a discount can't exceed what the line cost`, 400);
+      const effect = await applyLineAdjustment(tx, poLine.id, -amount, billLine.id);
       entryLines.push(
         { role: "inventoryInbound" as const, amountCents: -effect.inbound, itemId: item.id, poLineId: poLine.id },
         { role: "inventoryOnHand" as const, amountCents: -effect.onHand, itemId: item.id, poLineId: poLine.id },
@@ -68,21 +71,30 @@ export async function postVendorCredit(
     }
 
     if (!Number.isInteger(req.qty) || req.qty <= 0) throw new DomainError(`${item.name}: enter how many units`, 400);
-    const amount = req.amountCents ?? Math.round((billLine.landedCents * req.qty) / billLine.qty);
+    if (req.qty > owned.remaining) throw new DomainError(`${item.name}: only ${owned.remaining} unit(s) remain returnable on this bill line`, 400);
+    const amount = req.amountCents ?? inboundShare(Math.max(0, billLine.landedCents - owned.credited), owned.remaining, req.qty);
     if (amount < 0) throw new DomainError("A credit can't be negative", 400);
     const received = req.received ?? true;
     let costCents: number;
     let varianceCents: number;
     if (received) {
-      if (req.qty > poLine.qtyLanded) throw new DomainError(`${item.name}: only ${poLine.qtyLanded} unit(s) from this order are in stock to return`, 400);
+      if (req.qty > owned.onHand) throw new DomainError(`${item.name}: only ${owned.onHand} unit(s) from this bill line are in stock to return`, 400);
+      const warehouseId = (await tx.purchaseOrder.findUniqueOrThrow({ where: { id: poLine.poId } })).warehouseId;
+      let lotIds: number[] | undefined;
       if (item.trackingMode === "SERIAL") {
         const serials = req.serials ?? [];
         if (serials.length !== req.qty) throw new DomainError(`${item.name}: name the serial of each unit going back`, 400);
-        const units = await tx.serialUnit.updateMany({ where: { itemId: item.id, serial: { in: serials }, state: "IN_STOCK" }, data: { state: "RETURNED" } });
-        if (units.count !== serials.length) throw new DomainError(`${item.name}: one of those serials is not in stock`, 400);
+        const lots = await tx.inventoryLot.findMany({ where: { billLineId: billLine.id, warehouseId, qtyRemaining: { gt: 0 } } });
+        const units = await tx.serialUnit.findMany({ where: { itemId: item.id, warehouseId, serial: { in: serials }, state: "IN_STOCK", lotId: { in: lots.map(l => l.id) } } });
+        if (new Set(serials).size !== serials.length || units.length !== serials.length) throw new DomainError(`${item.name}: one of those serials is not in stock on this bill`, 400);
+        lotIds = units.map(u => u.lotId!);
+        // Issue each named lot separately: a serial in one lot must never consume another lot.
+        await tx.serialUnit.updateMany({ where: { id: { in: units.map(u => u.id) } }, data: { state: "RETURNED" } });
       }
-      const warehouseId = (await tx.purchaseOrder.findUniqueOrThrow({ where: { id: poLine.poId } })).warehouseId;
-      costCents = await issueUnits(ctx, { itemId: item.id, warehouseId, qty: req.qty, docNumber: number, counter: { type: "VENDOR_CREDIT", id: credit.id }, preferPoLineId: poLine.id });
+      costCents = 0;
+      for (const group of lotIds ? lotIds.map(id => ({ qty: 1, lotIds: [id] })) : [{ qty: req.qty, lotIds: undefined }]) {
+        costCents += await issueUnits(ctx, { itemId: item.id, warehouseId, qty: group.qty, docNumber: number, counter: { type: "VENDOR_CREDIT", id: credit.id }, billLineId: billLine.id, lotIds: group.lotIds });
+      }
       // revaluePool returns the signed value change it could not apply.
       // Negate it back to the credit-side sign used by the return entry.
       varianceCents = -(await revaluePool(tx, item.id, -(amount - costCents)));
@@ -92,9 +104,10 @@ export async function postVendorCredit(
         data: { qtyReturned: { increment: req.qty }, qtyOrdered: { decrement: req.qty }, qtyBilled: { decrement: req.qty }, qtyReceived: { decrement: req.qty }, qtyLanded: { decrement: req.qty }, billedCents: { decrement: amount } },
       });
     } else {
-      const notLanded = poLine.qtyBilled - poLine.qtyLanded;
+      const notLanded = owned.pending;
       if (req.qty > notLanded) throw new DomainError(`${item.name}: only ${notLanded} billed unit(s) have not arrived`, 400);
-      costCents = inboundShare(poLine.inboundCents, notLanded, req.qty);
+      costCents = inboundShare(billLine.inboundCents, notLanded, req.qty);
+      await tx.vendorBillLine.update({ where: { id: billLine.id }, data: { inboundCents: { decrement: costCents } } });
       varianceCents = amount - costCents;
       entryLines.push({ role: "inventoryInbound" as const, amountCents: costCents, itemId: item.id, poLineId: poLine.id });
       await tx.purchaseOrderLine.update({
@@ -103,7 +116,7 @@ export async function postVendorCredit(
       });
     }
     entryLines.push({ role: "returnVariance" as const, amountCents: varianceCents, itemId: item.id, poLineId: poLine.id });
-    await tx.vendorCreditLine.create({ data: { creditId: credit.id, billLineId: billLine.id, poLineId: poLine.id, itemId: item.id, qty: req.qty, amountCents: amount, costCents } });
+    await tx.vendorCreditLine.create({ data: { creditId: credit.id, billLineId: billLine.id, poLineId: poLine.id, itemId: item.id, qty: req.qty, received, amountCents: amount, costCents } });
     total += amount;
   }
 
