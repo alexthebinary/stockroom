@@ -86,6 +86,7 @@ export async function landUnits(
     register?: Register;
     poLineId?: number;
     receiptLineId?: number;
+    billLineId?: number;
   },
 ) {
   const { tx } = ctx;
@@ -103,6 +104,7 @@ export async function landUnits(
      WHERE "itemId" = ${input.itemId}`;
   return tx.inventoryLot.create({
     data: {
+      billLineId: input.billLineId,
       itemId: input.itemId,
       warehouseId: input.warehouseId,
       poLineId: input.poLineId,
@@ -126,11 +128,12 @@ async function lockPool(tx: Tx, itemId: number) {
 /**
  * Units leave owned stock at the item's average cost (WH-OUT). Lots are drawn
  * oldest-first — from `preferPoLineId`'s lots first when the units going out
- * are known to be that line's (a return to the vendor). Returns their cost.
+ * are known to be that line's. Bill-line and lot filters are strict: a vendor
+ * return cannot consume another bill's units. Returns the average pool cost.
  */
 export async function issueUnits(
   ctx: StockCtx,
-  input: { itemId: number; warehouseId: number; qty: number; docNumber: string; counter: Counter; preferPoLineId?: number; register?: Register },
+  input: { itemId: number; warehouseId: number; qty: number; docNumber: string; counter: Counter; preferPoLineId?: number; billLineId?: number; lotIds?: number[]; register?: Register },
 ): Promise<number> {
   const { tx } = ctx;
   const pool = await lockPool(tx, input.itemId);
@@ -142,6 +145,8 @@ export async function issueUnits(
   const lots = await tx.$queryRaw<{ id: number; qtyRemaining: number }[]>`
     SELECT "id", "qtyRemaining" FROM "InventoryLot"
      WHERE "itemId" = ${input.itemId} AND "warehouseId" = ${input.warehouseId} AND "qtyRemaining" > 0
+       AND (${input.billLineId ?? null}::int IS NULL OR "billLineId" = ${input.billLineId ?? null}::int)
+       AND (${input.lotIds === undefined} OR "id" = ANY(${input.lotIds ?? []}::int[]))
      ORDER BY ("poLineId" IS NOT DISTINCT FROM ${input.preferPoLineId ?? null}::int) DESC, "id"
      FOR UPDATE`;
   let left = input.qty;

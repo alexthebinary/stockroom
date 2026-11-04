@@ -247,6 +247,8 @@ model CostPool {
 /// how many of them are still on the shelf (drawn oldest-first). Used to split
 /// a late freight bill between units on hand and units already gone.
 model InventoryLot {
+  /// Inventory bills own individual landings; opening/adjustment lots have no bill line.
+  billLineId Int?
   id            Int      @id @default(autoincrement())
   itemId        Int
   warehouseId   Int
@@ -262,6 +264,7 @@ model InventoryLot {
 
   @@index([itemId, qtyRemaining])
   @@index([poLineId])
+  @@index([billLineId])
 }
 
 /// The unit registers of the WMS doc (WH-IN, WH-OUT, ADJ), append-only.
@@ -285,6 +288,8 @@ model StockMovement {
 }
 
 model SerialUnit {
+  /// Exact physical landing, retained when this serial is returned.
+  lotId Int?
   id            Int      @id @default(autoincrement())
   itemId        Int
   serial        String
@@ -294,6 +299,7 @@ model SerialUnit {
   createdAt     DateTime @default(now())
 
   @@unique([itemId, serial])
+  @@index([lotId])
 }
 
 // ─── Purchasing ──────────────────────────────────────────────────────────
@@ -387,6 +393,8 @@ model VendorBill {
 /// and landed cost are filled in when the bill posts. FREIGHT bills: one line
 /// with the amount.
 model VendorBillLine {
+  /// Remaining billed value in transit, including later adjustments.
+  inboundCents Int @default(0)
   id            Int     @id @default(autoincrement())
   billId        Int
   poLineId      Int?
@@ -521,6 +529,8 @@ model VendorCredit {
 }
 
 model VendorCreditLine {
+  /// RETURN: physical stock versus billed units that never arrived.
+  received Boolean @default(true)
   id          Int @id @default(autoincrement())
   creditId    Int
   billLineId  Int
