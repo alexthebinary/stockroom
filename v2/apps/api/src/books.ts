@@ -1,4 +1,4 @@
-import type { Db } from "./db";
+import type { Db, Tx } from "./db";
 
 /**
  * Is everything consistent? Run after every test scenario, on demand from the
@@ -21,9 +21,15 @@ export type BooksReport = {
 };
 
 export async function checkBooks(db: Db): Promise<BooksReport> {
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+    return checkSnapshot(tx);
+  }, { isolationLevel: "RepeatableRead", maxWait: 10_000, timeout: 30_000 });
+}
+
+async function checkSnapshot(db: Tx): Promise<BooksReport> {
   const problems: string[] = [];
   const rules = new Map((await db.postingRule.findMany()).map((r) => [r.role, r.accountId]));
-  const payableAccount = rules.get("payable")!;
 
   // Inventory is one account (1200); each line's role says which part of it,
   // on hand or billed-in-transit, and each part is proved on its own.
@@ -65,6 +71,19 @@ export async function checkBooks(db: Db): Promise<BooksReport> {
     if (line.inboundCents < 0) problems.push(`PO line ${line.id}: inbound value is negative`);
   }
 
+  // Check the actual accounts too: a non-inventory role may have used one
+  // before inventory accounts were reserved in account assignment.
+  const inventoryAccounts = await db.account.findMany({ where: { OR: [
+    { code: "1200" },
+    { id: { in: [rules.get("inventoryOnHand")!, rules.get("inventoryInbound")!] } },
+  ] } });
+  for (const account of inventoryAccounts) {
+    const actual = lines.filter((l) => l.accountId === account.id).reduce((s, l) => s + signed(l), 0);
+    const expected = (rules.get("inventoryOnHand") === account.id ? pools.reduce((s, p) => s + p.valueCents, 0) : 0)
+      + (rules.get("inventoryInbound") === account.id ? poLines.reduce((s, l) => s + l.inboundCents, 0) : 0);
+    if (actual !== expected) problems.push(`Inventory account ${account.code}: balance is ${actual} but stock and inventory in transit total ${expected}`);
+  }
+
   // 4. Stock balances equal the unit registers.
   const movements = await db.stockMovement.groupBy({ by: ["itemId", "warehouseId", "bucket"], _sum: { qtyDelta: true } });
   for (const b of balances) {
@@ -79,7 +98,7 @@ export async function checkBooks(db: Db): Promise<BooksReport> {
 
   // 5. Accounts Payable equals open bills, vendor by vendor.
   const glByVendor = new Map<number, number>();
-  for (const l of lines.filter((l) => l.accountId === payableAccount)) {
+  for (const l of lines.filter((l) => l.role === "payable")) {
     if (l.vendorId == null) problems.push("An Accounts Payable line has no vendor");
     else glByVendor.set(l.vendorId, (glByVendor.get(l.vendorId) ?? 0) - signed(l));
   }
