@@ -4,7 +4,7 @@ import { postEntry } from "../ledger";
 import { nextNumber } from "../numbering";
 import { landUnits, type StockCtx } from "../stock";
 import { refreshPoStatus } from "./po";
-import { lockPoLines } from "./locks";
+import { lockBill } from "./locks";
 import { inboundShare, refreshReceiptState } from "./receive";
 
 const DAY = 86_400_000;
@@ -131,6 +131,7 @@ export async function previewBill(tx: Tx, billId: number) {
  */
 export async function postInventoryBill(ctx: StockCtx, billId: number, expectedVersion: number) {
   const { tx, actor } = ctx;
+  await lockBill(tx, billId);
   const bill = await tx.vendorBill.findUnique({ where: { id: billId }, include: { lines: true } });
   if (!bill) throw new DomainError("That bill was not found", 404);
   if (bill.status !== "DRAFT") throw new DomainError(`${bill.number} is already ${bill.status.toLowerCase()}`, 409);
@@ -147,7 +148,6 @@ export async function postInventoryBill(ctx: StockCtx, billId: number, expectedV
   const lines = bill.lines.filter((l) => l.qty > 0);
   if (lines.length === 0) throw new DomainError("A bill needs at least one line with a quantity", 400);
 
-  await lockPoLines(tx, lines.map((l) => l.poLineId!).filter(Boolean));
   const landed = landedFor(bill);
   const vendor = await tx.vendor.findUniqueOrThrow({ where: { id: bill.vendorId } });
   const entryLines = [];

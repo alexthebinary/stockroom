@@ -7,6 +7,7 @@ import { inTx, Prisma } from "../db";
 import { actorOf, idParam, notFound, parse } from "../http";
 import { dueDateFor, draftBillFromPo, postInventoryBill, previewBill, recomputeTotals } from "../purchasing/bills";
 import { postFreightBill } from "../purchasing/freight";
+import { lockBill } from "../purchasing/locks";
 import { createPo, refreshPoStatus } from "../purchasing/po";
 import { receive } from "../purchasing/receive";
 import { appendEvents, resolveUnknown, submitSession, tally } from "../purchasing/scan";
@@ -318,7 +319,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
     const { id } = parse(idParam, request.params);
     const body = parse(billPatch, request.body);
     return inTx(db, async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "VendorBill" WHERE "id" = ${id} FOR UPDATE`;
+      await lockBill(tx, id);
       const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id }, include: { lines: true } });
       if (bill.status !== "DRAFT") throw new DomainError(`${bill.number} is ${bill.status.toLowerCase()} and can't be edited`, 409);
       if (bill.version !== body.version) throw new DomainError(`${bill.number} was changed by someone else. Reload it.`, 409);

@@ -4,6 +4,7 @@ import { postEntry } from "../ledger";
 import { nextNumber } from "../numbering";
 import { holdUnits, landUnits, type StockCtx } from "../stock";
 import { ensureDraftBill } from "./bills";
+import { lockPoLinesForOrders } from "./locks";
 import { createPo, estimateCost, refreshPoStatus } from "./po";
 
 export type Arrival = { itemId: number; qty: number; serials: string[]; slipPriceCents?: number | null };
@@ -55,6 +56,7 @@ export async function receive(
     if (new Set(a.serials).size !== a.serials.length) throw new DomainError(`${item.name}: the same serial was scanned twice`, 400);
   }
 
+  if (input.poId) await lockPoLinesForOrders(tx, [input.poId]);
   let po = input.poId ? await tx.purchaseOrder.findUnique({ where: { id: input.poId }, include: { lines: true, bills: true } }) : null;
   if (input.poId && !po) throw new DomainError("That purchase order was not found", 404);
   if (po && po.lifecycle !== "OPEN") throw new DomainError(`${po.number} is ${po.lifecycle.toLowerCase()}; receive against an open order`, 409);

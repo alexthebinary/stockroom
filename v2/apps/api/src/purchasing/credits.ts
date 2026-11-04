@@ -4,6 +4,7 @@ import { nextNumber } from "../numbering";
 import { issueUnits, revaluePool, type StockCtx } from "../stock";
 import { applyLineAdjustment } from "./adjust";
 import { refreshPoStatus } from "./po";
+import { lockBill } from "./locks";
 import { inboundShare } from "./receive";
 
 export type CreditLineInput = {
@@ -36,7 +37,7 @@ export async function postVendorCredit(
   input: { kind: "RETURN" | "PRICE_ALLOWANCE"; date: Date; memo?: string | null; lines: CreditLineInput[] },
 ) {
   const { tx, actor } = ctx;
-  await tx.$queryRaw`SELECT "id" FROM "VendorBill" WHERE "id" = ${billId} FOR UPDATE`;
+  await lockBill(tx, billId);
   const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id: billId }, include: { lines: true } });
   if (bill.kind !== "INVENTORY" || bill.status !== "POSTED") throw new DomainError("Credits apply to a posted inventory bill", 409);
   if (input.lines.length === 0) throw new DomainError("Pick at least one line", 400);
