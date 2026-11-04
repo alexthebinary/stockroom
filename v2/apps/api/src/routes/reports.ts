@@ -168,8 +168,37 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
   /** What we owe, by vendor, aged by days past the due date. */
   app.get("/api/reports/ap-aging", async (request) => {
     const { asOf } = parse(z.object({ asOf: z.coerce.date().default(() => new Date()) }), request.query);
-    const bills = await db.vendorBill.findMany({ where: { status: "POSTED" }, orderBy: { dueDate: "asc" } });
-    const vendors = await db.vendor.findMany({ where: { id: { in: bills.map((b) => b.vendorId!) } } });
+    // Use effective journal dates, including reversals, rather than today's
+    // mutable status and paid/credited totals. Each payment/credit identifies
+    // its bill, so no allocation policy is needed.
+    const { bills, vendors, outstanding } = await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+      const bills = await tx.vendorBill.findMany({ where: { billDate: { lte: asOf } }, orderBy: { dueDate: "asc" } });
+      const billIds = bills.map((b) => b.id);
+      const [vendors, payments, credits] = await Promise.all([
+        tx.vendor.findMany({ where: { id: { in: bills.flatMap((b) => b.vendorId == null ? [] : [b.vendorId]) } } }),
+        tx.payment.findMany({ where: { billId: { in: billIds } }, select: { id: true, billId: true } }),
+        tx.vendorCredit.findMany({ where: { billId: { in: billIds } }, select: { id: true, billId: true } }),
+      ]);
+      const paymentBills = new Map(payments.map((p) => [p.id, p.billId]));
+      const creditBills = new Map(credits.map((c) => [c.id, c.billId]));
+      const lines = await tx.journalLine.findMany({ where: { role: "payable", entry: {
+        date: { lte: asOf },
+        OR: [
+          { sourceType: { in: ["BILL", "BILL_VOID"] }, sourceId: { in: billIds } },
+          { sourceType: "PAYMENT", sourceId: { in: payments.map((p) => p.id) } },
+          { sourceType: "VENDOR_CREDIT", sourceId: { in: credits.map((c) => c.id) } },
+        ],
+      } }, include: { entry: { select: { sourceType: true, sourceId: true } } } });
+      const outstanding = new Map<number, number>();
+      for (const line of lines) {
+        const { sourceType, sourceId } = line.entry;
+        const billId = sourceType === "PAYMENT" ? paymentBills.get(sourceId)
+          : sourceType === "VENDOR_CREDIT" ? creditBills.get(sourceId) : sourceId;
+        if (billId != null) outstanding.set(billId, (outstanding.get(billId) ?? 0) + (line.side === "CREDIT" ? line.amountCents : -line.amountCents));
+      }
+      return { bills, vendors, outstanding };
+    }, { isolationLevel: "RepeatableRead", maxWait: 10_000, timeout: 30_000 });
     const buckets = ["current", "1-30", "31-60", "61-90", "90+"] as const;
     const bucketOf = (due: Date) => {
       const late = Math.floor((asOf.getTime() - due.getTime()) / DAY);
@@ -179,7 +208,7 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
       if (late <= 90) return "61-90";
       return "90+";
     };
-    const open = bills.map((b) => ({ ...b, openCents: b.totalCents - b.paidCents - b.creditedCents })).filter((b) => b.openCents !== 0);
+    const open = bills.map((b) => ({ ...b, openCents: outstanding.get(b.id) ?? 0 })).filter((b) => b.openCents !== 0);
     const byVendor = vendors.map((v) => {
       const mine = open.filter((b) => b.vendorId === v.id);
       const row = Object.fromEntries(buckets.map((k) => [k, mine.filter((b) => bucketOf(b.dueDate) === k).reduce((s, b) => s + b.openCents, 0)]));

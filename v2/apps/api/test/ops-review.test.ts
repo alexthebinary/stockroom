@@ -115,3 +115,35 @@ for (const report of ["books", "valuation"] as const) {
     expect((await checkBooks(testDb())).figures.onHandPoolCents).toBe(10000);
   });
 }
+
+it("#20 includes bills paid after asOf and excludes bills dated after asOf", async () => {
+  const c = await sampleCompany();
+  const october = await billed(c, "OCT", "2026-10-01");
+  await billed(c, "NOV", "2026-11-01");
+  ok(await c.accountant.post(`/api/bills/${october.id}/payments`, { amountCents: 10000, paidAt: "2026-11-02" }));
+  const report = ok(await c.accountant.get("/api/reports/ap-aging?asOf=2026-10-31T23:59:59.999Z")).body;
+  expect(report.vendors).toHaveLength(1);
+  expect(report.vendors[0]).toMatchObject({ totalCents: 10000, bills: [{ id: october.id, openCents: 10000 }] });
+});
+
+it("#20 applies dated credits, payments and their reversals only through the cutoff", async () => {
+  const c = await sampleCompany();
+  const bill = await billed(c);
+  const payment = ok(await c.accountant.post(`/api/bills/${bill.id}/payments`, { amountCents: 2000, paidAt: "2026-10-10" })).body;
+  ok(await c.accountant.post(`/api/payments/${payment.id}/void`));
+  ok(await c.accountant.post(`/api/bills/${bill.id}/credits`, { kind: "PRICE_ALLOWANCE", date: "2026-10-20", lines: [{ billLineId: bill.lines[0].id, amountCents: 3000 }] }));
+  ok(await c.accountant.post(`/api/bills/${bill.id}/credits`, { kind: "PRICE_ALLOWANCE", date: "2026-11-01", lines: [{ billLineId: bill.lines[0].id, amountCents: 1000 }] }));
+  const report = ok(await c.accountant.get("/api/reports/ap-aging?asOf=2026-10-31T23:59:59.999Z")).body;
+  expect(report.vendors[0].totalCents).toBe(5000);
+  const today = ok(await c.accountant.get("/api/reports/ap-aging")).body;
+  expect(today.vendors[0].totalCents).toBe(6000);
+});
+
+it("#20 retains a subsequently voided bill in earlier aging", async () => {
+  const c = await sampleCompany();
+  const bill = await billed(c);
+  ok(await c.accountant.post(`/api/bills/${bill.id}/void`));
+  const report = ok(await c.accountant.get("/api/reports/ap-aging?asOf=2026-10-31T23:59:59.999Z")).body;
+  expect(report.vendors[0]?.totalCents).toBe(10000);
+  expect(ok(await c.accountant.get("/api/reports/ap-aging")).body.vendors).toEqual([]);
+});
