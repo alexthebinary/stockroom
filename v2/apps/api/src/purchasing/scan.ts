@@ -40,7 +40,8 @@ export async function appendEvents(tx: Tx, sessionId: number, events: IncomingEv
     if (event.code) {
       const match = await lookupCode(tx, event.code, session.vendorId);
       if (match) {
-        if (itemId && itemId !== match.itemId) throw new DomainError("This barcode belongs to a different item. Scan it again or enter the item without a barcode.", 409);
+        // The server's barcode table wins over the phone's copy: a 409 here would
+        // jam the offline outbox, which resends the same batch until it succeeds.
         itemId = match.itemId;
         // Camera quantities count packages; manual +/- corrections count units.
         qty = event.source === "BARCODE" || !event.itemId ? event.qty * match.packQty : event.qty;

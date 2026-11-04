@@ -162,7 +162,7 @@ describe("bill first, goods after (the WMS doc's order: PO → Bill → Receipt)
 });
 
 describe("scanning is safe to repeat", () => {
-  it("replaying the same events adds nothing; finishing twice is refused; scanning after finishing is refused", async () => {
+  it("replaying the same events adds nothing; finishing twice returns the saved result; scanning after finishing is refused", async () => {
     const { clerk, ids } = await sampleCompany();
     const session = ok(await clerk.post("/api/scan-sessions", { clientId: randomUUID(), warehouseId: ids.warehouse, vendorId: ids.supplier })).body;
     const events = [1, 2].map(() => ({ clientId: randomUUID(), code: WIDGET, qty: 1, source: "BARCODE", capturedAt: new Date().toISOString() }));
@@ -172,8 +172,9 @@ describe("scanning is safe to repeat", () => {
     expect(await testDb().scanEvent.count()).toBe(2);
     const tooFew = await clerk.post(`/api/scan-sessions/${session.id}/submit`, { expectedEventCount: 3 });
     expect(tooFew.status).toBe(409);
-    ok(await clerk.post(`/api/scan-sessions/${session.id}/submit`, { expectedEventCount: 2 }));
-    expect((await clerk.post(`/api/scan-sessions/${session.id}/submit`, { expectedEventCount: 2 })).status).toBe(409);
+    const first = ok(await clerk.post(`/api/scan-sessions/${session.id}/submit`, { expectedEventCount: 2 })).body;
+    // A retry after a lost response gets the saved result back (review #21), not a second receipt.
+    expect(ok(await clerk.post(`/api/scan-sessions/${session.id}/submit`, { expectedEventCount: 2 })).body).toEqual(first);
     const late = await clerk.post(`/api/scan-sessions/${session.id}/events`, { events: [{ ...events[0], clientId: randomUUID() }] });
     expect(late.status).toBe(409);
     expect((await stock(ids.widget)).held).toBe(2);
