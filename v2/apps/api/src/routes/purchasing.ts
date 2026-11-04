@@ -318,6 +318,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
     const { id } = parse(idParam, request.params);
     const body = parse(billPatch, request.body);
     return inTx(db, async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "VendorBill" WHERE "id" = ${id} FOR UPDATE`;
       const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id }, include: { lines: true } });
       if (bill.status !== "DRAFT") throw new DomainError(`${bill.number} is ${bill.status.toLowerCase()} and can't be edited`, 409);
       if (bill.version !== body.version) throw new DomainError(`${bill.number} was changed by someone else. Reload it.`, 409);
