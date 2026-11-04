@@ -295,6 +295,7 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
   const byKey = useMemo(() => {
     const map = new Map<string, Item>();
     for (const item of items.data ?? []) {
+      if (item.isBundle) continue;
       for (const b of item.barcodes ?? []) map.set(b.code, item);
       map.set(item.sku.toUpperCase(), item);
     }

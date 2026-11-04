@@ -86,5 +86,8 @@ describe("virtual bundles", () => {
     expect(receivable).not.toContain("KIT-8");
     expect(receivable).toContain("BND-A");
     expect((await admin.patch(`/api/bundles/${ids.widget}`, { name: "nope" })).status).toBe(404);
+    const po = await admin.post("/api/purchase-orders", { vendorId: ids.supplier, warehouseId: ids.warehouse, lines: [{ itemId: bundle.id, qtyOrdered: 1, unitCostCents: 100 }] });
+    expect(po.status).toBe(400);
+    expect(JSON.stringify(po.body)).toContain("is a bundle");
   });
 });

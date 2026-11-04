@@ -126,7 +126,7 @@ function UnknownItems({ rows }: { rows: { sessionId: number; code: string | null
           <Text size="sm" c="dimmed">
             The barcode is remembered, so next time it scans straight away. The units go onto the delivery's order and wait for its bill.
           </Text>
-          <Select data={(items.data ?? []).filter((i) => i.trackingMode === "NONE").map((i) => ({ value: String(i.id), label: `${i.sku} · ${i.name}` }))} value={itemId} onChange={setItemId} searchable label="Item" />
+          <Select data={(items.data ?? []).filter((i) => i.trackingMode === "NONE" && !i.isBundle).map((i) => ({ value: String(i.id), label: `${i.sku} · ${i.name}` }))} value={itemId} onChange={setItemId} searchable label="Item" />
           <Text size="xs" c="dimmed">
             Serial-tracked items need each unit's serial: receive those through a new delivery.
           </Text>
