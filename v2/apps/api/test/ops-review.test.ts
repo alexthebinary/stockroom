@@ -147,3 +147,46 @@ it("#20 retains a subsequently voided bill in earlier aging", async () => {
   expect(report.vendors[0]?.totalCents).toBe(10000);
   expect(ok(await c.accountant.get("/api/reports/ap-aging")).body.vendors).toEqual([]);
 });
+
+it("#24 shares a per-client reader quota across endpoints and ignores untrusted forwarding", async () => {
+  const c = await sampleCompany();
+  const { buildApp } = await import("../src/app");
+  const unavailable = async () => ({ ok: false as const, reason: "unavailable" as const, message: "offline" });
+  const app = buildApp({ db: testDb(), reader: { readLabel: unavailable, readPackingSlip: unavailable } });
+  const read = (i: number, remoteAddress = "198.51.100.7") => app.inject({ method: "POST", url: i % 2 ? "/api/ai/read-slip" : "/api/ai/read-label", remoteAddress,
+    headers: { "x-profile": String(c.profiles.clerk.id), "x-forwarded-for": `203.0.113.${i + 1}` }, payload: { image: "data:image/png;base64,iVBORw0KGgo=" } });
+  try {
+    for (let i = 0; i < 20; i++) expect((await read(i)).statusCode).toBe(200);
+    const blocked = await read(20);
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.headers["retry-after"]).toBeDefined();
+    expect((await read(21, "198.51.100.8")).statusCode).toBe(200);
+  } finally { await app.close(); }
+});
+
+it("#24 caps simultaneous reader calls across clients and releases slots", async () => {
+  const c = await sampleCompany();
+  const { buildApp } = await import("../src/app");
+  let finish!: () => void;
+  let started!: () => void;
+  let calls = 0;
+  const gate = new Promise<void>((resolve) => { finish = resolve; });
+  const twoStarted = new Promise<void>((resolve) => { started = resolve; });
+  const readImage = async () => {
+    calls++;
+    if (calls === 2) started();
+    if (calls <= 2) await gate;
+    return { ok: false as const, reason: "unavailable" as const, message: "offline" };
+  };
+  const app = buildApp({ db: testDb(), reader: { readLabel: readImage, readPackingSlip: readImage } });
+  const read = (url: string, ip: string) => app.inject({ method: "POST", url, remoteAddress: ip,
+    headers: { "x-profile": String(c.profiles.clerk.id) }, payload: { image: "data:image/png;base64,iVBORw0KGgo=" } }).then((r) => r.statusCode);
+  const pending = [read("/api/ai/read-label", "198.51.100.1"), read("/api/ai/read-slip", "198.51.100.2")];
+  try {
+    await twoStarted;
+    expect(await read("/api/ai/read-label", "198.51.100.3")).toBe(429);
+    expect(calls).toBe(2);
+  } finally { finish(); await Promise.all(pending); }
+  try { expect(await read("/api/ai/read-slip", "198.51.100.3")).toBe(200); }
+  finally { await app.close(); }
+});

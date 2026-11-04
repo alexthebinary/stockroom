@@ -69,8 +69,9 @@ export function buildApp(input: Deps): FastifyInstance {
   const app = Fastify({
     logger: process.env.LOG_LEVEL ? { level: process.env.LOG_LEVEL } : false,
     bodyLimit: 15 * 1024 * 1024,
-    // Behind Cloudflare Tunnel: the client's address comes from X-Forwarded-For.
-    trustProxy: true,
+    // Cloudflared reaches us from the local Docker network. Public peers
+    // cannot choose their quota identity by supplying forwarding headers.
+    trustProxy: ["loopback", "uniquelocal"],
   });
 
   app.addHook("onSend", async (_request, reply, payload) => {

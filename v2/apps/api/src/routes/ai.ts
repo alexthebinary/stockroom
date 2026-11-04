@@ -1,14 +1,31 @@
 import { barcodeKey, DomainError } from "@pi/domain";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { imageFromDataUrl } from "../ai/reader";
 import type { Deps } from "../app";
 import { lookupCode } from "../catalog";
 import { parse } from "../http";
+import { createHelpRateLimit } from "./help";
 
 const imageBody = z.object({ image: z.string().startsWith("data:image/").max(12_000_000), vendorId: z.number().int().positive().nullish() });
 
 export function registerAi(app: FastifyInstance, { db, reader, clarifier }: Deps) {
+  const hit = createHelpRateLimit(20);
+  let active = 0;
+  async function limited<T>(request: FastifyRequest, reply: FastifyReply, work: () => Promise<T>): Promise<T> {
+    if (hit(request.ip)) {
+      reply.header("Retry-After", "600");
+      throw Object.assign(new Error("A lot of photos came from this device. Try again in a few minutes."), { statusCode: 429 });
+    }
+    if (active >= 2) {
+      reply.header("Retry-After", "5");
+      throw Object.assign(new Error("The photo reader is busy. Try again in a few seconds."), { statusCode: 429 });
+    }
+    active++;
+    try { return await work(); }
+    finally { active--; }
+  }
+
   app.get("/api/ai/status", async () => ({ available: reader != null, clarify: clarifier != null }));
 
   function imageOf(dataUrl: string) {
@@ -22,10 +39,10 @@ export function registerAi(app: FastifyInstance, { db, reader, clarifier }: Deps
    * name, the PO by number, each line by barcode, the vendor's item number, or
    * our SKU. Everything comes back as a proposal for the clerk to confirm.
    */
-  app.post("/api/ai/read-slip", async (request) => {
+  app.post("/api/ai/read-slip", async (request, reply) => {
     if (!reader) return { available: false };
     const body = parse(imageBody, request.body);
-    const result = await reader.readPackingSlip(imageOf(body.image));
+    const result = await limited(request, reply, () => reader.readPackingSlip(imageOf(body.image)));
     if (!result.ok) return { available: true, ok: false, reason: result.reason, message: result.message };
     const slip = result.data;
     const vendors = await db.vendor.findMany({ where: { isActive: true } });
@@ -66,10 +83,10 @@ export function registerAi(app: FastifyInstance, { db, reader, clarifier }: Deps
   });
 
   /** Read a serial (and maybe a barcode) off a label: the fallback when a GS1 code isn't there to scan. */
-  app.post("/api/ai/read-label", async (request) => {
+  app.post("/api/ai/read-label", async (request, reply) => {
     if (!reader) return { available: false };
     const body = parse(imageBody, request.body);
-    const result = await reader.readLabel(imageOf(body.image));
+    const result = await limited(request, reply, () => reader.readLabel(imageOf(body.image)));
     if (!result.ok) return { available: true, ok: false, reason: result.reason, message: result.message };
     const match = result.data.barcode ? await lookupCode(db, result.data.barcode, body.vendorId) : null;
     return { available: true, ok: true, model: result.model, label: result.data, match };
