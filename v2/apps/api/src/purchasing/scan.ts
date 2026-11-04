@@ -27,6 +27,7 @@ export type SlipRead = { vendorName?: string | null; poNumber?: string | null; l
  * kept as unknowns for someone to map later — they never block the clerk.
  */
 export async function appendEvents(tx: Tx, sessionId: number, events: IncomingEvent[]) {
+  await tx.$queryRaw`SELECT "id" FROM "ScanSession" WHERE "id" = ${sessionId} FOR UPDATE`;
   const session = await tx.scanSession.findUniqueOrThrow({ where: { id: sessionId } });
   if (session.status !== "OPEN") throw new DomainError("This delivery was already finished; start a new one to scan more", 409);
   const keys = events.map((e) => e.clientId);
@@ -36,9 +37,10 @@ export async function appendEvents(tx: Tx, sessionId: number, events: IncomingEv
     let itemId = event.itemId ?? null;
     let qty = event.qty;
     let serial = event.serial?.trim() || null;
-    if (!itemId && event.code) {
+    if (event.code) {
       const match = await lookupCode(tx, event.code, session.vendorId);
       if (match) {
+        if (itemId && itemId !== match.itemId) throw new DomainError("This barcode belongs to a different item. Scan it again or enter the item without a barcode.", 409);
         itemId = match.itemId;
         qty = event.qty * match.packQty;
         serial ??= match.serial ?? null;
@@ -61,6 +63,7 @@ export async function appendEvents(tx: Tx, sessionId: number, events: IncomingEv
         capturedAt: event.capturedAt,
       },
     });
+    known.add(event.clientId);
   }
   return tx.scanEvent.findMany({ where: { clientId: { in: keys } }, include: { session: false }, orderBy: { id: "asc" } });
 }
@@ -105,7 +108,17 @@ export function tally(events: { itemId: number | null; qty: number; serial: stri
  */
 export async function submitSession(ctx: StockCtx, sessionId: number, expectedEventCount: number) {
   const { tx } = ctx;
+  // Append, submit, resolution and abandon all serialize on the session row.
+  // Abandon uses a guarded UPDATE, which takes this same row lock.
+  await tx.$queryRaw`SELECT "id" FROM "ScanSession" WHERE "id" = ${sessionId} FOR UPDATE`;
+  const saved = await tx.scanSession.findUniqueOrThrow({ where: { id: sessionId } });
   const count = await tx.scanEvent.count({ where: { sessionId } });
+  if (saved.status === "SUBMITTED" && saved.result) {
+    const result = saved.result as Prisma.JsonObject;
+    // Older deliveries predate the saved request count; their immutable event count is the fallback.
+    if ((result.expectedEventCount ?? count) === expectedEventCount) return saved.result;
+    throw new DomainError("This delivery was finished with a different scan count. Reload it to see the saved result.", 409);
+  }
   if (count < expectedEventCount) {
     throw new DomainError(`The server has ${count} of ${expectedEventCount} scans. Some are still on the phone; they will send when it reconnects.`, 409);
   }
@@ -126,7 +139,7 @@ export async function submitSession(ctx: StockCtx, sessionId: number, expectedEv
     arrivals.length > 0
       ? await receive(ctx, { warehouseId: session.warehouseId, vendorId: session.vendorId, poId: session.poId, arrivals, scanSessionId: session.id })
       : { poIds: [], receiptIds: [], receiptNumbers: [], draftBillIds: [], landedUnits: 0, heldUnits: 0 };
-  const summary = { ...result, unknown: counted.unknown.map(({ photo: _photo, ...u }) => u) };
+  const summary = { ...result, expectedEventCount, unknown: counted.unknown.map(({ photo: _photo, ...u }) => u) };
   await tx.scanSession.update({ where: { id: sessionId }, data: { result: summary as unknown as Prisma.InputJsonValue } });
   return summary;
 }
@@ -138,6 +151,7 @@ export async function submitSession(ctx: StockCtx, sessionId: number, expectedEv
  */
 export async function resolveUnknown(ctx: StockCtx, sessionId: number, input: { code: string | null; name: string | null; itemId: number; serials: string[]; learn: boolean }) {
   const { tx } = ctx;
+  await tx.$queryRaw`SELECT "id" FROM "ScanSession" WHERE "id" = ${sessionId} FOR UPDATE`;
   const session = await tx.scanSession.findUniqueOrThrow({ where: { id: sessionId } });
   if (session.status !== "SUBMITTED") throw new DomainError("Finish the delivery before resolving its unknown items", 409);
   const summary = session.result as unknown as { poIds: number[]; unknown: { code: string | null; name: string | null; qty: number }[] };
