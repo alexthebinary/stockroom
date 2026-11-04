@@ -446,7 +446,7 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
             </Group>
           ) : null}
           <LineList lines={lines} onBump={bump} onName={setNaming} />
-          <AddByHand items={items.data ?? []} taken={lines.flatMap((l) => l.serials)} onAdd={(item, qty, serial) => record({ code: null, itemId: item.id, qty, serial, unknownName: null, photo: null, source: "MANUAL" })} />
+          <AddByHand items={(items.data ?? []).filter((i) => !i.isBundle)} taken={lines.flatMap((l) => l.serials)} onAdd={(item, qty, serial) => record({ code: null, itemId: item.id, qty, serial, unknownName: null, photo: null, source: "MANUAL" })} />
           <Group justify="space-between" mt="md">
             <Button variant="subtle" color="red" onClick={onAbandon}>
               Abandon delivery

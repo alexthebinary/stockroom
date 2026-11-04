@@ -186,12 +186,29 @@ model Item {
   lastCostCents   Int      @default(0)
   isActive        Boolean  @default(true)
   isSample        Boolean  @default(false)
+  isBundle        Boolean  @default(false)
+  priceCents      Int?
   createdAt       DateTime @default(now())
 
-  conditionOf Item?         @relation("Condition", fields: [conditionOfId], references: [id])
-  variants    Item[]        @relation("Condition")
+  conditionOf Item?             @relation("Condition", fields: [conditionOfId], references: [id])
+  variants    Item[]            @relation("Condition")
   barcodes    ItemBarcode[]
   vendorItems VendorItem[]
+  components  BundleComponent[] @relation("Bundle")
+  usedIn      BundleComponent[] @relation("Component")
+}
+
+/// A bundle is an Item (isBundle) with one fixed recipe; it owns no stock, pool or lots.
+model BundleComponent {
+  id          Int @id @default(autoincrement())
+  bundleId    Int
+  componentId Int
+  qty         Int
+
+  bundle    Item @relation("Bundle", fields: [bundleId], references: [id])
+  component Item @relation("Component", fields: [componentId], references: [id])
+
+  @@unique([bundleId, componentId])
 }
 
 /// code is the normalised lookup key (barcodeKey()); raw is what was printed.

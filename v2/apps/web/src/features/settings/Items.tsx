@@ -1,11 +1,11 @@
 import { ActionIcon, Alert, Anchor, Autocomplete, Badge, Button, Card, FileButton, Group, Input, Modal, NumberInput, Select, Stack, Table, Text, TextInput } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
-import { IconPencil } from "@tabler/icons-react";
+import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { PageHeader, toastErr, toastOk } from "../../components/ui";
-import { get, post, put } from "../../lib/api";
-import type { Item } from "../../lib/types";
+import { get, patch, post, put } from "../../lib/api";
+import type { Item, Warehouse } from "../../lib/types";
 import { cmToIn, formatMeasurements, inToCm, kgToLb, lbToKg } from "../../lib/units";
 
 type Valuation = { rows: { itemId: number; onHand: number; held: number; valueCents: number; averageCents: number }[] };
@@ -19,6 +19,8 @@ export function Items() {
   const [category, setCategory] = useState<string | null>(null);
   const [editing, setEditing] = useState<Item | null>(null);
   const [adding, setAdding] = useState(false);
+  const [bundleForm, setBundleForm] = useState<Item | "new" | null>(null);
+  const [shipping, setShipping] = useState<Item | null>(null);
   const [debounced] = useDebouncedValue(search, 250);
   const facets = useQuery({ queryKey: ["item-facets"], queryFn: () => get<Facets>("/items/facets") });
   const query = new URLSearchParams();
@@ -39,6 +41,7 @@ export function Items() {
       <PageHeader title="Inventory" action={
         <Group gap="xs">
           <Button onClick={() => setAdding(true)}>+ Add item</Button>
+          <Button variant="light" onClick={() => setBundleForm("new")}>Create bundle</Button>
           <ItemCsvImport onImported={refreshItems} />
         </Group>
       } />
@@ -62,6 +65,7 @@ export function Items() {
                   </Text>
                   <Text size="sm" c="dimmed" truncate>
                     {i.sku}
+                    {i.isBundle ? ` · ${i.components?.map((c) => `${c.qty}× ${c.name}`).join(" + ")}` : ""}
                     {i.barcodes?.length ? ` · ${i.barcodes.map((b) => b.raw).join(", ")}` : ""}
                   </Text>
                   {measurements ? (
@@ -83,19 +87,33 @@ export function Items() {
                   ) : null}
                 </div>
                 <Group gap="xs" wrap="nowrap">
+                  {i.isBundle ? <Badge color="grape">Bundle</Badge> : null}
                   {i.trackingMode === "SERIAL" ? <Badge>Serial</Badge> : null}
                   {i.condition !== "NEW" ? <Badge color="gray">{i.condition.replace("_", " ").toLowerCase()}</Badge> : null}
-                  <Stack gap={0} align="flex-end">
-                    <Text fw={700}>{v?.onHand ?? 0} on hand</Text>
-                    {v?.held ? (
-                      <Text size="xs" c="orange">
-                        {v.held} awaiting bill
-                      </Text>
-                    ) : null}
-                  </Stack>
-                  <ActionIcon variant="subtle" color="gray" aria-label={`Edit ${i.name}`} onClick={() => setEditing(i)}>
-                    <IconPencil size={18} />
-                  </ActionIcon>
+                  {i.isBundle ? (
+                    <>
+                      <Stack gap={0} align="flex-end">
+                        <Text fw={700}>{i.available ?? 0} available</Text>
+                        {i.priceCents != null ? <Text size="xs" c="dimmed">${(i.priceCents / 100).toFixed(2)}</Text> : null}
+                      </Stack>
+                      <Button size="xs" variant="light" onClick={() => setShipping(i)} aria-label={`Ship ${i.name}`}>Ship</Button>
+                      <Button size="xs" variant="default" onClick={() => setBundleForm(i)} aria-label={`Edit ${i.name}`}>Edit</Button>
+                    </>
+                  ) : (
+                    <>
+                      <Stack gap={0} align="flex-end">
+                        <Text fw={700}>{v?.onHand ?? 0} on hand</Text>
+                        {v?.held ? (
+                          <Text size="xs" c="orange">
+                            {v.held} awaiting bill
+                          </Text>
+                        ) : null}
+                      </Stack>
+                      <ActionIcon variant="subtle" color="gray" aria-label={`Edit ${i.name}`} onClick={() => setEditing(i)}>
+                        <IconPencil size={18} />
+                      </ActionIcon>
+                    </>
+                  )}
                 </Group>
               </Group>
             </Card>
@@ -118,7 +136,131 @@ export function Items() {
           />
         ) : null}
       </Modal>
+      <Modal opened={bundleForm != null} onClose={() => setBundleForm(null)} title={bundleForm && bundleForm !== "new" ? `Edit ${bundleForm.sku}` : "Create bundle"} size="lg">
+        {bundleForm ? (
+          <BundleForm
+            key={bundleForm === "new" ? "new" : bundleForm.id}
+            bundle={bundleForm === "new" ? null : bundleForm}
+            onSaved={async () => {
+              const wasEdit = bundleForm !== "new";
+              setBundleForm(null);
+              toastOk(wasEdit ? "Bundle saved" : "Bundle created");
+              await refreshItems();
+            }}
+          />
+        ) : null}
+      </Modal>
+      <Modal opened={shipping != null} onClose={() => setShipping(null)} title={shipping ? `Ship ${shipping.name}` : "Ship bundle"}>
+        {shipping ? (
+          <ShipBundle
+            key={shipping.id}
+            bundle={shipping}
+            onShipped={async (docNumber) => {
+              setShipping(null);
+              toastOk(`Shipped (${docNumber})`);
+              await Promise.all([refreshItems(), queryClient.invalidateQueries({ queryKey: ["valuation"] })]);
+            }}
+          />
+        ) : null}
+      </Modal>
     </>
+  );
+}
+
+type Row = { itemId: string; qty: number | string };
+
+/** Create or edit a bundle: one fixed recipe of plain items. */
+function BundleForm({ bundle, onSaved }: { bundle: Item | null; onSaved: () => Promise<void> }) {
+  const all = useQuery({ queryKey: ["items"], queryFn: () => get<Item[]>("/items") });
+  const [name, setName] = useState(bundle?.name ?? "");
+  const [sku, setSku] = useState("");
+  const [price, setPrice] = useState<number | string>(bundle?.priceCents != null ? bundle.priceCents / 100 : "");
+  const [rows, setRows] = useState<Row[]>(bundle?.components?.length ? bundle.components.map((c) => ({ itemId: String(c.id), qty: c.qty })) : [{ itemId: "", qty: 1 }]);
+  const [busy, setBusy] = useState(false);
+  const valuation = useQuery({ queryKey: ["valuation"], queryFn: () => get<Valuation>("/reports/valuation") });
+  const choices = (all.data ?? []).filter((i) => !i.isBundle && i.trackingMode !== "SERIAL");
+  const byId = (id: string) => choices.find((i) => String(i.id) === id);
+  const onHand = (id: string) => valuation.data?.rows.filter((r) => String(r.itemId) === id).reduce((s, r) => s + r.onHand, 0) ?? 0;
+  const filled = rows.filter((r) => r.itemId && Number(r.qty) > 0);
+  const canMake = filled.length ? Math.min(...filled.map((r) => Math.floor(onHand(r.itemId) / Number(r.qty)))) : 0;
+  const hint = filled.reduce((s, r) => s + (byId(r.itemId)?.lastCostCents ?? 0) * Number(r.qty), 0);
+  const setRow = (index: number, change: Partial<Row>) => setRows(rows.map((r, i) => (i === index ? { ...r, ...change } : r)));
+  const save = async () => {
+    setBusy(true);
+    try {
+      const components = filled.map((r) => ({ itemId: Number(r.itemId), qty: Number(r.qty) }));
+      const priceCents = price === "" ? null : Math.round(Number(price) * 100);
+      if (bundle) await patch(`/bundles/${bundle.id}`, { name, priceCents, components });
+      else await post("/bundles", { sku: sku.trim(), name, priceCents, components });
+      await onSaved();
+    } catch (error) {
+      toastErr(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Stack>
+      {!bundle ? <TextInput label="SKU" value={sku} onChange={(e) => setSku(e.currentTarget.value)} maxLength={64} required /> : null}
+      <TextInput label="Name" value={name} onChange={(e) => setName(e.currentTarget.value)} required />
+      <NumberInput label="Price ($, optional)" value={price} onChange={setPrice} min={0} decimalScale={2} allowNegative={false} description={hint > 0 ? `Components last cost add up to $${(hint / 100).toFixed(2)} (a hint only)` : undefined} />
+      <Input.Wrapper label="Recipe">
+        <Stack gap="xs">
+          {rows.map((row, index) => (
+            <Group key={index} gap="xs" wrap="nowrap" align="flex-end">
+              <Select
+                aria-label={`Component ${index + 1}`}
+                placeholder="Search an item"
+                searchable
+                style={{ flex: 1 }}
+                data={choices.map((i) => ({ value: String(i.id), label: `${i.name} · ${i.sku}`, disabled: rows.some((r, j) => j !== index && r.itemId === String(i.id)) }))}
+                value={row.itemId || null}
+                onChange={(value) => setRow(index, { itemId: value ?? "" })}
+              />
+              <NumberInput aria-label={`Quantity ${index + 1}`} w={80} min={1} allowDecimal={false} allowNegative={false} value={row.qty} onChange={(qty) => setRow(index, { qty })} />
+              <ActionIcon variant="subtle" color="gray" aria-label={`Remove component ${index + 1}`} disabled={rows.length === 1} onClick={() => setRows(rows.filter((_, i) => i !== index))}>
+                <IconTrash size={18} />
+              </ActionIcon>
+            </Group>
+          ))}
+          <Group>
+            <Button size="xs" variant="subtle" onClick={() => setRows([...rows, { itemId: "", qty: 1 }])}>+ Add component</Button>
+          </Group>
+        </Stack>
+      </Input.Wrapper>
+      <Text size="sm" fw={600}>Can make {canMake}</Text>
+      <Button onClick={save} loading={busy} disabled={!name.trim() || (!bundle && !sku.trim()) || filled.length === 0}>Save</Button>
+    </Stack>
+  );
+}
+
+function ShipBundle({ bundle, onShipped }: { bundle: Item; onShipped: (docNumber: string) => Promise<void> }) {
+  const warehouses = useQuery({ queryKey: ["warehouses"], queryFn: () => get<Warehouse[]>("/warehouses") });
+  const [warehouseId, setWarehouseId] = useState<string | null>(null);
+  const [qty, setQty] = useState<number | string>(1);
+  const [reference, setReference] = useState("");
+  const [busy, setBusy] = useState(false);
+  const wid = warehouseId ?? (warehouses.data?.length === 1 ? String(warehouses.data[0]!.id) : null);
+  const available = wid ? (bundle.availableByWarehouse?.[wid] ?? 0) : null;
+  const ship = async () => {
+    if (!wid || busy) return;
+    setBusy(true);
+    try {
+      const result = await post<{ docNumber: string }>(`/bundles/${bundle.id}/ship`, { warehouseId: Number(wid), qty: Number(qty), reference: reference.trim() });
+      await onShipped(result.docNumber);
+    } catch (error) {
+      toastErr(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Stack>
+      <Select label="Warehouse" data={(warehouses.data ?? []).map((w) => ({ value: String(w.id), label: `${w.name} (${w.code})` }))} value={wid} onChange={setWarehouseId} />
+      <NumberInput label="How many" value={qty} onChange={setQty} min={1} allowDecimal={false} allowNegative={false} description={available != null ? `Can make ${available} here` : undefined} />
+      <TextInput label="Reference" placeholder="e.g. order number" value={reference} onChange={(e) => setReference(e.currentTarget.value)} maxLength={300} />
+      <Button onClick={ship} loading={busy} disabled={!wid || Number(qty) < 1 || reference.trim().length < 3}>Ship</Button>
+    </Stack>
   );
 }
 
