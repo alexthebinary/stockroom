@@ -446,7 +446,7 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
             </Group>
           ) : null}
           <LineList lines={lines} onBump={bump} onName={setNaming} />
-          <AddByHand items={items.data ?? []} onAdd={(item, qty) => record({ code: null, itemId: item.id, qty, serial: null, unknownName: null, photo: null, source: "MANUAL" })} />
+          <AddByHand items={items.data ?? []} taken={lines.flatMap((l) => l.serials)} onAdd={(item, qty, serial) => record({ code: null, itemId: item.id, qty, serial, unknownName: null, photo: null, source: "MANUAL" })} />
           <Group justify="space-between" mt="md">
             <Button variant="subtle" color="red" onClick={onAbandon}>
               Abandon delivery
@@ -579,34 +579,61 @@ function LineList({ lines, onBump, onName }: { lines: Line[]; onBump: (l: Line, 
   );
 }
 
-function AddByHand({ items, onAdd }: { items: Item[]; onAdd: (item: Item, qty: number) => void }) {
+function AddByHand({ items, taken, onAdd }: { items: Item[]; taken: string[]; onAdd: (item: Item, qty: number, serial: string | null) => void }) {
   const [itemId, setItemId] = useState<string | null>(null);
-  const counted = items.filter((i) => i.trackingMode === "NONE");
+  const [serial, setSerial] = useState("");
+  const item = items.find((i) => String(i.id) === itemId) ?? null;
+  const needsSerial = item?.trackingMode === "SERIAL";
+  const typed = serial.trim();
+  const duplicate = needsSerial && typed !== "" && taken.includes(typed);
+  const add = () => {
+    if (!item || (needsSerial && (!typed || duplicate))) return;
+    onAdd(item, 1, needsSerial ? typed : null);
+    setSerial("");
+    if (!needsSerial) setItemId(null);
+  };
   return (
-    <Group align="flex-end" wrap="nowrap">
-      <Select
-        label="No barcode? Pick the item"
-        placeholder="Search by name or SKU"
-        data={counted.map((i) => ({ value: String(i.id), label: `${i.name} · ${i.sku}` }))}
-        value={itemId}
-        onChange={setItemId}
-        searchable
-        style={{ flex: 1 }}
-        size="md"
-      />
-      <Button
-        size="md"
-        variant="light"
-        disabled={!itemId}
-        onClick={() => {
-          const item = counted.find((i) => String(i.id) === itemId);
-          if (item) onAdd(item, 1);
-          setItemId(null);
-        }}
-      >
-        Add 1
-      </Button>
-    </Group>
+    <Stack gap="xs">
+      <Group align="flex-end" wrap="nowrap">
+        <Select
+          label="No barcode? Pick the item"
+          placeholder="Search by name or SKU"
+          data={items.map((i) => ({ value: String(i.id), label: `${i.name} · ${i.sku}${i.trackingMode === "SERIAL" ? " · serial" : ""}` }))}
+          value={itemId}
+          onChange={(v) => {
+            setItemId(v);
+            setSerial("");
+          }}
+          searchable
+          style={{ flex: 1 }}
+          size="md"
+        />
+        {needsSerial ? null : (
+          <Button size="md" variant="light" disabled={!item} onClick={add}>
+            Add 1
+          </Button>
+        )}
+      </Group>
+      {needsSerial ? (
+        <Group align="flex-end" wrap="nowrap">
+          <TextInput
+            label={`Serial number for this ${item?.name ?? "unit"}`}
+            placeholder="Type the serial on the label"
+            value={serial}
+            onChange={(e) => setSerial(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") add();
+            }}
+            error={duplicate ? "This serial is already on this delivery" : undefined}
+            style={{ flex: 1 }}
+            size="md"
+          />
+          <Button size="md" variant="light" disabled={!typed || duplicate} onClick={add}>
+            Add unit
+          </Button>
+        </Group>
+      ) : null}
+    </Stack>
   );
 }
 
