@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { checkBooks } from "../src/books";
 import { inTx } from "../src/db";
@@ -189,4 +191,32 @@ it("#24 caps simultaneous reader calls across clients and releases slots", async
   } finally { finish(); await Promise.all(pending); }
   try { expect(await read("/api/ai/read-slip", "198.51.100.3")).toBe(200); }
   finally { await app.close(); }
+});
+
+it("#25 logs unexpected errors by default in production", () => {
+  const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: "production" };
+  delete env.LOG_LEVEL;
+  const script = `
+    import { buildApp } from './src/app.ts';
+    import { createDb } from './src/db.ts';
+    const db = createDb(process.env.TEST_DATABASE_URL);
+    const app = buildApp({ db, reader: null });
+    app.get('/ops-error', async () => { throw new Error('ops-production-error'); });
+    const response = await app.inject({ method: 'GET', url: '/ops-error' });
+    console.log(JSON.stringify({ status: response.statusCode, body: response.json() }));
+    await app.close();
+    await db.$disconnect();
+  `;
+  const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { cwd: new URL("../", import.meta.url), env, encoding: "utf8", timeout: 15000 });
+  expect(child.status, child.stderr).toBe(0);
+  const records = child.stdout.trim().split("\n").map((line) => JSON.parse(line));
+  expect(records.some((r) => r.status === 500)).toBe(true);
+  expect(records.some((r) => r.level === 50 && r.err?.message === "ops-production-error")).toBe(true);
+});
+
+it("#25 passes the default log level through deploy compose without changing the tunnel pin", () => {
+  const compose = readFileSync(new URL("../../../deploy/compose.yaml", import.meta.url), "utf8");
+  const app = compose.split("\n  app:\n")[1]!.split("\n  # Lets")[0]!;
+  expect(app).toContain("LOG_LEVEL: ${LOG_LEVEL:-info}");
+  expect(compose).toContain("image: cloudflare/cloudflared:2026.9.3");
 });
