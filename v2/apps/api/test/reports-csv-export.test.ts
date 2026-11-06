@@ -66,7 +66,7 @@ describe("feedback #29: Export to CSV file on Reports", () => {
   });
 
   it("exports movement, journal and trial balance rows", () => {
-    expect(movementCsv([{ id: 1, itemId: 1, transactionDate: "2026-01-02T00:00:00Z", sku: "S", name: "N", brand: null, category: null, inboundQty: 2, outboundQty: 0, endingBalance: 2 }]).rows).toEqual([["2026-01-02", "S", "N", "", "", 2, 0, 2]]);
+    expect(movementCsv([{ id: 1, itemId: 1, transactionDate: "2026-01-02T00:00:00Z", type: "Warehouse receipt", sku: "S", name: "N", brand: null, category: null, inboundQty: 2, outboundQty: 0, endingBalance: 2 }]).rows).toEqual([["2026-01-02", "Warehouse receipt", "S", "N", "", "", 2, 0, 2]]);
     const entry = { number: "JE-1", date: "2026-01-03T00:00:00Z", actor: "Tester", event: "x", memo: null, reverses: null, lines: [{ id: 1, side: "DEBIT", amountCents: 500, account: { code: "1200", name: "Inventory" } }] };
     expect(journalCsv([entry as never]).rows[0]).toEqual(["JE-1", "2026-01-03", "Tester", "x", "", "1200 Inventory", "5.00", ""]);
     const tb = trialBalanceCsv([{ id: 1, code: "1200", name: "Inventory", isHeader: false, parentId: null, debitCents: 100, creditCents: 0 }], { debit: 100, credit: 100 });

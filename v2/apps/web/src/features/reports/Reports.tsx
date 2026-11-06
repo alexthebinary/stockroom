@@ -78,8 +78,8 @@ export const journalCsv = (entries: JournalEntry[]) => ({
 });
 
 export const movementCsv = (rows: InventoryMovement["rows"]) => ({
-  header: ["Transaction date", "Item SKU", "Item name", "Brand", "Category", "Inbound qty", "Outbound qty", "Ending balance"],
-  rows: rows.map((r): CsvCell[] => [r.transactionDate.slice(0, 10), r.sku, r.name, r.brand ?? "", r.category ?? "", r.inboundQty, r.outboundQty, r.endingBalance]),
+  header: ["Transaction date", "Type", "Item SKU", "Item name", "Brand", "Category", "Inbound qty", "Outbound qty", "Ending balance"],
+  rows: rows.map((r): CsvCell[] => [r.transactionDate.slice(0, 10), r.type, r.sku, r.name, r.brand ?? "", r.category ?? "", r.inboundQty, r.outboundQty, r.endingBalance]),
 });
 
 export const stockValueCsv = (rows: Valuation["rows"]) => ({
