@@ -2,10 +2,11 @@ import { EVENTS, type EventType } from "@pi/domain";
 import { Alert, Button, Card, Checkbox, Group, SegmentedControl, Select, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCircleCheck, IconDownload } from "@tabler/icons-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { plural, formatDate, Loading, Money, PageHeader, usd } from "../../components/ui";
 import { get } from "../../lib/api";
+import { downloadCsv, toCsv, type CsvCell } from "../../lib/csv";
 import type { JournalEntry } from "../../lib/types";
 
 type Books = { sound: boolean; problems: string[]; figures: Record<string, number> };
@@ -48,6 +49,43 @@ function FilterSummary({ count, noun, clear }: { count: number; noun: string; cl
     <Button variant="subtle" size="xs" onClick={clear}>Clear filters</Button>
   </Group>;
 }
+
+/** Downloads exactly the rows the table shows. */
+function ExportCsvButton({ filename, header, rows }: { filename: string; header: string[]; rows: CsvCell[][] }) {
+  return <Group justify="flex-end">
+    <Button variant="default" size="xs" leftSection={<IconDownload size={16} />} onClick={() => downloadCsv(filename, toCsv(header, rows))}>Export to CSV file</Button>
+  </Group>;
+}
+
+const cents = (value: number) => (value / 100).toFixed(2);
+
+export const trialBalanceCsv = (rows: Tb["rows"], totals: { debit: number; credit: number }) => ({
+  header: ["Account", "Debit", "Credit"],
+  rows: [
+    ...rows.filter((r) => r.debitCents || r.creditCents || r.isHeader).map((r): CsvCell[] => [`${r.code} ${r.name}`, r.debitCents ? cents(r.debitCents) : "", r.creditCents ? cents(r.creditCents) : ""]),
+    ["Total (posting accounts)", cents(totals.debit), cents(totals.credit)] as CsvCell[],
+  ],
+});
+
+export const journalCsv = (entries: JournalEntry[]) => ({
+  header: ["Entry", "Date", "Actor", "Type", "Memo", "Account", "Debit", "Credit"],
+  rows: entries.flatMap((e) => e.lines.map((l): CsvCell[] => [
+    e.number, e.date.slice(0, 10), e.actor,
+    (e.reverses ? `Reversal of ${e.reverses.number}: ` : "") + (EVENTS[e.event as EventType]?.label ?? e.event),
+    e.memo ?? "", `${l.account.code} ${l.account.name}`,
+    l.side === "DEBIT" ? cents(l.amountCents) : "", l.side === "CREDIT" ? cents(l.amountCents) : "",
+  ])),
+});
+
+export const movementCsv = (rows: InventoryMovement["rows"]) => ({
+  header: ["Transaction date", "Item SKU", "Item name", "Brand", "Category", "Inbound qty", "Outbound qty", "Ending balance"],
+  rows: rows.map((r): CsvCell[] => [r.transactionDate.slice(0, 10), r.sku, r.name, r.brand ?? "", r.category ?? "", r.inboundQty, r.outboundQty, r.endingBalance]),
+});
+
+export const stockValueCsv = (rows: Valuation["rows"]) => ({
+  header: ["Item SKU", "Item name", "On hand", "Average", "Value", "Ledger", "Awaiting bill"],
+  rows: rows.map((r): CsvCell[] => [r.sku, r.name, r.onHand, cents(Math.round(r.averageCents)), cents(r.valueCents), cents(r.glCents), r.held || ""]),
+});
 
 const filterStyle = { flex: "1 1 180px", minWidth: 0 };
 
@@ -159,7 +197,10 @@ function BooksCheck() {
 function TrialBalance() {
   const tb = useQuery({ queryKey: ["tb"], queryFn: () => get<Tb>("/reports/trial-balance") });
   if (!tb.data) return <Loading />;
+  const csv = trialBalanceCsv(tb.data.rows, { debit: tb.data.totalDebitCents, credit: tb.data.totalCreditCents });
   return (
+    <Stack>
+    <ExportCsvButton filename="trial-balance.csv" {...csv} />
     <Table.ScrollContainer minWidth={480}>
       <Table>
         <Table.Thead>
@@ -193,6 +234,7 @@ function TrialBalance() {
         </Table.Tbody>
       </Table>
     </Table.ScrollContainer>
+    </Stack>
   );
 }
 
@@ -257,6 +299,7 @@ function Journal() {
         <TextInput type="date" label="To (UTC)" value={to} min={from || undefined} onChange={(e) => filters.set("to", e.currentTarget.value)} style={filterStyle} />
       </Group>
       <FilterSummary count={entries.length} noun="entry" clear={filters.clear} />
+      <ExportCsvButton filename="journal-entries.csv" {...journalCsv(entries)} />
       {!validRange ? (
         <Text c="dimmed">End date must be on or after start date.</Text>
       ) : journal.isError ? (
@@ -372,6 +415,7 @@ function InventoryMovementReport() {
         <Select label="Category" placeholder="All categories" data={options("category")} value={filters.values.category || null} onChange={(value) => filters.set("category", value ?? "")} clearable searchable style={filterStyle} />
       </Group>
       <FilterSummary count={rows.length} noun="movement" clear={filters.clear} />
+      <ExportCsvButton filename="inventory-movement.csv" {...movementCsv(rows)} />
       <Text size="sm" c="dimmed">On-hand stock across all warehouses, oldest first. Dates use UTC; ending balance is per item after each movement.</Text>
       {!validRange ? (
         <Text c="dimmed">Choose a start and end date, with the end on or after the start.</Text>
@@ -430,6 +474,7 @@ function StockValue() {
         <Checkbox label="Hide zero stock" checked={filters.values.hideZero === "1"} onChange={(e) => filters.set("hideZero", e.currentTarget.checked ? "1" : "")} mb="xs" />
       </Group>
       <FilterSummary count={rows.length} noun="item" clear={filters.clear} />
+      <ExportCsvButton filename="stock-value.csv" {...stockValueCsv(rows)} />
       {rows.length === 0 ? <Text c="dimmed">{filters.active ? "Nothing matches these filters." : "No stock items yet."}</Text> : (
         <Table.ScrollContainer minWidth={620}>
           <Table>
