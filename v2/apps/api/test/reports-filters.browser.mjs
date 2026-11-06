@@ -22,9 +22,9 @@ try {
   const held = ['Widget', 'Robot'].map((name, i) => ({ poId: i + 1, poNumber: `PO-${i + 1}`, vendor: { name: i ? 'Beta' : 'Alpha' }, item: item(name.toUpperCase(), name), qtyHeld: 2, estimateCents: 200, receivedAt: '2026-02-01', days: 1 }));
   const orders = ['Widget', 'Robot'].map((name, i) => ({ poId: i + 1, poNumber: `PO-${i + 1}`, billingStatus: 'NOT_BILLED', vendor: { name: i ? 'Beta' : 'Alpha' }, warehouse: { id: i + 1, code: i ? 'B' : 'A', name: 'Depot' }, days: 1, units: 2, valueCents: 200, lines: [{ lineId: i + 1, item: item(name.toUpperCase(), name), ordered: 2, received: 0, outstanding: 2, billed: false }] }));
   const movements = [
-    { id: 1, itemId: 1, transactionDate: '2026-02-01', sku: 'WIDGET', name: 'Widget', brand: 'Acme', category: 'Parts', inboundQty: 4, outboundQty: 0, endingBalance: 12 },
-    { id: 2, itemId: 1, transactionDate: '2026-02-02', sku: 'WIDGET', name: 'Widget', brand: 'Acme', category: 'Parts', inboundQty: 0, outboundQty: 3, endingBalance: 9 },
-    { id: 3, itemId: 2, transactionDate: '2026-02-02', sku: 'ROBOT', name: 'Robot', brand: 'Other', category: 'Tools', inboundQty: 2, outboundQty: 0, endingBalance: 2 },
+    { id: 1, itemId: 1, transactionDate: '2026-02-01', type: 'Warehouse receipt', sku: 'WIDGET', name: 'Widget', brand: 'Acme', category: 'Parts', inboundQty: 4, outboundQty: 0, endingBalance: 12 },
+    { id: 2, itemId: 1, transactionDate: '2026-02-02', type: 'Purchase return', sku: 'WIDGET', name: 'Widget', brand: 'Acme', category: 'Parts', inboundQty: 0, outboundQty: 3, endingBalance: 9 },
+    { id: 3, itemId: 2, transactionDate: '2026-02-02', type: 'Warehouse receipt', sku: 'ROBOT', name: 'Robot', brand: 'Other', category: 'Tools', inboundQty: 2, outboundQty: 0, endingBalance: 2 },
   ];
   const journal = Array.from({ length: 505 }, (_, i) => ({ id: i + 1, number: `JE-${i + 1}`, date: '2026-02-01', actor: 'Ada', memo: 'Freight', event: 'BILL_POSTED', sourceType: 'TEST', sourceId: 1, lines: ['DEBIT', 'CREDIT'].map((side, j) => ({ id: 2 * i + j, side, amountCents: 100, role: 'test', account: { code: '1200', name: 'Inventory' } })) }));
   const journalRequests = [];
@@ -33,6 +33,7 @@ try {
     let body = {};
     switch (url.pathname) {
       case '/api/setup': body = { required: false, company: { name: 'Test', feedbackEnabled: false } }; break;
+      case '/api/companies': body = { current: 'main', companies: [{ id: 'main', name: 'Test' }] }; break;
       case '/api/books/check': body = { sound: true, problems: [], figures: {} }; break;
       case '/api/reports/trial-balance': body = { rows: [], totalDebitCents: 0, totalCreditCents: 0 }; break;
       case '/api/reports/valuation': body = { rows: stock, totalValueCents: 500, totalGlCents: 500 }; break;

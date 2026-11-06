@@ -24,11 +24,11 @@ describe("inventory movement report", () => {
 
     const report = ok(await accountant.get("/api/reports/inventory-movement?from=2026-02-01&to=2026-02-28")).body;
     expect(report.rows).toEqual([
-      { id: inbound.id, itemId: ids.widget, transactionDate: inbound.createdAt.toISOString(), sku: "SAMPLE-WIDGET", name: "Sample Widget", brand: "Acme", category: "Parts", inboundQty: 4, outboundQty: 0, endingBalance: 12 },
-      { id: outbound.id, itemId: ids.widget, transactionDate: outbound.createdAt.toISOString(), sku: "SAMPLE-WIDGET", name: "Sample Widget", brand: "Acme", category: "Parts", inboundQty: 0, outboundQty: 3, endingBalance: 9 },
-      { id: robot.id, itemId: ids.robot, transactionDate: robot.createdAt.toISOString(), sku: "SAMPLE-ROBOT", name: "Sample Robot (serial-tracked)", brand: null, category: null, inboundQty: 2, outboundQty: 0, endingBalance: 2 },
-      { id: tied.id, itemId: ids.widget, transactionDate: tied.createdAt.toISOString(), sku: "SAMPLE-WIDGET", name: "Sample Widget", brand: "Acme", category: "Parts", inboundQty: 2, outboundQty: 0, endingBalance: 11 },
-      { id: last.id, itemId: ids.widget, transactionDate: last.createdAt.toISOString(), sku: "SAMPLE-WIDGET", name: "Sample Widget", brand: "Acme", category: "Parts", inboundQty: 1, outboundQty: 0, endingBalance: 12 },
+      { id: inbound.id, itemId: ids.widget, transactionDate: inbound.createdAt.toISOString(), type: "Inventory adjustment – gain", sku: "SAMPLE-WIDGET", name: "Sample Widget", brand: "Acme", category: "Parts", inboundQty: 4, outboundQty: 0, endingBalance: 12 },
+      { id: outbound.id, itemId: ids.widget, transactionDate: outbound.createdAt.toISOString(), type: "Bundle shipped", sku: "SAMPLE-WIDGET", name: "Sample Widget", brand: "Acme", category: "Parts", inboundQty: 0, outboundQty: 3, endingBalance: 9 },
+      { id: robot.id, itemId: ids.robot, transactionDate: robot.createdAt.toISOString(), type: "Inventory adjustment – gain", sku: "SAMPLE-ROBOT", name: "Sample Robot (serial-tracked)", brand: null, category: null, inboundQty: 2, outboundQty: 0, endingBalance: 2 },
+      { id: tied.id, itemId: ids.widget, transactionDate: tied.createdAt.toISOString(), type: "Inventory adjustment – gain", sku: "SAMPLE-WIDGET", name: "Sample Widget", brand: "Acme", category: "Parts", inboundQty: 2, outboundQty: 0, endingBalance: 11 },
+      { id: last.id, itemId: ids.widget, transactionDate: last.createdAt.toISOString(), type: "Inventory adjustment – gain", sku: "SAMPLE-WIDGET", name: "Sample Widget", brand: "Acme", category: "Parts", inboundQty: 1, outboundQty: 0, endingBalance: 12 },
     ]);
     expect(ok(await accountant.get("/api/reports/inventory-movement?from=2026-02-10&to=2026-02-10")).body.rows).toEqual([]);
     expect((await accountant.get("/api/reports/inventory-movement?from=bad&to=2026-02-28")).status).toBe(400);

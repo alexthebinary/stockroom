@@ -18,7 +18,7 @@ type ToReceive = {
   totalValueCents: number;
 };
 type Held = { poId: number; poNumber: string; vendor: { name: string } | null; item: { name: string; sku: string }; qtyHeld: number; estimateCents: number; receivedAt: string; days: number }[];
-type InventoryMovement = { rows: { id: number; itemId: number; transactionDate: string; sku: string; name: string; brand: string | null; category: string | null; inboundQty: number; outboundQty: number; endingBalance: number }[] };
+type InventoryMovement = { rows: { id: number; itemId: number; transactionDate: string; type: string; sku: string; name: string; brand: string | null; category: string | null; inboundQty: number; outboundQty: number; endingBalance: number }[] };
 
 /** Each report owns its URL keys; switching tabs and browser navigation preserve filters. */
 function useReportFilters<T extends Record<string, string>>(prefix: string, defaults: T) {
@@ -391,7 +391,7 @@ function InventoryMovementReport() {
     start.setUTCDate(start.getUTCDate() - 29);
     return { from: start.toISOString().slice(0, 10), to: today.toISOString().slice(0, 10) };
   });
-  const filters = useReportFilters("movement", { ...defaultRange, q: "", brand: "", category: "" });
+  const filters = useReportFilters("movement", { ...defaultRange, q: "", brand: "", category: "", type: "" });
   const range = { from: filters.values.from, to: filters.values.to };
   const validRange = Boolean(range.from && range.to && range.from <= range.to);
   const movement = useQuery({
@@ -402,15 +402,17 @@ function InventoryMovementReport() {
   const allRows = movement.data?.rows ?? [];
   // Filter already-computed rows: opening stock and per-item balances stay intact.
   const rows = allRows.filter((row) => matches(filters.values.q, row.sku, row.name)
+    && (!filters.values.type || row.type === filters.values.type)
     && (!filters.values.brand || row.brand === filters.values.brand)
     && (!filters.values.category || row.category === filters.values.category));
-  const options = (key: "brand" | "category") => [...new Set([...allRows.map((row) => row[key]), filters.values[key]].filter((value): value is string => Boolean(value)))].sort();
+  const options = (key: "type" | "brand" | "category") => [...new Set([...allRows.map((row) => row[key]), filters.values[key]].filter((value): value is string => Boolean(value)))].sort();
   return (
     <Stack>
       <Group align="flex-end" wrap="wrap">
         <TextInput style={filterStyle} type="date" label="Start date" value={range.from} max={range.to || undefined} onChange={(e) => filters.set("from", e.currentTarget.value)} />
         <TextInput style={filterStyle} type="date" label="End date" value={range.to} min={range.from || undefined} onChange={(e) => filters.set("to", e.currentTarget.value)} />
         <TextInput label="Search items" placeholder="SKU or name" value={filters.values.q} onChange={(e) => filters.set("q", e.currentTarget.value)} style={filterStyle} />
+        <Select label="Type" placeholder="All types" data={options("type")} value={filters.values.type || null} onChange={(value) => filters.set("type", value ?? "")} clearable searchable style={filterStyle} />
         <Select label="Brand" placeholder="All brands" data={options("brand")} value={filters.values.brand || null} onChange={(value) => filters.set("brand", value ?? "")} clearable searchable style={filterStyle} />
         <Select label="Category" placeholder="All categories" data={options("category")} value={filters.values.category || null} onChange={(value) => filters.set("category", value ?? "")} clearable searchable style={filterStyle} />
       </Group>
@@ -431,6 +433,7 @@ function InventoryMovementReport() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Transaction date</Table.Th>
+                <Table.Th>Type</Table.Th>
                 <Table.Th>Item SKU</Table.Th>
                 <Table.Th>Item name</Table.Th>
                 <Table.Th>Brand</Table.Th>
@@ -444,6 +447,7 @@ function InventoryMovementReport() {
               {rows.map((row) => (
                 <Table.Tr key={row.id}>
                   <Table.Td>{row.transactionDate.slice(0, 10)}</Table.Td>
+                  <Table.Td>{row.type}</Table.Td>
                   <Table.Td>{row.sku}</Table.Td>
                   <Table.Td>{row.name}</Table.Td>
                   <Table.Td>{row.brand ?? "—"}</Table.Td>

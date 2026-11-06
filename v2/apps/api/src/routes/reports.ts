@@ -6,6 +6,15 @@ import { parse } from "../http";
 
 const DAY = 86_400_000;
 
+/** The business document behind an on-hand movement, named as on the journal. */
+export function movementType(m: { register: string; counterType: string; qtyDelta: number }) {
+  if (m.counterType === "OPENING") return "Opening stock";
+  if (m.counterType === "VENDOR_CREDIT") return "Purchase return";
+  if (m.counterType === "BILL" || m.counterType === "PO") return m.qtyDelta < 0 ? "Receipt reversal" : "Warehouse receipt";
+  if (m.register === "WH_OUT") return "Bundle shipped";
+  return m.qtyDelta < 0 ? "Inventory adjustment – loss" : "Inventory adjustment – gain";
+}
+
 export function registerReports(app: FastifyInstance, { db }: Deps) {
   /** On-hand movements in date/ID order, with each item's balance across warehouses. */
   app.get("/api/reports/inventory-movement", async (request) => {
@@ -30,6 +39,7 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
         id: movement.id,
         itemId: movement.itemId,
         transactionDate: movement.createdAt,
+        type: movementType(movement),
         sku: item?.sku ?? "",
         name: item?.name ?? "Unknown item",
         brand: item?.brand ?? null,
