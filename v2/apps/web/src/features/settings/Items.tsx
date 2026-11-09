@@ -1,4 +1,4 @@
-import { ActionIcon, Alert, Anchor, Autocomplete, Badge, Button, Card, FileButton, Group, Input, Modal, NumberInput, Select, Stack, Table, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Autocomplete, Badge, Button, Card, FileButton, Group, Input, Modal, NumberInput, Select, Stack, Table, Text, TextInput, Title } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import type { Item, Warehouse } from "../../lib/types";
 import { cmToIn, formatMeasurements, inToCm, kgToLb, lbToKg } from "../../lib/units";
 
 type Valuation = { rows: { itemId: number; onHand: number; held: number; valueCents: number; averageCents: number }[] };
+type ReceiptRow = { id: number; number: string; state: string; receivedAt: string; receivedBy: string; po: { number: string }; lines: { qty: number }[] };
 type Facets = { brands: string[]; categories: string[] };
 
 /** Find an item: what's on the shelf, what's waiting for a bill, and its codes. Filter by brand and category. */
@@ -29,6 +30,7 @@ export function Items() {
   if (category) query.set("category", category);
   const items = useQuery({ queryKey: ["items", debounced, brand, category], queryFn: () => get<Item[]>(`/items${query.size ? `?${query}` : ""}`), placeholderData: (prev) => prev });
   const valuation = useQuery({ queryKey: ["valuation"], queryFn: () => get<Valuation>("/reports/valuation") });
+  const receipts = useQuery({ queryKey: ["receipts"], queryFn: () => get<ReceiptRow[]>("/receipts") });
   const refreshItems = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["items"] }),
@@ -121,6 +123,26 @@ export function Items() {
         })}
         {items.data && items.data.length === 0 ? <div className="ruled-empty">No items match{brand || category || debounced ? " these filters" : " yet"}.</div> : null}
       </Stack>
+      <section aria-labelledby="warehouse-receipts-heading">
+        <Title order={2} size="h3" mt="xl" mb="xs" id="warehouse-receipts-heading">Warehouse Receipts</Title>
+        <Stack gap="xs">
+          {(receipts.data ?? []).map((r) => (
+            <Card key={r.id} withBorder padding="sm">
+              <Group justify="space-between" wrap="nowrap">
+                <div style={{ minWidth: 0 }}>
+                  <Text fw={600}>{r.number}</Text>
+                  <Text size="sm" c="dimmed" truncate>{r.po.number} · {new Date(r.receivedAt).toLocaleDateString()} · {r.receivedBy}</Text>
+                </div>
+                <Group gap="xs" wrap="nowrap">
+                  <Text fw={700}>{r.lines.reduce((n, l) => n + l.qty, 0)} units</Text>
+                  <Badge variant="light" color="gray">{r.state.replace(/_/g, " ").toLowerCase()}</Badge>
+                </Group>
+              </Group>
+            </Card>
+          ))}
+          {receipts.data && receipts.data.length === 0 ? <div className="ruled-empty">No warehouse receipts yet.</div> : null}
+        </Stack>
+      </section>
       <Modal opened={adding || editing != null} onClose={() => { setEditing(null); setAdding(false); }} title={editing ? `Edit ${editing.sku}` : "Add item"}>
         {adding || editing ? (
           <EditItem
