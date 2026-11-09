@@ -10,6 +10,7 @@ import { cmToIn, formatMeasurements, inToCm, kgToLb, lbToKg } from "../../lib/un
 
 type Valuation = { rows: { itemId: number; onHand: number; held: number; valueCents: number; averageCents: number }[] };
 type ReceiptRow = { id: number; number: string; state: string; receivedAt: string; receivedBy: string; po: { number: string }; lines: { qty: number }[] };
+type OtherTx = { number: string; type: string; date: string; qty: number; lines: number; actor: string };
 type Facets = { brands: string[]; categories: string[] };
 
 /** Find an item: what's on the shelf, what's waiting for a bill, and its codes. Filter by brand and category. */
@@ -31,6 +32,7 @@ export function Items() {
   const items = useQuery({ queryKey: ["items", debounced, brand, category], queryFn: () => get<Item[]>(`/items${query.size ? `?${query}` : ""}`), placeholderData: (prev) => prev });
   const valuation = useQuery({ queryKey: ["valuation"], queryFn: () => get<Valuation>("/reports/valuation") });
   const receipts = useQuery({ queryKey: ["receipts"], queryFn: () => get<ReceiptRow[]>("/receipts") });
+  const otherTx = useQuery({ queryKey: ["other-transactions"], queryFn: () => get<OtherTx[]>("/other-transactions") });
   const refreshItems = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["items"] }),
@@ -141,6 +143,23 @@ export function Items() {
             </Card>
           ))}
           {receipts.data && receipts.data.length === 0 ? <div className="ruled-empty">No warehouse receipts yet.</div> : null}
+        </Stack>
+      </section>
+      <section aria-labelledby="other-transactions-heading">
+        <Title order={2} size="h3" mt="xl" mb="xs" id="other-transactions-heading">Other Inventory Transactions</Title>
+        <Stack gap="xs">
+          {(otherTx.data ?? []).map((t) => (
+            <Card key={t.number} withBorder padding="sm">
+              <Group justify="space-between" wrap="nowrap">
+                <div style={{ minWidth: 0 }}>
+                  <Text fw={600}>{t.number}</Text>
+                  <Text size="sm" c="dimmed" truncate>{t.type} · {new Date(t.date).toLocaleDateString()} · {t.actor}</Text>
+                </div>
+                <Text fw={700}>{t.qty > 0 ? "+" : ""}{t.qty} units</Text>
+              </Group>
+            </Card>
+          ))}
+          {otherTx.data && otherTx.data.length === 0 ? <div className="ruled-empty">No other inventory transactions yet.</div> : null}
         </Stack>
       </section>
       <Modal opened={adding || editing != null} onClose={() => { setEditing(null); setAdding(false); }} title={editing ? `Edit ${editing.sku}` : "Add item"}>

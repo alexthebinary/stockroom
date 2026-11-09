@@ -10,6 +10,7 @@ import { postFreightBill } from "../purchasing/freight";
 import { lockBill } from "../purchasing/locks";
 import { createPo, refreshPoStatus } from "../purchasing/po";
 import { receive } from "../purchasing/receive";
+import { movementType } from "./reports";
 import { appendEvents, resolveUnknown, submitSession, tally } from "../purchasing/scan";
 
 const poLine = z.object({ itemId: z.number().int().positive(), qtyOrdered: z.number().int().positive(), unitCostCents: z.number().int().min(0) });
@@ -389,6 +390,17 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
     const { state } = parse(z.object({ state: z.string().optional() }), request.query);
     const receipts = await db.warehouseReceipt.findMany({ where: state ? { state } : {}, include: { lines: true, po: true }, orderBy: { id: "desc" }, take: 200 });
     return receipts;
+  });
+
+  /** Opening stock and adjustments, one row per numbered document (ADJ-00001, …), newest first. */
+  app.get("/api/other-transactions", async () => {
+    const moves = await db.stockMovement.findMany({ where: { register: "ADJ", bucket: "ON_HAND" }, orderBy: { id: "desc" }, take: 1000 });
+    const docs = new Map<string, { number: string; type: string; date: Date; qty: number; lines: number; actor: string }>();
+    for (const m of moves) {
+      const d = docs.get(m.docNumber);
+      if (d) { d.qty += m.qtyDelta; d.lines += 1; } else docs.set(m.docNumber, { number: m.docNumber, type: movementType(m), date: m.createdAt, qty: m.qtyDelta, lines: 1, actor: m.actor });
+    }
+    return [...docs.values()].map((d) => ({ ...d, date: d.date.toISOString() }));
   });
 
   app.get("/api/registers", async (request) => {
