@@ -45,7 +45,8 @@ services:
       NOTIFY_URL: ${NOTIFY_URL:-}
       CLARIFY_URL: ${CLARIFY_URL:-}
       CLARIFY_SECRET: ${CLARIFY_SECRET:-}
-      LOCAL_LLM_URL: ${LOCAL_LLM_URL:-http://host.docker.internal:8081}
+      # local-llm (llama-server on the Dell) was retired 2026-11-09. Help uses the clarify Worker when CLARIFY_URL and CLARIFY_SECRET are set.
+      LOCAL_LLM_URL: ${LOCAL_LLM_URL:-}
       AUTO_TOKEN: ${AUTO_TOKEN:-}
     extra_hosts: ["host.docker.internal:host-gateway"]
     ports:
@@ -57,7 +58,8 @@ services:
       retries: 3
       start_period: 60s
 
-  # Lets the app reach the Dell's local model (llama-server listens on 127.0.0.1 only).
+  # Unused since local-llm was retired 2026-11-09. Left defined; removing it is the operator's call.
+  # It forwarded the app to llama-server, which listened on 127.0.0.1 only.
   llm-relay:
     image: alpine/socat:1.8.0.1
     network_mode: host

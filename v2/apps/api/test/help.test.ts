@@ -1,8 +1,8 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app";
-import { chat, createLocalHelpModel, goTo, HELP_PAGES, helpSystem, readWiki, SCREENS, type HelpModel } from "../src/ai/help";
+import { chat, createCloudHelpModel, createLocalHelpModel, goTo, HELP_PAGES, helpSystem, readWiki, SCREENS, type HelpModel } from "../src/ai/help";
 import { createHelpRateLimit } from "../src/routes/help";
 import { resetDb, testDb } from "./helpers";
 
@@ -128,6 +128,66 @@ describe("help tool loop", () => {
     const message = await createLocalHelpModel("http://local/", fetchImpl)([{ role: "user", content: "hi" }], (s) => text.push(s));
     expect(text.join("")).toBe("Hello there");
     expect(message.tool_calls?.[0]?.function).toEqual({ name: "go_to", arguments: '{"screen":"receive"}' });
+  });
+});
+
+describe("cloud help model", () => {
+  const reply = (message: unknown, status = 200) => (async (url: string, init?: RequestInit) => {
+    reply.last = { url, init };
+    return new Response(JSON.stringify(message), { status });
+  }) as typeof fetch;
+  reply.last = null as null | { url: string; init?: RequestInit };
+
+  it("posts one non-streaming turn to /v1/help and emits the whole reply once", async () => {
+    const fetchImpl = reply({ status: "ok", message: { role: "assistant", content: "Open Receive and choose the delivery." } });
+    const parts: string[] = [];
+    const message = await createCloudHelpModel("https://w.example/v1/clarify", "sek", fetchImpl)([{ role: "user", content: "How do I receive a delivery?" }], (text) => parts.push(text));
+    expect(reply.last!.url).toBe("https://w.example/v1/help");
+    expect((reply.last!.init!.headers as Record<string, string>).authorization).toBe("Bearer sek");
+    const sent = JSON.parse(String(reply.last!.init!.body));
+    expect(sent.tool_choice).toBe("auto");
+    expect(sent.tools.map((tool: { function: { name: string } }) => tool.function.name)).toEqual(["read_wiki", "go_to"]);
+    expect(parts).toEqual(["Open Receive and choose the delivery."]);
+    expect(message).toEqual({ role: "assistant", content: "Open Receive and choose the delivery." });
+  });
+
+  it("follows a go_to tool call through the chat loop and still offers the screen", async () => {
+    let round = 0;
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      expect(url).toBe("https://w/v1/help");
+      const sent = JSON.parse(String(init?.body)) as { tool_choice: string; messages: { role: string; content?: string }[] };
+      round++;
+      if (round === 1) {
+        expect(sent.tool_choice).toBe("auto");
+        return new Response(JSON.stringify({ status: "ok", message: { role: "assistant", content: null, tool_calls: [call("go_to", { screen: "receive" })] } }));
+      }
+      expect(sent.tool_choice).toBe("none");
+      expect(sent.messages.at(-1)?.role).toBe("tool");
+      expect(sent.messages.at(-1)?.content).toContain("/receive");
+      return new Response(JSON.stringify({ status: "ok", message: { role: "assistant", content: "Open Receive and choose the delivery." } }));
+    }) as typeof fetch;
+    const events: unknown[] = [];
+    const result = await chat(createCloudHelpModel("https://w/v1/clarify/", "s", fetchImpl), input, (event) => events.push(event));
+    expect(round).toBe(2);
+    expect(result).toMatchObject({ reply: "Open Receive and choose the delivery.", navigate: { to: "/receive", label: "Receive" }, unanswered: false });
+    expect(events).toContainEqual({ type: "reset" });
+    expect(events).toContainEqual({ type: "text", text: "Open Receive and choose the delivery." });
+  });
+
+  it("turns a capped reply and a 30s timeout into the unknown answer", async () => {
+    const capped = await chat(createCloudHelpModel("https://w/v1/clarify", "s", reply({ status: "capped" })), input);
+    expect(capped.unanswered).toBe(true);
+    expect(capped.reply).toContain("I don't have that information in the help pages.");
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    try {
+      const timingOut = (async () => { throw new Error("The operation was aborted due to timeout"); }) as typeof fetch;
+      const timed = await chat(createCloudHelpModel("https://w/v1/clarify", "s", timingOut), input);
+      expect(timeout).toHaveBeenCalledWith(30_000);
+      expect(timed.unanswered).toBe(true);
+      expect(timed.reply).toContain("I don't have that information in the help pages.");
+    } finally {
+      timeout.mockRestore();
+    }
   });
 });
 

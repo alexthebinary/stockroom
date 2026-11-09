@@ -165,3 +165,30 @@ export function createLocalHelpModel(url: string, fetchImpl: typeof fetch = fetc
     return result;
   };
 }
+
+/** CLARIFY_URL ends in /v1/clarify. Help is the same Worker, one path over. */
+function helpUrl(clarifyUrl: string): string {
+  return clarifyUrl.replace(/\/v1\/clarify\/?$/, "/v1/help");
+}
+
+/** The clarify Worker (Workers AI). One JSON reply; onText gets the whole answer once. Throws so chat()'s catch returns the unknown reply. */
+export function createCloudHelpModel(url: string, secret: string, fetchImpl: typeof fetch = fetch): HelpModel {
+  const endpoint = helpUrl(url);
+  return async (messages, onText) => {
+    const response = await fetchImpl(endpoint, {
+      method: "POST",
+      headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
+      body: JSON.stringify({ messages, tools: TOOLS, tool_choice: messages.at(-1)?.role === "tool" ? "none" : "auto" }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const body = (await response.json().catch(() => null)) as { status?: string; message?: ModelMessage } | null;
+    if (!response.ok || body?.status !== "ok" || body.message?.role !== "assistant") throw new Error("Cloud help model unavailable");
+    const content = typeof body.message.content === "string" ? body.message.content : "";
+    if (content) onText?.(content);
+    const result: ModelMessage = { role: "assistant", content };
+    if (body.message.tool_calls?.length) {
+      result.tool_calls = body.message.tool_calls.map((call) => ({ id: call.id, type: "function", function: { name: call.function.name, arguments: call.function.arguments } }));
+    }
+    return result;
+  };
+}

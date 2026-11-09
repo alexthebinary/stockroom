@@ -101,10 +101,60 @@ async function clarify(req, env) {
   return json({ status: "ok", text, spec });
 }
 
+// Help chat sends the whole wiki in the system message, so its body cap is higher than clarify's.
+const HELP_MAX_BODY = 200_000;
+
+// Workers AI returns either OpenAI `choices[0].message` (what the clarify tests mock: tool calls may omit id
+// and may put arguments on `function` or on the call itself) or `{ response, tool_calls }`. arguments may be a
+// string or an object. Normalise to the OpenAI message shape the API already parses.
+function assistantMessage(d) {
+  const msg = d?.choices?.[0]?.message ?? { content: d?.response, tool_calls: d?.tool_calls };
+  const content = msg?.content == null ? "" : String(msg.content);
+  const calls = [];
+  for (const [i, c] of (Array.isArray(msg?.tool_calls) ? msg.tool_calls : []).entries()) {
+    if (!c || typeof c !== "object") continue;
+    const fn = c.function && typeof c.function === "object" ? c.function : c;
+    if (typeof fn.name !== "string" || !fn.name) continue;
+    let args = fn.arguments;
+    if (typeof args !== "string") { try { args = JSON.stringify(args ?? {}); } catch { args = "{}"; } }
+    calls.push({ id: typeof c.id === "string" && c.id ? c.id : `call_${i}`, type: "function", function: { name: fn.name, arguments: args } });
+  }
+  const message = { role: "assistant", content };
+  if (calls.length) message.tool_calls = calls;
+  return message;
+}
+
+async function help(req, env) {
+  const raw = await req.text();
+  if (raw.length > HELP_MAX_BODY) return json({ error: "too large" }, 413);
+  const m = /^Bearer (.+)$/.exec(req.headers.get("authorization") || "");
+  if (!env.CLARIFY_SECRET || !m || m[1] !== env.CLARIFY_SECRET) return json({ error: "unauthorized" }, 401);
+  let body; try { body = JSON.parse(raw); } catch { return json({ error: "bad json" }, 400); }
+  const choice = body?.tool_choice;
+  const choiceOk = typeof choice === "string" || (!!choice && typeof choice === "object" && !Array.isArray(choice));
+  if (!Array.isArray(body?.messages) || !body.messages.length || !Array.isArray(body?.tools) || !choiceOk) return json({ error: "bad body" }, 400);
+  if (!env.AI) { console.log("ALERT Workers AI binding missing"); return json({ status: "error" }, 502); }
+  if (!(await allow(env.KV, `help:${day()}`, Number(env.HELP_PER_DAY) || 300))) return json({ status: "capped" });
+
+  let d;
+  try {
+    d = await env.AI.run(env.MODEL || MODEL, { messages: body.messages, tools: body.tools, tool_choice: body.tool_choice, max_completion_tokens: 1200, temperature: 0.2 });
+  } catch (e) {
+    const s = String(e?.message ?? e);
+    console.log("upstream", s.slice(0, 200));
+    if (/4006|allocation|neuron/i.test(s)) return json({ status: "capped" });
+    return json({ status: "error" }, 502);
+  }
+  const message = assistantMessage(d);
+  console.log(JSON.stringify({ messages: body.messages.length, toolCalls: message.tool_calls?.length ?? 0 }));   // no content logged
+  return json({ status: "ok", message });
+}
+
 export default {
   async fetch(req, env) {
     const { pathname } = new URL(req.url);
     if (req.method === "POST" && pathname === "/v1/clarify") return clarify(req, env);
+    if (req.method === "POST" && pathname === "/v1/help") return help(req, env);
     return json({ error: "not found" }, 404);
   },
 };

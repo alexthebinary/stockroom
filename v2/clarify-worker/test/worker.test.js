@@ -95,6 +95,62 @@ test("upstream failure is 502; bad body is 400", async () => {
   assert.equal((await worker.fetch(req({ turns: [] }), env(async () => ({})))).status, 400);
 });
 
+const helpReq = (body, secret = "s3cret") => new Request("https://x/v1/help", { method: "POST", headers: { authorization: `Bearer ${secret}` }, body: JSON.stringify(body) });
+const HELP_BODY = { messages: [{ role: "user", content: "How do I receive?" }], tools: [{ type: "function", function: { name: "go_to" } }], tool_choice: "auto" };
+
+test("help returns the assistant text and forwards messages, tools and tool_choice", async () => {
+  let seen;
+  const r = await worker.fetch(helpReq(HELP_BODY), env(async (model, input) => { seen = { model, input }; return { choices: [{ message: { content: "Open Receive." } }] }; }));
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { status: "ok", message: { role: "assistant", content: "Open Receive." } });
+  assert.equal(seen.model, "@cf/zai-org/glm-4.7-flash");
+  assert.equal(seen.input.max_completion_tokens, 1200);
+  assert.equal(seen.input.temperature, 0.2);
+  assert.equal(seen.input.stream, undefined);
+  assert.deepEqual(seen.input.messages, HELP_BODY.messages);
+  assert.deepEqual(seen.input.tools, HELP_BODY.tools);
+  assert.equal(seen.input.tool_choice, "auto");
+});
+
+test("help normalises both tool-call shapes the clarifier already reads", async () => {
+  const openai = await worker.fetch(helpReq(HELP_BODY), env(async () => ({ choices: [{ message: { content: "Open Receive.", tool_calls: [{ id: "t1", function: { name: "go_to", arguments: "{\"screen\":\"receive\"}" } }] } }] })));
+  assert.deepEqual((await openai.json()).message, { role: "assistant", content: "Open Receive.", tool_calls: [{ id: "t1", type: "function", function: { name: "go_to", arguments: "{\"screen\":\"receive\"}" } }] });
+
+  const bare = await worker.fetch(helpReq(HELP_BODY), env(async () => ({ choices: [{ message: { content: "", tool_calls: [{ function: { name: "go_to", arguments: { screen: "receive" } } }] } }] })));
+  const bareMsg = (await bare.json()).message;
+  assert.equal(bareMsg.content, "");
+  assert.equal(bareMsg.tool_calls[0].id, "call_0");
+  assert.equal(bareMsg.tool_calls[0].type, "function");
+  assert.deepEqual(bareMsg.tool_calls[0].function, { name: "go_to", arguments: "{\"screen\":\"receive\"}" });
+
+  const flat = await worker.fetch(helpReq(HELP_BODY), env(async () => ({ response: "Open it.", tool_calls: [{ name: "go_to", arguments: { screen: "receive" } }] })));
+  const flatMsg = (await flat.json()).message;
+  assert.equal(flatMsg.content, "Open it.");
+  assert.deepEqual(flatMsg.tool_calls[0].function, { name: "go_to", arguments: "{\"screen\":\"receive\"}" });
+});
+
+test("help has its own daily cap (default 300) and does not consume the clarify counter", async () => {
+  const store = kv();
+  const e = env(async () => ({ choices: [{ message: { content: "ok" } }] }), { KV: store });
+  for (let i = 0; i < 300; i++) assert.equal((await (await worker.fetch(helpReq(HELP_BODY), e)).json()).status, "ok");
+  assert.equal((await (await worker.fetch(helpReq(HELP_BODY), e)).json()).status, "capped");
+  assert.deepEqual([...store.m.keys()], [`help:${new Date().toISOString().slice(0, 10)}`]);
+  assert.equal((await (await worker.fetch(req({ note: NOTE, turns: [] }), e)).json()).status, "ok");
+  const limited = env(async () => ({ choices: [{ message: { content: "ok" } }] }), { HELP_PER_DAY: "1" });
+  assert.equal((await (await worker.fetch(helpReq(HELP_BODY), limited)).json()).status, "ok");
+  assert.equal((await (await worker.fetch(helpReq(HELP_BODY), limited)).json()).status, "capped");
+  const out = env(async () => { throw new Error("4006: neuron allocation exhausted"); });
+  assert.deepEqual(await (await worker.fetch(helpReq(HELP_BODY), out)).json(), { status: "capped" });
+});
+
+test("help upstream failure is 502; a bad body is 400; a wrong secret is 401", async () => {
+  const failed = await worker.fetch(helpReq(HELP_BODY), env(async () => { throw new Error("boom"); }));
+  assert.equal(failed.status, 502);
+  assert.deepEqual(await failed.json(), { status: "error" });
+  assert.equal((await worker.fetch(helpReq({ turns: [] }), env(async () => ({})))).status, 400);
+  assert.equal((await worker.fetch(helpReq(HELP_BODY, "nope"), env(async () => ({})))).status, 401);
+});
+
 test("the API's local fallback uses the same system prompt", () => {
   const ts = readFileSync(new URL("../../apps/api/src/ai/local-clarifier.ts", import.meta.url), "utf8");
   const src = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");

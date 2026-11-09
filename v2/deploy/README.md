@@ -89,6 +89,10 @@ the terminal. `./url.sh` prints the address again at any time.
 - **After merge:** once v2 is merged, clone `main` instead of the branch.
 - **Packing-slip reader:** to turn it on, put `ANTHROPIC_API_KEY=…` in `.env`
   and run `./start.sh` again.
+- **Help chat** calls the clarify Worker (Workers AI) when `CLARIFY_URL` and
+  `CLARIFY_SECRET` are set. The Dell's local model was retired on 2026-11-09,
+  so `LOCAL_LLM_URL` is left empty. `llm-relay` in `compose.yaml` is unused;
+  removing it is optional.
 
 **About the temporary link:**
 

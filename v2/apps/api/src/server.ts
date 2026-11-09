@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createClarifier, withFallback } from "./ai/clarifier";
 import { createLocalClarifier } from "./ai/local-clarifier";
-import { createLocalHelpModel } from "./ai/help";
+import { createCloudHelpModel, createLocalHelpModel } from "./ai/help";
 import { createReader } from "./ai/reader";
 import { buildApp } from "./app";
 import { Companies } from "./companies";
@@ -19,7 +19,9 @@ const app = buildApp({
   db,
   companies,
   reader: createReader(),
-  helpModel: process.env.LOCAL_LLM_URL ? createLocalHelpModel(process.env.LOCAL_LLM_URL) : null,
+  helpModel: process.env.CLARIFY_URL && process.env.CLARIFY_SECRET
+    ? createCloudHelpModel(process.env.CLARIFY_URL, process.env.CLARIFY_SECRET)
+    : process.env.LOCAL_LLM_URL ? createLocalHelpModel(process.env.LOCAL_LLM_URL) : null,
   clarifier: withFallback(createClarifier(), process.env.LOCAL_LLM_URL ? createLocalClarifier(process.env.LOCAL_LLM_URL) : null),
 });
 
