@@ -1,4 +1,4 @@
-import { billingStatus, DomainError, paymentStatus, receivingStatus } from "@pi/domain";
+import { Axis, billingStatus, DomainError, paymentStatus, receivingStatus, State } from "@pi/domain";
 import type { Tx } from "../db";
 import { nextNumber } from "../numbering";
 
@@ -10,14 +10,14 @@ import { nextNumber } from "../numbering";
 export async function refreshPoStatus(tx: Tx, poId: number) {
   const po = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: poId }, include: { lines: true, bills: true } });
   const inventoryBills = po.bills.filter((b) => b.kind === "INVENTORY");
-  const posted = inventoryBills.filter((b) => b.status === "POSTED");
+  const posted = inventoryBills.filter((b) => b.status === State.bill.POSTED);
   const owed = posted.reduce((s, b) => s + b.totalCents - b.creditedCents, 0);
   const paid = posted.reduce((s, b) => s + b.paidCents, 0);
   return tx.purchaseOrder.update({
     where: { id: poId },
     data: {
       billingStatus: billingStatus(inventoryBills),
-      paymentStatus: posted.length === 0 ? "UNPAID" : paymentStatus(owed, paid),
+      paymentStatus: posted.length === 0 ? Axis.payment.UNPAID : paymentStatus(owed, paid),
       receivingStatus: receivingStatus(po.lines),
       version: { increment: 1 },
     },

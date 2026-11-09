@@ -1,4 +1,4 @@
-import { barcodeKey, DomainError } from "@pi/domain";
+import { barcodeKey, DomainError, State } from "@pi/domain";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { imageFromDataUrl } from "../ai/reader";
@@ -54,7 +54,7 @@ export function registerAi(app: FastifyInstance, { db, reader, clarifier }: Deps
         : null;
     const poNumber = slip.poNumber?.toUpperCase().replace(/\s+/g, "");
     const po = poNumber
-      ? await db.purchaseOrder.findFirst({ where: { lifecycle: "OPEN", OR: [{ number: poNumber }, { number: `PO-${poNumber.replace(/^PO-?/, "").padStart(5, "0")}` }] } })
+      ? await db.purchaseOrder.findFirst({ where: { lifecycle: State.poLifecycle.OPEN, OR: [{ number: poNumber }, { number: `PO-${poNumber.replace(/^PO-?/, "").padStart(5, "0")}` }] } })
       : null;
     const lines = [];
     for (const line of slip.lines) {

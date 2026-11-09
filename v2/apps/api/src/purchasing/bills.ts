@@ -1,8 +1,9 @@
-import { type AllocationBasis, DomainError, landedCost, type LandedLine } from "@pi/domain";
+import { type AllocationBasis, DomainError, landedCost, type LandedLine, State } from "@pi/domain";
 import type { Tx } from "../db";
 import { postEntry } from "../ledger";
 import { nextNumber } from "../numbering";
 import { landUnits, type StockCtx } from "../stock";
+import { transition } from "../transition";
 import { billLineStock, unbilledInboundShare } from "./adjust";
 import { refreshPoStatus } from "./po";
 import { lockBill } from "./locks";
@@ -21,7 +22,7 @@ export async function ensureDraftBill(tx: Tx, poId: number, actor: string) {
   const po = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: poId }, include: { lines: true } });
   const unbilled = po.lines.filter((l) => l.qtyReceived > l.qtyBilled).map((l) => ({ line: l, qty: l.qtyReceived - l.qtyBilled }));
   if (unbilled.length === 0) return null;
-  const existing = await tx.vendorBill.findFirst({ where: { poId, kind: "INVENTORY", status: "DRAFT" }, orderBy: { id: "asc" } });
+  const existing = await tx.vendorBill.findFirst({ where: { poId, kind: "INVENTORY", status: State.bill.DRAFT }, orderBy: { id: "asc" } });
   if (existing && existing.version > 0) return existing;
   const vendor = po.vendorId ? await tx.vendor.findUnique({ where: { id: po.vendorId } }) : null;
   const termsDays = vendor?.paymentTermsDays ?? 30;
@@ -134,17 +135,27 @@ export async function postInventoryBill(ctx: StockCtx, billId: number, expectedV
   await lockBill(tx, billId);
   const bill = await tx.vendorBill.findUnique({ where: { id: billId }, include: { lines: true } });
   if (!bill) throw new DomainError("That bill was not found", 404);
-  if (bill.status !== "DRAFT") throw new DomainError(`${bill.number} is already ${bill.status.toLowerCase()}`, 409);
+  if (bill.status !== State.bill.DRAFT) throw new DomainError(`${bill.number} is already ${bill.status.toLowerCase()}`, 409);
   if (bill.version !== expectedVersion) throw new DomainError(`${bill.number} was changed by someone else. Reload it and post again.`, 409);
   if (!bill.vendorId) throw new DomainError("Choose the vendor before posting", 400);
   if (!bill.vendorInvoiceNumber?.trim()) throw new DomainError("Enter the vendor's invoice number before posting", 400);
   const duplicate = await tx.vendorBill.findFirst({
-    where: { id: { not: bill.id }, vendorId: bill.vendorId, status: "POSTED", vendorInvoiceNumber: { equals: bill.vendorInvoiceNumber.trim(), mode: "insensitive" } },
+    where: { id: { not: bill.id }, vendorId: bill.vendorId, status: State.bill.POSTED, vendorInvoiceNumber: { equals: bill.vendorInvoiceNumber.trim(), mode: "insensitive" } },
   });
   if (duplicate) throw new DomainError(`Invoice ${bill.vendorInvoiceNumber} from this vendor is already on ${duplicate.number}`, 409);
   // Claimed atomically: of two people pressing Post at once, one wins and the other gets a 409.
-  const claimed = await tx.vendorBill.updateMany({ where: { id: billId, status: "DRAFT", version: expectedVersion }, data: { status: "POSTED", postedAt: new Date(), postedBy: actor } });
-  if (claimed.count === 0) throw new DomainError(`${bill.number} was posted or changed by someone else. Reload it.`, 409);
+  await transition({
+    machine: "bill",
+    to: State.bill.POSTED,
+    from: [State.bill.DRAFT],
+    label: "Bill",
+    message: `${bill.number} was posted or changed by someone else. Reload it.`,
+    apply: async (sources, to) => (await tx.vendorBill.updateMany({
+      where: { id: billId, status: { in: sources }, version: expectedVersion },
+      data: { status: to, postedAt: new Date(), postedBy: actor },
+    })).count,
+    current: async () => (await tx.vendorBill.findUnique({ where: { id: billId }, select: { status: true } }))?.status ?? null,
+  });
   const lines = bill.lines.filter((l) => l.qty > 0);
   if (lines.length === 0) throw new DomainError("A bill needs at least one line with a quantity", 400);
 
@@ -216,8 +227,20 @@ async function landHeldUnits(ctx: StockCtx, billId: number, poId: number, poLine
         billLineId: owner.id,
       });
       await tx.receiptLine.update({ where: { id: receiptLine.id }, data: { landedQty: { increment: n }, valueCents: { increment: valueCents } } });
-      const heldSerials = await tx.serialUnit.findMany({ where: { receiptLineId: receiptLine.id, state: "HELD" }, orderBy: { id: "asc" }, take: n });
-      await tx.serialUnit.updateMany({ where: { id: { in: heldSerials.map((s) => s.id) } }, data: { state: "IN_STOCK", lotId: lot.id } });
+      const heldSerials = await tx.serialUnit.findMany({ where: { receiptLineId: receiptLine.id, state: State.serialUnit.HELD }, orderBy: { id: "asc" }, take: n });
+      if (heldSerials.length > 0) {
+        await transition({
+          machine: "serialUnit",
+          to: State.serialUnit.IN_STOCK,
+          from: [State.serialUnit.HELD],
+          label: "Serial",
+          apply: async (sources, to) => (await tx.serialUnit.updateMany({
+            where: { id: { in: heldSerials.map((s) => s.id) }, state: { in: sources } },
+            data: { state: to, lotId: lot.id },
+          })).count,
+          current: async () => State.serialUnit.HELD,
+        });
+      }
       inboundCents -= valueCents;
       pendingQty -= n;
       await tx.vendorBillLine.update({ where: { id: owner.id }, data: { inboundCents } });

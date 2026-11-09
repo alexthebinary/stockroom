@@ -1,8 +1,9 @@
-import { type AllocationBasis, DomainError } from "@pi/domain";
+import { type AllocationBasis, DomainError, State } from "@pi/domain";
 import type { Tx } from "../db";
 import { postEntry } from "../ledger";
 import { nextNumber } from "../numbering";
 import type { StockCtx } from "../stock";
+import { transition } from "../transition";
 import { applyLineAdjustment, freightTargets } from "./adjust";
 import { dueDateFor } from "./bills";
 import { refreshPoStatus } from "./po";
@@ -57,17 +58,27 @@ export async function previewFreight(tx: Tx, billId: number) {
 export async function postFreightBill(ctx: StockCtx, billId: number, expectedVersion: number) {
   const { tx, actor } = ctx;
   const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id: billId } });
-  if (bill.status !== "DRAFT") throw new DomainError(`${bill.number} is already ${bill.status.toLowerCase()}`, 409);
+  if (bill.status !== State.bill.DRAFT) throw new DomainError(`${bill.number} is already ${bill.status.toLowerCase()}`, 409);
   if (bill.version !== expectedVersion) throw new DomainError(`${bill.number} was changed by someone else. Reload it and post again.`, 409);
   if (!bill.vendorId) throw new DomainError("Choose the carrier before posting", 400);
   if (!bill.vendorInvoiceNumber?.trim()) throw new DomainError("Enter the carrier's invoice number before posting", 400);
   if (bill.totalCents <= 0) throw new DomainError("A freight bill needs an amount", 400);
   const duplicate = await tx.vendorBill.findFirst({
-    where: { id: { not: bill.id }, vendorId: bill.vendorId, status: "POSTED", vendorInvoiceNumber: { equals: bill.vendorInvoiceNumber.trim(), mode: "insensitive" } },
+    where: { id: { not: bill.id }, vendorId: bill.vendorId, status: State.bill.POSTED, vendorInvoiceNumber: { equals: bill.vendorInvoiceNumber.trim(), mode: "insensitive" } },
   });
   if (duplicate) throw new DomainError(`Invoice ${bill.vendorInvoiceNumber} from this carrier is already on ${duplicate.number}`, 409);
-  const claimed = await tx.vendorBill.updateMany({ where: { id: billId, status: "DRAFT", version: expectedVersion }, data: { status: "POSTED", postedAt: new Date(), postedBy: actor, version: { increment: 1 } } });
-  if (claimed.count === 0) throw new DomainError(`${bill.number} was posted or changed by someone else. Reload it.`, 409);
+  await transition({
+    machine: "bill",
+    to: State.bill.POSTED,
+    from: [State.bill.DRAFT],
+    label: "Bill",
+    message: `${bill.number} was posted or changed by someone else. Reload it.`,
+    apply: async (sources, to) => (await tx.vendorBill.updateMany({
+      where: { id: billId, status: { in: sources }, version: expectedVersion },
+      data: { status: to, postedAt: new Date(), postedBy: actor, version: { increment: 1 } },
+    })).count,
+    current: async () => (await tx.vendorBill.findUnique({ where: { id: billId }, select: { status: true } }))?.status ?? null,
+  });
   const payable = { role: "payable" as const, amountCents: bill.totalCents, vendorId: bill.vendorId };
 
   if (bill.kind === "FREIGHT_OUT") {

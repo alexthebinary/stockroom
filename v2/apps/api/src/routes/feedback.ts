@@ -1,4 +1,4 @@
-import { DomainError } from "@pi/domain";
+import { DomainError, FEEDBACK_AUTO_OUTCOMES, FEEDBACK_JOB_STATUSES, FEEDBACK_STATUSES, State } from "@pi/domain";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { ClarifyNote, Spec, Turn } from "../ai/clarifier";
@@ -6,6 +6,7 @@ import type { Deps } from "../app";
 import { currentCompanyId, MAIN } from "../companies";
 import { idParam, notFound, parse } from "../http";
 import { notify } from "../notify";
+import { transition } from "../transition";
 
 export const UNAVAILABLE = "I'll ask you later — your note is saved.";
 const SAVED_AS_IS = "Your note is saved as is.";
@@ -24,7 +25,7 @@ const feedbackBody = z.object({
   screenshot: z.string().nullish(),
 });
 
-const listQuery = z.object({ path: z.string().optional(), status: z.enum(["OPEN", "DONE", "WONTFIX"]).optional(), turns: z.literal("1").optional() });
+const listQuery = z.object({ path: z.string().optional(), status: z.enum(FEEDBACK_STATUSES).optional(), turns: z.literal("1").optional() });
 const LIST_FIELDS = { id: true, kind: true, status: true, note: true, path: true, pageTitle: true, anchor: true, context: true, author: true, authorJob: true, screenshotType: true, createdAt: true, updatedAt: true, spec: true, specState: true, autoState: true, autoNote: true, autoCommit: true, revision: true, autoRevision: true, autoClaim: true, _count: { select: { turns: true } } } as const;
 const shape = <T extends { screenshotType: string | null; _count: { turns: number } }>({ _count, ...row }: T) => ({ ...row, hasScreenshot: row.screenshotType != null, turnCount: _count.turns });
 
@@ -75,7 +76,17 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
       if (!row) throw notFound("That note");
       if (message) {
         await tx.feedbackTurn.create({ data: { feedbackId: id, role: "user", content: message } });
-        row = await tx.feedback.update({ where: { id }, data: { revision: { increment: 1 }, specState: "NONE" } });
+        await transition({
+          machine: "feedbackSpec",
+          to: State.feedbackSpec.NONE,
+          label: "Spec",
+          apply: async (sources, to) => (await tx.feedback.updateMany({
+            where: { id, specState: { in: sources } },
+            data: { revision: { increment: 1 }, specState: to },
+          })).count,
+          current: async () => (await tx.feedback.findUnique({ where: { id }, select: { specState: true } }))?.specState ?? null,
+        });
+        row = await tx.feedback.findUniqueOrThrow({ where: { id } });
       }
       const lastTurn = await tx.feedbackTurn.findFirst({ where: { feedbackId: id }, orderBy: { id: "desc" }, select: { id: true, role: true } });
       return { row, rev: row.revision, lastTurn };
@@ -101,7 +112,19 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
       const newest = await tx.feedbackTurn.findFirst({ where: { feedbackId: id }, orderBy: { id: "desc" }, select: { id: true } });
       if (current.revision !== rev || (newest?.id ?? null) !== lastTurnId) return false;
       await tx.feedbackTurn.create({ data: { feedbackId: id, role: "assistant", content: text } });
-      if (answer.spec) await tx.feedback.update({ where: { id }, data: { spec: answer.spec, specState: "PROPOSED", revision: { increment: 1 } } });
+      if (answer.spec) {
+        const spec = answer.spec;
+        await transition({
+          machine: "feedbackSpec",
+          to: State.feedbackSpec.PROPOSED,
+          label: "Spec",
+          apply: async (sources, to) => (await tx.feedback.updateMany({
+            where: { id, specState: { in: sources } },
+            data: { spec, specState: to, revision: { increment: 1 } },
+          })).count,
+          current: async () => (await tx.feedback.findUnique({ where: { id }, select: { specState: true } }))?.specState ?? null,
+        });
+      }
       return true;
     });
     return state(id, saved ? text : null);
@@ -111,8 +134,18 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
     const { id } = parse(idParam, request.params);
     const { revision } = parse(z.object({ revision: z.number().int().positive() }), request.body);
     if (!(await db.feedback.findUnique({ where: { id }, select: { id: true } }))) throw notFound("That note");
-    const { count } = await db.feedback.updateMany({ where: { id, specState: "PROPOSED", revision }, data: { specState: "CONFIRMED", revision: { increment: 1 } } });
-    if (count !== 1) throw new DomainError("There is no proposed spec to confirm", 409);
+    await transition({
+      machine: "feedbackSpec",
+      to: State.feedbackSpec.CONFIRMED,
+      from: [State.feedbackSpec.PROPOSED],
+      label: "Spec",
+      message: "There is no proposed spec to confirm",
+      apply: async (sources, to) => (await db.feedback.updateMany({
+        where: { id, specState: { in: sources }, revision },
+        data: { specState: to, revision: { increment: 1 } },
+      })).count,
+      current: async () => (await db.feedback.findUnique({ where: { id }, select: { specState: true } }))?.specState ?? null,
+    });
     return state(id, null);
   });
 
@@ -125,13 +158,25 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
 
   app.patch("/api/feedback/:id", async (request) => {
     const { id } = parse(idParam, request.params);
-    const { status } = parse(z.object({ status: z.enum(["OPEN", "DONE", "WONTFIX"]) }), request.body);
-    return shape(await db.feedback.update({ where: { id }, data: { status }, select: LIST_FIELDS }));
+    const { status } = parse(z.object({ status: z.enum(FEEDBACK_STATUSES) }), request.body);
+    if (!(await db.feedback.findUnique({ where: { id }, select: { id: true } }))) throw new DomainError("That record was not found", 404);
+    await transition({
+      machine: "feedbackStatus",
+      to: status,
+      label: "Note",
+      message: "That record was not found",
+      apply: async (sources, to) => (await db.feedback.updateMany({
+        where: { id, status: { in: sources } },
+        data: { status: to },
+      })).count,
+      current: async () => (await db.feedback.findUnique({ where: { id }, select: { status: true } }))?.status ?? null,
+    });
+    return shape(await db.feedback.findUniqueOrThrow({ where: { id }, select: LIST_FIELDS }));
   });
 
   /** Everything still open, as Markdown to paste into Claude (or curl from the Dell). */
   app.get("/api/feedback/export.md", async (request, reply) => {
-    const { status = "OPEN" } = parse(listQuery, request.query);
+    const { status = State.feedbackStatus.OPEN } = parse(listQuery, request.query);
     const rows = await db.feedback.findMany({ where: { status }, orderBy: { id: "asc" }, select: { ...LIST_FIELDS, turns: { orderBy: { id: "asc" }, select: { role: true, content: true } } } });
     const origin = `${request.protocol}://${request.headers.host}`;
     const sections = rows.map((row) => {
@@ -148,7 +193,7 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
       if (ctx.userAgent) lines.push(`Browser: ${ctx.userAgent}`);
       if (ctx.errors?.length) lines.push("Recent errors:", ...ctx.errors.map((e) => `- ${e.at} ${e.message}`));
       if (row.screenshotType) lines.push(`Screenshot: ${origin}/api/feedback/${row.id}/screenshot`);
-      if (row.autoState !== "NONE") lines.push(`Auto: ${row.autoState.toLowerCase()}${row.autoNote ? ` — ${row.autoNote}` : ""}`);
+      if (row.autoState !== State.feedbackAuto.NONE) lines.push(`Auto: ${row.autoState.toLowerCase()}${row.autoNote ? ` — ${row.autoNote}` : ""}`);
       const spec = row.spec as Spec | null;
       if (spec) lines.push("", `Spec (${row.specState.toLowerCase()}):`, `- Problem: ${spec.problem}`, `- Expected: ${spec.expected}`, `- Where: ${spec.where}`, ...spec.doneWhen.map((d) => `- Done when: ${d}`));
       if (row.turns.length) lines.push("", "Chat:", ...row.turns.map((t) => `${t.role === "user" ? "Tester" : "AI"}: ${t.content.replace(/\n/g, " ")}`));
@@ -163,30 +208,48 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
     const token = process.env.AUTO_TOKEN;
     if (!token || request.headers["x-auto-token"] !== token) throw notFound("That route");
   };
-  const conflict = () => new DomainError("The note moved on or is held by another run", 409);
+  const moved = "The note moved on or is held by another run";
   const jobRow = async (id: number) => shape(await db.feedback.findUniqueOrThrow({ where: { id }, select: LIST_FIELDS }));
 
   app.post("/api/feedback/:id/auto/claim", async (request) => {
     guard(request);
     const { id } = parse(idParam, request.params);
     const { runId, revision } = parse(jobBody, request.body);
-    const { count } = await db.feedback.updateMany({ where: { id, revision, autoClaim: null, status: "OPEN" }, data: { autoClaim: runId, autoRevision: revision, autoState: "QUEUED" } });
-    if (count !== 1) throw conflict();
+    await transition({
+      machine: "feedbackAuto",
+      to: State.feedbackAuto.QUEUED,
+      label: "Auto",
+      message: moved,
+      apply: async (sources, to) => (await db.feedback.updateMany({
+        where: { id, revision, autoClaim: null, status: State.feedbackStatus.OPEN, autoState: { in: sources } },
+        data: { autoClaim: runId, autoRevision: revision, autoState: to },
+      })).count,
+      current: async () => (await db.feedback.findUnique({ where: { id }, select: { autoState: true } }))?.autoState ?? null,
+    });
     return jobRow(id);
   });
 
   app.post("/api/feedback/:id/auto/outcome", async (request) => {
     guard(request);
     const { id } = parse(idParam, request.params);
-    const body = parse(jobBody.extend({ autoState: z.enum(["FAILED", "SHIPPED", "QUEUED"]), autoNote: z.string().max(2000).nullish(), autoCommit: z.string().max(80).nullish(), status: z.enum(["DONE", "OPEN"]).optional() }), request.body);
-    const { count } = await db.feedback.updateMany({
-      where: { id, autoClaim: body.runId, autoRevision: body.revision, revision: body.revision },
-      data: { autoState: body.autoState, autoNote: body.autoNote ?? null, autoCommit: body.autoCommit ?? null, autoClaim: null, ...(body.status ? { status: body.status } : {}) },
-    });
-    if (count !== 1) {
+    const body = parse(jobBody.extend({ autoState: z.enum(FEEDBACK_AUTO_OUTCOMES), autoNote: z.string().max(2000).nullish(), autoCommit: z.string().max(80).nullish(), status: z.enum(FEEDBACK_JOB_STATUSES).optional() }), request.body);
+    try {
+      await transition({
+        machine: "feedbackAuto",
+        to: body.autoState,
+        label: "Auto",
+        message: moved,
+        apply: async (sources, to) => (await db.feedback.updateMany({
+          where: { id, autoClaim: body.runId, autoRevision: body.revision, revision: body.revision, autoState: { in: sources } },
+          data: { autoState: to, autoNote: body.autoNote ?? null, autoCommit: body.autoCommit ?? null, autoClaim: null, ...(body.status ? { status: body.status } : {}) },
+        })).count,
+        current: async () => (await db.feedback.findUnique({ where: { id }, select: { autoState: true } }))?.autoState ?? null,
+      });
+    } catch (error) {
+      if (!(error instanceof DomainError)) throw error;
       const row = await db.feedback.findUnique({ where: { id }, select: LIST_FIELDS });
       if (row && row.autoClaim === null && row.autoRevision === body.revision && row.revision === body.revision && row.autoState === body.autoState && (row.autoCommit ?? null) === (body.autoCommit ?? null) && (body.status === undefined || row.status === body.status)) return shape(row);
-      throw conflict();
+      throw error;
     }
     return jobRow(id);
   });
@@ -196,8 +259,17 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
     const { id } = parse(idParam, request.params);
     const { runId, revision, text } = parse(jobBody.extend({ text: z.string().trim().min(1).max(2000) }), request.body);
     await db.$transaction(async (tx) => {
-      const { count } = await tx.feedback.updateMany({ where: { id, autoClaim: runId, autoRevision: revision, revision }, data: { autoState: "NEEDS_ANSWER", autoClaim: null } });
-      if (count !== 1) throw conflict();
+      await transition({
+        machine: "feedbackAuto",
+        to: State.feedbackAuto.NEEDS_ANSWER,
+        label: "Auto",
+        message: moved,
+        apply: async (sources, to) => (await tx.feedback.updateMany({
+          where: { id, autoClaim: runId, autoRevision: revision, revision, autoState: { in: sources } },
+          data: { autoState: to, autoClaim: null },
+        })).count,
+        current: async () => (await tx.feedback.findUnique({ where: { id }, select: { autoState: true } }))?.autoState ?? null,
+      });
       await tx.feedbackTurn.create({ data: { feedbackId: id, role: "assistant", content: text } });
     });
     return jobRow(id);

@@ -1,4 +1,5 @@
-import { DomainError } from "@pi/domain";
+import { DomainError, State } from "@pi/domain";
+import { transition } from "../transition";
 import { postEntry } from "../ledger";
 import { nextNumber } from "../numbering";
 import { issueUnits, revaluePool, type StockCtx } from "../stock";
@@ -39,7 +40,7 @@ export async function postVendorCredit(
   const { tx, actor } = ctx;
   await lockBill(tx, billId);
   const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id: billId }, include: { lines: true } });
-  if (bill.kind !== "INVENTORY" || bill.status !== "POSTED") throw new DomainError("Credits apply to a posted inventory bill", 409);
+  if (bill.kind !== "INVENTORY" || bill.status !== State.bill.POSTED) throw new DomainError("Credits apply to a posted inventory bill", 409);
   if (input.lines.length === 0) throw new DomainError("Pick at least one line", 400);
   const number = await nextNumber(tx, "VC");
   const credit = await tx.vendorCredit.create({ data: { number, kind: input.kind, vendorId: bill.vendorId!, billId, date: input.date, totalCents: 0, memo: input.memo, actor } });
@@ -85,11 +86,21 @@ export async function postVendorCredit(
         const serials = req.serials ?? [];
         if (serials.length !== req.qty) throw new DomainError(`${item.name}: name the serial of each unit going back`, 400);
         const lots = await tx.inventoryLot.findMany({ where: { billLineId: billLine.id, warehouseId, qtyRemaining: { gt: 0 } } });
-        const units = await tx.serialUnit.findMany({ where: { itemId: item.id, warehouseId, serial: { in: serials }, state: "IN_STOCK", lotId: { in: lots.map(l => l.id) } } });
+        const units = await tx.serialUnit.findMany({ where: { itemId: item.id, warehouseId, serial: { in: serials }, state: State.serialUnit.IN_STOCK, lotId: { in: lots.map(l => l.id) } } });
         if (new Set(serials).size !== serials.length || units.length !== serials.length) throw new DomainError(`${item.name}: one of those serials is not in stock on this bill`, 400);
         lotIds = units.map(u => u.lotId!);
         // Issue each named lot separately: a serial in one lot must never consume another lot.
-        await tx.serialUnit.updateMany({ where: { id: { in: units.map(u => u.id) } }, data: { state: "RETURNED" } });
+        await transition({
+          machine: "serialUnit",
+          to: State.serialUnit.RETURNED,
+          from: [State.serialUnit.IN_STOCK],
+          label: "Serial",
+          apply: async (sources, to) => (await tx.serialUnit.updateMany({
+            where: { id: { in: units.map(u => u.id) }, state: { in: sources } },
+            data: { state: to },
+          })).count,
+          current: async () => State.serialUnit.IN_STOCK,
+        });
       }
       costCents = 0;
       for (const group of lotIds ? lotIds.map(id => ({ qty: 1, lotIds: [id] })) : [{ qty: req.qty, lotIds: undefined }]) {

@@ -1,3 +1,4 @@
+import { Axis, State } from "@pi/domain";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Deps } from "../app";
@@ -176,7 +177,7 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
    */
   app.get("/api/reports/to-receive", async () => {
     const orders = await db.purchaseOrder.findMany({
-      where: { lifecycle: "OPEN", receivingStatus: { not: "RECEIVED" } },
+      where: { lifecycle: State.poLifecycle.OPEN, receivingStatus: { not: Axis.receiving.RECEIVED } },
       include: { lines: true },
       orderBy: { id: "asc" },
     });
@@ -274,11 +275,11 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
   /** The numbers each home screen opens on. */
   app.get("/api/home", async () => {
     const [openDeliveries, expected, draftBills, unknownSessions, posted, books] = await Promise.all([
-      db.scanSession.count({ where: { status: "OPEN" } }),
-      db.purchaseOrder.count({ where: { lifecycle: "OPEN", receivingStatus: { not: "RECEIVED" } } }),
-      db.vendorBill.count({ where: { status: "DRAFT" } }),
-      db.scanSession.findMany({ where: { status: "SUBMITTED" }, select: { result: true } }),
-      db.vendorBill.findMany({ where: { status: "POSTED" }, select: { totalCents: true, paidCents: true, creditedCents: true, dueDate: true } }),
+      db.scanSession.count({ where: { status: State.scanSession.OPEN } }),
+      db.purchaseOrder.count({ where: { lifecycle: State.poLifecycle.OPEN, receivingStatus: { not: Axis.receiving.RECEIVED } } }),
+      db.vendorBill.count({ where: { status: State.bill.DRAFT } }),
+      db.scanSession.findMany({ where: { status: State.scanSession.SUBMITTED }, select: { result: true } }),
+      db.vendorBill.findMany({ where: { status: State.bill.POSTED }, select: { totalCents: true, paidCents: true, creditedCents: true, dueDate: true } }),
       checkBooks(db),
     ]);
     const held = await db.purchaseOrderLine.aggregate({ _sum: { qtyHeld: true } });
