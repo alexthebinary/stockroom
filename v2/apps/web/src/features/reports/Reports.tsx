@@ -18,7 +18,7 @@ type ToReceive = {
   totalValueCents: number;
 };
 type Held = { poId: number; poNumber: string; vendor: { name: string } | null; item: { name: string; sku: string }; qtyHeld: number; estimateCents: number; receivedAt: string; days: number }[];
-type InventoryMovement = { rows: { id: number; itemId: number; transactionDate: string; type: string; sku: string; name: string; brand: string | null; category: string | null; inboundQty: number; outboundQty: number; endingBalance: number }[] };
+type InventoryMovement = { rows: { id: number; itemId: number; transactionDate: string; type: string; transaction: string; transactionUrl: string | null; sku: string; name: string; brand: string | null; category: string | null; inboundQty: number; outboundQty: number; endingBalance: number }[] };
 
 /** Each report owns its URL keys; switching tabs and browser navigation preserve filters. */
 function useReportFilters<T extends Record<string, string>>(prefix: string, defaults: T) {
@@ -434,6 +434,7 @@ function InventoryMovementReport() {
               <Table.Tr>
                 <Table.Th>Transaction date</Table.Th>
                 <Table.Th>Type</Table.Th>
+                <Table.Th>Transaction</Table.Th>
                 <Table.Th>Item SKU</Table.Th>
                 <Table.Th>Item name</Table.Th>
                 <Table.Th>Brand</Table.Th>
@@ -448,6 +449,9 @@ function InventoryMovementReport() {
                 <Table.Tr key={row.id}>
                   <Table.Td>{row.transactionDate.slice(0, 10)}</Table.Td>
                   <Table.Td>{row.type}</Table.Td>
+                  <Table.Td>
+                    {row.transactionUrl ? <a href={row.transactionUrl} target="_blank" rel="noopener noreferrer">{row.transaction}</a> : row.transaction}
+                  </Table.Td>
                   <Table.Td>{row.sku}</Table.Td>
                   <Table.Td>{row.name}</Table.Td>
                   <Table.Td>{row.brand ?? "—"}</Table.Td>

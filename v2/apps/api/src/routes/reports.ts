@@ -30,6 +30,16 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
     ], { isolationLevel: "RepeatableRead" });
     const items = await db.item.findMany({ where: { id: { in: [...new Set(movements.map((m) => m.itemId))] } } });
     const byId = new Map(items.map((item) => [item.id, item]));
+    // Source documents that have a page: receipts open their order, vendor credits open their bill.
+    const docNumbers = [...new Set(movements.map((m) => m.docNumber))];
+    const [receipts, credits] = await Promise.all([
+      db.warehouseReceipt.findMany({ where: { number: { in: docNumbers } }, select: { number: true, poId: true } }),
+      db.vendorCredit.findMany({ where: { number: { in: docNumbers } }, select: { number: true, billId: true } }),
+    ]);
+    const urls = new Map<string, string>([
+      ...receipts.map((r): [string, string] => [r.number, `/orders/${r.poId}`]),
+      ...credits.map((c): [string, string] => [c.number, `/bills/${c.billId}`]),
+    ]);
     const balances = new Map(opening.map((row) => [row.itemId, row._sum?.qtyDelta ?? 0]));
     const rows = movements.map((movement) => {
       const item = byId.get(movement.itemId);
@@ -40,6 +50,8 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
         itemId: movement.itemId,
         transactionDate: movement.createdAt,
         type: movementType(movement),
+        transaction: movement.docNumber,
+        transactionUrl: urls.get(movement.docNumber) ?? null,
         sku: item?.sku ?? "",
         name: item?.name ?? "Unknown item",
         brand: item?.brand ?? null,
