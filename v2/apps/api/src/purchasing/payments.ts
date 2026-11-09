@@ -1,7 +1,8 @@
-import { DomainError } from "@pi/domain";
+import { DomainError, State } from "@pi/domain";
 import { postEntry, reverseEntry } from "../ledger";
 import { nextNumber } from "../numbering";
 import type { StockCtx } from "../stock";
+import { transition } from "../transition";
 import { refreshPoStatus } from "./po";
 
 const openOf = (b: { totalCents: number; paidCents: number; creditedCents: number }) => b.totalCents - b.paidCents - b.creditedCents;
@@ -36,7 +37,7 @@ export async function recordPayment(
   // Row lock: two payments of the same bill at once queue rather than both pass the "not more than open" check.
   await tx.$queryRaw`SELECT "id" FROM "VendorBill" WHERE "id" = ${billId} FOR UPDATE`;
   const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id: billId } });
-  if (bill.status !== "POSTED") throw new DomainError("Only a posted bill can be paid", 409);
+  if (bill.status !== State.bill.POSTED) throw new DomainError("Only a posted bill can be paid", 409);
   if (input.amountCents <= 0) throw new DomainError("Enter an amount", 400);
   if (paidAt.getTime() > Date.now() + 60_000) throw new DomainError("A payment can't be dated in the future", 400);
   const open = openOf(bill);
@@ -69,8 +70,14 @@ export async function recordPayment(
 
 export async function voidPayment(ctx: StockCtx, paymentId: number) {
   const { tx, actor } = ctx;
-  const claimed = await tx.payment.updateMany({ where: { id: paymentId, status: "POSTED" }, data: { status: "VOID" } });
-  if (claimed.count === 0) throw new DomainError("That payment is already void", 409);
+  await transition({
+    machine: "payment",
+    to: State.payment.VOID,
+    label: "Payment",
+    message: "That payment is already void",
+    apply: async (sources, to) => (await tx.payment.updateMany({ where: { id: paymentId, status: { in: sources } }, data: { status: to } })).count,
+    current: async () => (await tx.payment.findUnique({ where: { id: paymentId }, select: { status: true } }))?.status ?? null,
+  });
   const payment = await tx.payment.findUniqueOrThrow({ where: { id: paymentId } });
   const entry = await tx.journalEntry.findFirstOrThrow({ where: { sourceType: "PAYMENT", sourceId: paymentId, reversesId: null } });
   await reverseEntry(tx, entry.id, actor);

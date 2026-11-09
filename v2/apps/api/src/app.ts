@@ -1,4 +1,4 @@
-import { DomainError } from "@pi/domain";
+import { DERIVED, DomainError, MACHINES } from "@pi/domain";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { Clarifier } from "./ai/clarifier";
 import type { HelpModel } from "./ai/help";
@@ -124,6 +124,8 @@ export function buildApp(input: Deps): FastifyInstance {
   });
 
   // Liveness for the deploy scripts: a real database round-trip, and which commit is running.
+  app.get("/api/state-machines", async () => ({ machines: MACHINES, derived: DERIVED }));
+
   app.get("/api/health", async (_request, reply) => {
     const build = process.env.APP_VERSION ?? "dev";
     try {

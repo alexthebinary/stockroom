@@ -1,6 +1,7 @@
-import { type AllocationBasis, DomainError } from "@pi/domain";
+import { type AllocationBasis, DomainError, State } from "@pi/domain";
 import { postEntry, reverseEntry } from "../ledger";
 import { type StockCtx, unlandLot } from "../stock";
+import { transition } from "../transition";
 import { applyLineAdjustment } from "./adjust";
 import { ensureDraftBill } from "./bills";
 import { refreshPoStatus } from "./po";
@@ -24,8 +25,8 @@ export async function voidBill(ctx: StockCtx, billId: number) {
   const { tx, actor } = ctx;
   await lockBill(tx, billId);
   const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id: billId }, include: { lines: true, allocations: true } });
-  if (bill.status !== "POSTED") throw new DomainError(`${bill.number} is ${bill.status.toLowerCase()}, not posted`, 409);
-  const livePayments = await tx.payment.count({ where: { billId, status: "POSTED" } });
+  if (bill.status !== State.bill.POSTED) throw new DomainError(`${bill.number} is ${bill.status.toLowerCase()}, not posted`, 409);
+  const livePayments = await tx.payment.count({ where: { billId, status: State.payment.POSTED } });
   if (livePayments > 0 || bill.paidCents !== 0) throw new DomainError(`${bill.number} has payments on it; void those first`, 409);
   if (bill.creditedCents !== 0 || await tx.vendorCredit.count({ where: { billId } }) > 0) throw new DomainError(`${bill.number} has vendor credits on it and can't be voided`, 409);
 
@@ -33,7 +34,7 @@ export async function voidBill(ctx: StockCtx, billId: number) {
 
   if (bill.kind === "INVENTORY") {
     const poLineIds = bill.lines.map((l) => l.poLineId!).filter(Boolean);
-    const freight = await tx.landedCostAllocation.count({ where: { poLineId: { in: poLineIds }, freightBill: { status: "POSTED" } } });
+    const freight = await tx.landedCostAllocation.count({ where: { poLineId: { in: poLineIds }, freightBill: { status: State.bill.POSTED } } });
     if (freight > 0) throw new DomainError("A freight bill is spread over this order; void the freight bill first", 409);
     const lots = await tx.inventoryLot.findMany({ where: { sourceType: "BILL", sourceId: billId } });
     for (const line of bill.lines.filter(l => l.poLineId)) {
@@ -48,8 +49,20 @@ export async function voidBill(ctx: StockCtx, billId: number) {
       const receiptLine = await tx.receiptLine.findUniqueOrThrow({ where: { id: lot.receiptLineId! }, include: { receipt: true } });
       await unlandLot(ctx, lot.id, { docNumber: receiptLine.receipt.number, poId: po.id, billId });
       await tx.receiptLine.update({ where: { id: receiptLine.id }, data: { landedQty: { decrement: lot.qtyIn }, valueCents: { decrement: lot.valueCents } } });
-      const serials = await tx.serialUnit.findMany({ where: { lotId: lot.id, state: "IN_STOCK" }, take: lot.qtyIn, orderBy: { id: "desc" } });
-      await tx.serialUnit.updateMany({ where: { id: { in: serials.map((s) => s.id) } }, data: { state: "HELD", lotId: null } });
+      const serials = await tx.serialUnit.findMany({ where: { lotId: lot.id, state: State.serialUnit.IN_STOCK }, take: lot.qtyIn, orderBy: { id: "desc" } });
+      if (serials.length > 0) {
+        await transition({
+          machine: "serialUnit",
+          to: State.serialUnit.HELD,
+          from: [State.serialUnit.IN_STOCK],
+          label: "Serial",
+          apply: async (sources, to) => (await tx.serialUnit.updateMany({
+            where: { id: { in: serials.map((s) => s.id) }, state: { in: sources } },
+            data: { state: to, lotId: null },
+          })).count,
+          current: async () => State.serialUnit.IN_STOCK,
+        });
+      }
       await tx.purchaseOrderLine.update({
         where: { id: lot.poLineId! },
         data: { qtyLanded: { decrement: lot.qtyIn }, qtyHeld: { increment: lot.qtyIn }, inboundCents: { increment: lot.valueCents } },
@@ -79,7 +92,7 @@ export async function voidBill(ctx: StockCtx, billId: number) {
     }
     await tx.vendorBillLine.updateMany({ where: { billId }, data: { inboundCents: 0 } });
     await reverseEntry(tx, billEntry.id, actor);
-    await tx.vendorBill.update({ where: { id: billId }, data: { status: "VOID", voidedAt: new Date(), voidedBy: actor } });
+    await voidPosted(tx, billId, actor);
     await ensureDraftBill(tx, po.id, actor);
     await refreshPoStatus(tx, po.id);
     return tx.vendorBill.findUniqueOrThrow({ where: { id: billId } });
@@ -106,11 +119,27 @@ export async function voidBill(ctx: StockCtx, billId: number) {
         { role: "payable", amountCents: -bill.totalCents, vendorId: bill.vendorId! },
       ],
     });
-    await tx.vendorBill.update({ where: { id: billId }, data: { status: "VOID", voidedAt: new Date(), voidedBy: actor } });
+    await voidPosted(tx, billId, actor);
     for (const poId of bill.targetPoIds) await refreshPoStatus(tx, poId);
     return tx.vendorBill.findUniqueOrThrow({ where: { id: billId } });
   }
 
   await reverseEntry(tx, billEntry.id, actor);
-  return tx.vendorBill.update({ where: { id: billId }, data: { status: "VOID", voidedAt: new Date(), voidedBy: actor } });
+  await voidPosted(tx, billId, actor);
+  return tx.vendorBill.findUniqueOrThrow({ where: { id: billId } });
+}
+
+/** POSTED → VOID. The caller already refused any other status with its own sentence. */
+async function voidPosted(tx: StockCtx["tx"], billId: number, actor: string) {
+  await transition({
+    machine: "bill",
+    to: State.bill.VOID,
+    from: [State.bill.POSTED],
+    label: "Bill",
+    apply: async (sources, to) => (await tx.vendorBill.updateMany({
+      where: { id: billId, status: { in: sources } },
+      data: { status: to, voidedAt: new Date(), voidedBy: actor },
+    })).count,
+    current: async () => (await tx.vendorBill.findUnique({ where: { id: billId }, select: { status: true } }))?.status ?? null,
+  });
 }

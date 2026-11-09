@@ -1,4 +1,4 @@
-import { allocate, splitAdjustment } from "@pi/domain";
+import { allocate, splitAdjustment, State } from "@pi/domain";
 import type { Tx } from "../db";
 import { onHandFromLine, revaluePool } from "../stock";
 
@@ -55,7 +55,7 @@ export async function applyLineAdjustment(tx: Tx, poLineId: number, amountCents:
 
 /** Freight over the target orders' lines, by value (cost of the line) or by quantity. */
 export async function freightTargets(tx: Tx, poIds: number[], amountCents: number, basis: "VALUE" | "QTY") {
-  const lines = await tx.purchaseOrderLine.findMany({ where: { poId: { in: poIds }, po: { lifecycle: { not: "CANCELED" } } }, orderBy: { id: "asc" } });
+  const lines = await tx.purchaseOrderLine.findMany({ where: { poId: { in: poIds }, po: { lifecycle: { not: State.poLifecycle.CANCELED } } }, orderBy: { id: "asc" } });
   const usable = lines.filter((l) => Math.max(l.qtyOrdered, l.qtyBilled, l.qtyReceived) > 0);
   const value = (l: (typeof usable)[number]) => (l.qtyBilled > 0 ? l.billedCents : Math.max(l.qtyOrdered, l.qtyReceived) * l.unitCostCents);
   const weights = basis === "VALUE" && usable.some((l) => value(l) > 0) ? usable.map(value) : usable.map((l) => Math.max(l.qtyOrdered, l.qtyBilled, l.qtyReceived));
@@ -82,7 +82,7 @@ export async function billLineStock(tx: Tx, billLineId: number) {
 }
 
 export async function pendingBillLines(tx: Tx, poLineId: number) {
-  const lines = await tx.vendorBillLine.findMany({ where: { poLineId, bill: { status: "POSTED", kind: "INVENTORY" } }, orderBy: [{ billId: "asc" }, { id: "asc" }] });
+  const lines = await tx.vendorBillLine.findMany({ where: { poLineId, bill: { status: State.bill.POSTED, kind: "INVENTORY" } }, orderBy: [{ billId: "asc" }, { id: "asc" }] });
   const result = [];
   for (const line of lines) {
     const state = await billLineStock(tx, line.id);
@@ -94,7 +94,7 @@ export async function pendingBillLines(tx: Tx, poLineId: number) {
 /** Freight posted before an inventory bill retains the same per-unit PO split. */
 export async function unbilledInboundShare(tx: Tx, poLineId: number, qty: number) {
   const po = await tx.purchaseOrderLine.findUniqueOrThrow({ where: { id: poLineId } });
-  const assigned = await tx.vendorBillLine.aggregate({ where: { poLineId, bill: { status: "POSTED", kind: "INVENTORY" } }, _sum: { inboundCents: true } });
+  const assigned = await tx.vendorBillLine.aggregate({ where: { poLineId, bill: { status: State.bill.POSTED, kind: "INVENTORY" } }, _sum: { inboundCents: true } });
   const unassigned = po.inboundCents - (assigned._sum.inboundCents ?? 0);
   const unbilled = Math.max(po.qtyOrdered, po.qtyReceived) - po.qtyBilled;
   return unbilled > 0 ? Math.round(unassigned * qty / unbilled) : 0;

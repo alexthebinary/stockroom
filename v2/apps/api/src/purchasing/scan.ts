@@ -1,8 +1,9 @@
-import { DomainError } from "@pi/domain";
+import { DomainError, State } from "@pi/domain";
 import type { Tx } from "../db";
 import { Prisma } from "../db";
 import { addBarcode, lookupCode } from "../catalog";
 import type { StockCtx } from "../stock";
+import { transition } from "../transition";
 import { type Arrival, receive } from "./receive";
 
 export type IncomingEvent = {
@@ -29,7 +30,7 @@ export type SlipRead = { vendorName?: string | null; poNumber?: string | null; l
 export async function appendEvents(tx: Tx, sessionId: number, events: IncomingEvent[]) {
   await tx.$queryRaw`SELECT "id" FROM "ScanSession" WHERE "id" = ${sessionId} FOR UPDATE`;
   const session = await tx.scanSession.findUniqueOrThrow({ where: { id: sessionId } });
-  if (session.status !== "OPEN") throw new DomainError("This delivery was already finished; start a new one to scan more", 409);
+  if (session.status !== State.scanSession.OPEN) throw new DomainError("This delivery was already finished; start a new one to scan more", 409);
   const keys = events.map((e) => e.clientId);
   const known = new Set((await tx.scanEvent.findMany({ where: { clientId: { in: keys } }, select: { clientId: true } })).map((e) => e.clientId));
   for (const event of events) {
@@ -115,7 +116,7 @@ export async function submitSession(ctx: StockCtx, sessionId: number, expectedEv
   await tx.$queryRaw`SELECT "id" FROM "ScanSession" WHERE "id" = ${sessionId} FOR UPDATE`;
   const saved = await tx.scanSession.findUniqueOrThrow({ where: { id: sessionId } });
   const count = await tx.scanEvent.count({ where: { sessionId } });
-  if (saved.status === "SUBMITTED" && saved.result) {
+  if (saved.status === State.scanSession.SUBMITTED && saved.result) {
     const result = saved.result as Prisma.JsonObject;
     // Older deliveries predate the saved request count; their immutable event count is the fallback.
     if ((result.expectedEventCount ?? count) === expectedEventCount) return saved.result;
@@ -124,8 +125,18 @@ export async function submitSession(ctx: StockCtx, sessionId: number, expectedEv
   if (count < expectedEventCount) {
     throw new DomainError(`The server has ${count} of ${expectedEventCount} scans. Some are still on the phone; they will send when it reconnects.`, 409);
   }
-  const claimed = await tx.scanSession.updateMany({ where: { id: sessionId, status: "OPEN" }, data: { status: "SUBMITTED", submittedAt: new Date() } });
-  if (claimed.count === 0) throw new DomainError("This delivery was already finished", 409);
+  await transition({
+    machine: "scanSession",
+    to: State.scanSession.SUBMITTED,
+    from: [State.scanSession.OPEN],
+    label: "Delivery",
+    message: "This delivery was already finished",
+    apply: async (sources, to) => (await tx.scanSession.updateMany({
+      where: { id: sessionId, status: { in: sources } },
+      data: { status: to, submittedAt: new Date() },
+    })).count,
+    current: async () => (await tx.scanSession.findUnique({ where: { id: sessionId }, select: { status: true } }))?.status ?? null,
+  });
   const session = await tx.scanSession.findUniqueOrThrow({ where: { id: sessionId }, include: { events: true } });
   const counted = tally(session.events);
   for (const item of counted.items) {
@@ -155,7 +166,7 @@ export async function resolveUnknown(ctx: StockCtx, sessionId: number, input: { 
   const { tx } = ctx;
   await tx.$queryRaw`SELECT "id" FROM "ScanSession" WHERE "id" = ${sessionId} FOR UPDATE`;
   const session = await tx.scanSession.findUniqueOrThrow({ where: { id: sessionId } });
-  if (session.status !== "SUBMITTED") throw new DomainError("Finish the delivery before resolving its unknown items", 409);
+  if (session.status !== State.scanSession.SUBMITTED) throw new DomainError("Finish the delivery before resolving its unknown items", 409);
   const summary = session.result as unknown as { poIds: number[]; unknown: { code: string | null; name: string | null; qty: number }[] };
   const index = summary.unknown.findIndex((u) => u.code === input.code && (input.code != null || u.name === input.name));
   if (index === -1) throw new DomainError("That unknown item was already resolved", 409);

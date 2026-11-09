@@ -1,10 +1,11 @@
-import { DomainError } from "@pi/domain";
+import { Axis, BILL_STATES, BILLING_STATUSES, DomainError, PAYMENT_STATUSES, PO_LIFECYCLE_FILTERS, RECEIPT_STATES, RECEIVING_STATUSES, SCAN_STATES, State } from "@pi/domain";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Deps } from "../app";
 import { audit } from "../audit";
 import { inTx, Prisma } from "../db";
 import { actorOf, idParam, notFound, parse } from "../http";
+import { transition } from "../transition";
 import { dueDateFor, draftBillFromPo, postInventoryBill, previewBill, recomputeTotals } from "../purchasing/bills";
 import { postFreightBill } from "../purchasing/freight";
 import { lockBill } from "../purchasing/locks";
@@ -47,12 +48,12 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
   app.get("/api/purchase-orders", async (request) => {
     const q = parse(
       z.object({
-        billingStatus: z.string().optional(),
-        receivingStatus: z.string().optional(),
-        paymentStatus: z.string().optional(),
+        billingStatus: z.enum(BILLING_STATUSES).optional(),
+        receivingStatus: z.enum(RECEIVING_STATUSES).optional(),
+        paymentStatus: z.enum(PAYMENT_STATUSES).optional(),
         vendorId: z.coerce.number().int().optional(),
         search: z.string().optional(),
-        lifecycle: z.string().default("OPEN"),
+        lifecycle: z.enum(PO_LIFECYCLE_FILTERS).default(State.poLifecycle.OPEN),
       }),
       request.query,
     );
@@ -115,7 +116,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
     return inTx(db, async (tx) => {
       const po = await tx.purchaseOrder.findUniqueOrThrow({ where: { id }, include: { lines: true } });
       if (po.version !== body.version) throw new DomainError(`${po.number} was changed by someone else. Reload it.`, 409);
-      if (po.billingStatus === "BILLED") throw new DomainError(`${po.number} has a posted bill; change what was bought with a vendor credit instead`, 409);
+      if (po.billingStatus === Axis.billing.BILLED) throw new DomainError(`${po.number} has a posted bill; change what was bought with a vendor credit instead`, 409);
       if (body.lines) {
         for (const existing of po.lines) {
           const next = body.lines.find((l) => l.id === existing.id);
@@ -127,7 +128,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
         for (const added of body.lines.filter((l) => !l.id)) await tx.purchaseOrderLine.create({ data: { poId: id, itemId: added.itemId, qtyOrdered: added.qtyOrdered, unitCostCents: added.unitCostCents } });
       }
       await tx.purchaseOrder.update({ where: { id }, data: { vendorId: body.vendorId === undefined ? undefined : body.vendorId, notes: body.notes ?? undefined } });
-      if (body.vendorId) await tx.vendorBill.updateMany({ where: { poId: id, status: "DRAFT", vendorId: null }, data: { vendorId: body.vendorId } });
+      if (body.vendorId) await tx.vendorBill.updateMany({ where: { poId: id, status: State.bill.DRAFT, vendorId: null }, data: { vendorId: body.vendorId } });
       return refreshPoStatus(tx, id);
     });
   });
@@ -137,10 +138,32 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
     return inTx(db, async (tx) => {
       const po = await tx.purchaseOrder.findUniqueOrThrow({ where: { id }, include: { lines: true, bills: true } });
       if (po.lines.some((l) => l.qtyReceived > 0)) throw new DomainError(`${po.number} has received stock and can't be cancelled`, 409);
-      if (po.bills.some((b) => b.status === "POSTED")) throw new DomainError(`${po.number} has a posted bill; void the bill first`, 409);
-      await tx.vendorBill.updateMany({ where: { poId: id, status: "DRAFT" }, data: { status: "VOID", voidedAt: new Date(), voidedBy: actorOf(request) } });
-      await audit(tx, actorOf(request), "po.cancelled", "PurchaseOrder", id);
-      return tx.purchaseOrder.update({ where: { id }, data: { lifecycle: "CANCELED" } });
+      if (po.bills.some((b) => b.status === State.bill.POSTED)) throw new DomainError(`${po.number} has a posted bill; void the bill first`, 409);
+      const actor = actorOf(request);
+      await transition({
+        machine: "bill",
+        to: State.bill.VOID,
+        from: [State.bill.DRAFT],
+        label: "Bill",
+        allowEmpty: true,
+        apply: async (sources, to) => (await tx.vendorBill.updateMany({
+          where: { poId: id, status: { in: sources } },
+          data: { status: to, voidedAt: new Date(), voidedBy: actor },
+        })).count,
+        current: async () => null,
+      });
+      await audit(tx, actor, "po.cancelled", "PurchaseOrder", id);
+      await transition({
+        machine: "poLifecycle",
+        to: State.poLifecycle.CANCELED,
+        label: "Purchase order",
+        apply: async (sources, to) => (await tx.purchaseOrder.updateMany({
+          where: { id, lifecycle: { in: sources } },
+          data: { lifecycle: to },
+        })).count,
+        current: async () => (await tx.purchaseOrder.findUnique({ where: { id }, select: { lifecycle: true } }))?.lifecycle ?? null,
+      });
+      return tx.purchaseOrder.findUniqueOrThrow({ where: { id } });
     });
   });
 
@@ -161,7 +184,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
   app.get("/api/receiving/expected", async (request) => {
     const { warehouseId, vendorId } = parse(z.object({ warehouseId: z.coerce.number().int().optional(), vendorId: z.coerce.number().int().optional() }), request.query);
     const orders = await db.purchaseOrder.findMany({
-      where: { lifecycle: "OPEN", receivingStatus: { not: "RECEIVED" }, ...(warehouseId ? { warehouseId } : {}), ...(vendorId ? { vendorId } : {}) },
+      where: { lifecycle: State.poLifecycle.OPEN, receivingStatus: { not: Axis.receiving.RECEIVED }, ...(warehouseId ? { warehouseId } : {}), ...(vendorId ? { vendorId } : {}) },
       include: { lines: true },
       orderBy: { id: "asc" },
     });
@@ -191,7 +214,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
   });
 
   app.get("/api/scan-sessions", async (request) => {
-    const { status } = parse(z.object({ status: z.string().default("OPEN") }), request.query);
+    const { status } = parse(z.object({ status: z.enum(SCAN_STATES).default(State.scanSession.OPEN) }), request.query);
     return db.scanSession.findMany({ where: { status }, orderBy: { id: "desc" }, take: 50, include: { _count: { select: { events: true } } } });
   });
 
@@ -210,11 +233,18 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
       z.object({ vendorId: z.number().int().positive().nullish(), poId: z.number().int().positive().nullish(), notes: z.string().max(2000).nullish(), slipRead: z.unknown().optional() }),
       request.body,
     );
-    const updated = await db.scanSession.updateMany({
-      where: { id, status: "OPEN" },
-      data: { vendorId: body.vendorId, poId: body.poId, notes: body.notes, slipRead: body.slipRead === undefined ? undefined : (body.slipRead as Prisma.InputJsonValue) },
+    await transition({
+      machine: "scanSession",
+      to: State.scanSession.OPEN,
+      from: [State.scanSession.OPEN],
+      label: "Delivery",
+      message: "This delivery is already finished",
+      apply: async (sources, to) => (await db.scanSession.updateMany({
+        where: { id, status: { in: sources } },
+        data: { status: to, vendorId: body.vendorId, poId: body.poId, notes: body.notes, slipRead: body.slipRead === undefined ? undefined : (body.slipRead as Prisma.InputJsonValue) },
+      })).count,
+      current: async () => (await db.scanSession.findUnique({ where: { id }, select: { status: true } }))?.status ?? null,
     });
-    if (updated.count === 0) throw new DomainError("This delivery is already finished", 409);
     return db.scanSession.findUniqueOrThrow({ where: { id } });
   });
 
@@ -236,8 +266,15 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
 
   app.post("/api/scan-sessions/:id/abandon", async (request) => {
     const { id } = parse(idParam, request.params);
-    const updated = await db.scanSession.updateMany({ where: { id, status: "OPEN" }, data: { status: "ABANDONED" } });
-    if (updated.count === 0) throw new DomainError("Only an unfinished delivery can be abandoned", 409);
+    await transition({
+      machine: "scanSession",
+      to: State.scanSession.ABANDONED,
+      from: [State.scanSession.OPEN],
+      label: "Delivery",
+      message: "Only an unfinished delivery can be abandoned",
+      apply: async (sources, to) => (await db.scanSession.updateMany({ where: { id, status: { in: sources } }, data: { status: to } })).count,
+      current: async () => (await db.scanSession.findUnique({ where: { id }, select: { status: true } }))?.status ?? null,
+    });
     return { ok: true };
   });
 
@@ -252,7 +289,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
 
   /** Unknown items from finished deliveries, for the bill desk's exceptions list. */
   app.get("/api/receiving/unknown", async () => {
-    const sessions = await db.scanSession.findMany({ where: { status: "SUBMITTED" }, orderBy: { id: "desc" }, take: 200 });
+    const sessions = await db.scanSession.findMany({ where: { status: State.scanSession.SUBMITTED }, orderBy: { id: "desc" }, take: 200 });
     return sessions.flatMap((s) => {
       const result = s.result as { unknown?: { code: string | null; name: string | null; qty: number }[] } | null;
       return (result?.unknown ?? []).map((u) => ({ sessionId: s.id, submittedAt: s.submittedAt, startedBy: s.startedBy, ...u }));
@@ -261,9 +298,9 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
 
   // ── Vendor bills ──
   app.get("/api/bills", async (request) => {
-    const q = parse(z.object({ status: z.string().optional(), kind: z.string().optional(), vendorId: z.coerce.number().int().optional(), open: z.coerce.boolean().optional() }), request.query);
+    const q = parse(z.object({ status: z.enum(BILL_STATES).optional(), kind: z.string().optional(), vendorId: z.coerce.number().int().optional(), open: z.coerce.boolean().optional() }), request.query);
     const bills = await db.vendorBill.findMany({
-      where: { ...(q.status ? { status: q.status } : { status: { not: "VOID" } }), ...(q.kind ? { kind: q.kind } : {}), ...(q.vendorId ? { vendorId: q.vendorId } : {}) },
+      where: { ...(q.status ? { status: q.status } : { status: { not: State.bill.VOID } }), ...(q.kind ? { kind: q.kind } : {}), ...(q.vendorId ? { vendorId: q.vendorId } : {}) },
       include: { lines: true, po: true },
       orderBy: [{ status: "asc" }, { id: "asc" }],
       take: 500,
@@ -279,7 +316,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
         attachment: b.attachment ? true : null,
         vendor: vendors.find((v) => v.id === b.vendorId) ?? null,
         heldUnits: b.poId ? (heldByPo.get(b.poId) ?? 0) : 0,
-        openCents: b.status === "POSTED" ? b.totalCents - b.paidCents - b.creditedCents : 0,
+        openCents: b.status === State.bill.POSTED ? b.totalCents - b.paidCents - b.creditedCents : 0,
       }))
       .filter((b) => !q.open || b.openCents !== 0);
   });
@@ -293,7 +330,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
       db.item.findMany({ where: { id: { in: bill.lines.map((l) => l.itemId!).filter(Boolean) } } }),
       db.payment.findMany({ where: { billId: id }, orderBy: { id: "asc" } }),
       db.vendorCredit.findMany({ where: { billId: id }, include: { lines: true }, orderBy: { id: "asc" } }),
-      bill.status === "DRAFT" ? inTx(db, (tx) => previewBill(tx, id)) : null,
+      bill.status === State.bill.DRAFT ? inTx(db, (tx) => previewBill(tx, id)) : null,
     ]);
     return {
       ...bill,
@@ -301,7 +338,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
       payments,
       credits,
       preview,
-      openCents: bill.status === "POSTED" ? bill.totalCents - bill.paidCents - bill.creditedCents : 0,
+      openCents: bill.status === State.bill.POSTED ? bill.totalCents - bill.paidCents - bill.creditedCents : 0,
       lines: bill.lines.map((l) => ({ ...l, item: items.find((i) => i.id === l.itemId), poLine: bill.po?.lines.find((p) => p.id === l.poLineId) ?? null })),
     };
   });
@@ -322,7 +359,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
     return inTx(db, async (tx) => {
       await lockBill(tx, id);
       const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id }, include: { lines: true } });
-      if (bill.status !== "DRAFT") throw new DomainError(`${bill.number} is ${bill.status.toLowerCase()} and can't be edited`, 409);
+      if (bill.status !== State.bill.DRAFT) throw new DomainError(`${bill.number} is ${bill.status.toLowerCase()} and can't be edited`, 409);
       if (bill.version !== body.version) throw new DomainError(`${bill.number} was changed by someone else. Reload it.`, 409);
       const billDate = body.billDate ?? bill.billDate;
       const termsDays = body.termsDays ?? bill.termsDays;
@@ -377,8 +414,18 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
   app.delete("/api/bills/:id", async (request) => {
     const { id } = parse(idParam, request.params);
     return inTx(db, async (tx) => {
-      const updated = await tx.vendorBill.updateMany({ where: { id, status: "DRAFT" }, data: { status: "VOID", voidedAt: new Date(), voidedBy: actorOf(request) } });
-      if (updated.count === 0) throw new DomainError("Only a draft bill can be discarded; void a posted one instead", 409);
+      await transition({
+        machine: "bill",
+        to: State.bill.VOID,
+        from: [State.bill.DRAFT],
+        label: "Bill",
+        message: "Only a draft bill can be discarded; void a posted one instead",
+        apply: async (sources, to) => (await tx.vendorBill.updateMany({
+          where: { id, status: { in: sources } },
+          data: { status: to, voidedAt: new Date(), voidedBy: actorOf(request) },
+        })).count,
+        current: async () => (await tx.vendorBill.findUnique({ where: { id }, select: { status: true } }))?.status ?? null,
+      });
       const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id } });
       if (bill.poId) await refreshPoStatus(tx, bill.poId);
       return bill;
@@ -387,7 +434,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
 
   // ── Receipts and the unit registers ──
   app.get("/api/receipts", async (request) => {
-    const { state } = parse(z.object({ state: z.string().optional() }), request.query);
+    const { state } = parse(z.object({ state: z.enum(RECEIPT_STATES).optional() }), request.query);
     const receipts = await db.warehouseReceipt.findMany({ where: state ? { state } : {}, include: { lines: true, po: true }, orderBy: { id: "desc" }, take: 200 });
     return receipts;
   });

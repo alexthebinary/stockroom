@@ -1,4 +1,4 @@
-import { DomainError, receiptState } from "@pi/domain";
+import { DomainError, receiptState, State } from "@pi/domain";
 import type { Tx } from "../db";
 import { postEntry } from "../ledger";
 import { nextNumber } from "../numbering";
@@ -61,7 +61,7 @@ export async function receive(
   if (input.poId) await lockPoLinesForOrders(tx, [input.poId]);
   let po = input.poId ? await tx.purchaseOrder.findUnique({ where: { id: input.poId }, include: { lines: true, bills: true } }) : null;
   if (input.poId && !po) throw new DomainError("That purchase order was not found", 404);
-  if (po && po.lifecycle !== "OPEN") throw new DomainError(`${po.number} is ${po.lifecycle.toLowerCase()}; receive against an open order`, 409);
+  if (po && po.lifecycle !== State.poLifecycle.OPEN) throw new DomainError(`${po.number} is ${po.lifecycle.toLowerCase()}; receive against an open order`, 409);
   const vendorId = po?.vendorId ?? input.vendorId;
 
   // Split each arrival into what the target PO expected, and the extras.
@@ -85,7 +85,7 @@ export async function receive(
   const touched: { poId: number; planned: Planned[] }[] = [];
   if (po && expected.length) touched.push({ poId: po.id, planned: expected });
   if (extras.length) {
-    const poHasPostedBill = po?.bills.some((b) => b.kind === "INVENTORY" && b.status === "POSTED") ?? false;
+    const poHasPostedBill = po?.bills.some((b) => b.kind === "INVENTORY" && b.status === State.bill.POSTED) ?? false;
     if (po && !poHasPostedBill) {
       // Still unbilled: the order simply grows to what arrived.
       for (const extra of extras) {
@@ -144,7 +144,7 @@ export async function receive(
             poLineId: line.id, receiptLineId: receiptLine.id, billLineId: billLine.id,
           });
           for (const serial of p.serials.slice(serialOffset, serialOffset + qty)) {
-            await tx.serialUnit.create({ data: { itemId: p.itemId, serial, warehouseId: input.warehouseId, receiptLineId: receiptLine.id, lotId: lot.id, state: "IN_STOCK" } });
+            await tx.serialUnit.create({ data: { itemId: p.itemId, serial, warehouseId: input.warehouseId, receiptLineId: receiptLine.id, lotId: lot.id, state: State.serialUnit.IN_STOCK } });
           }
           await tx.vendorBillLine.update({ where: { id: billLine.id }, data: { inboundCents: { decrement: value } } });
           valueCents += value;
@@ -162,7 +162,7 @@ export async function receive(
       });
       for (const serial of p.serials.slice(landable)) {
         try {
-          await tx.serialUnit.create({ data: { itemId: p.itemId, serial, warehouseId: input.warehouseId, receiptLineId: receiptLine.id, state: "HELD" } });
+          await tx.serialUnit.create({ data: { itemId: p.itemId, serial, warehouseId: input.warehouseId, receiptLineId: receiptLine.id, state: State.serialUnit.HELD } });
         } catch {
           throw new DomainError(`Serial ${serial} has already been received`, 409);
         }

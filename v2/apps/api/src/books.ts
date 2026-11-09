@@ -1,3 +1,4 @@
+import { State } from "@pi/domain";
 import type { Db, Tx } from "./db";
 
 /**
@@ -102,7 +103,7 @@ async function checkSnapshot(db: Tx): Promise<BooksReport> {
     if (l.vendorId == null) problems.push("An Accounts Payable line has no vendor");
     else glByVendor.set(l.vendorId, (glByVendor.get(l.vendorId) ?? 0) - signed(l));
   }
-  const bills = await db.vendorBill.findMany({ where: { status: "POSTED" }, select: { vendorId: true, totalCents: true, paidCents: true, creditedCents: true } });
+  const bills = await db.vendorBill.findMany({ where: { status: State.bill.POSTED }, select: { vendorId: true, totalCents: true, paidCents: true, creditedCents: true } });
   const openByVendor = new Map<number, number>();
   for (const b of bills) openByVendor.set(b.vendorId!, (openByVendor.get(b.vendorId!) ?? 0) + b.totalCents - b.paidCents - b.creditedCents);
   for (const vendorId of new Set([...glByVendor.keys(), ...openByVendor.keys()])) {

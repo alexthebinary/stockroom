@@ -16,6 +16,15 @@ describe("health", () => {
     expect((await client().app.inject({ method: "GET", url: "/api/health" })).json()).toEqual({ ok: true, build: "dev" });
   });
 
+  it("publishes the state machines for the help assistant and the web", async () => {
+    const body = (await client().app.inject({ method: "GET", url: "/api/state-machines" })).json();
+    expect(body.machines.bill.initial).toBe("DRAFT");
+    expect(body.machines.poLifecycle.edges).toEqual({ OPEN: ["CANCELED"], CANCELED: ["CANCELED"] });
+    expect(body.machines.poLifecycle.edges.CLOSED).toBeUndefined();
+    expect(body.derived.billingStatus).toEqual(["NOT_BILLED", "DRAFT", "BILLED"]);
+    expect(body.derived.receiptState).toEqual(["PENDING_BILL", "PARTIAL", "POSTED"]);
+  });
+
   it("is 503 when the database does not answer", async () => {
     const db = { $queryRaw: async () => { throw new Error("connection refused"); } } as never;
     const r = await buildApp({ db, reader: null }).inject({ method: "GET", url: "/api/health" });
