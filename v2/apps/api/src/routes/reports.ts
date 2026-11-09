@@ -111,6 +111,38 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
     return { rows, totalValueCents: rows.reduce((s, r) => s + r.valueCents, 0), totalGlCents: rows.reduce((s, r) => s + r.glCents, 0) };
   });
 
+  /** Bundles laid out like stock value: what can be made now, its cost at component averages, and the recipe. */
+  app.get("/api/reports/bundles", async () => {
+    const [bundles, recipe, balances, pools] = await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+      return Promise.all([
+        tx.item.findMany({ where: { isBundle: true }, orderBy: { sku: "asc" } }),
+        tx.bundleComponent.findMany({ include: { component: true }, orderBy: { id: "asc" } }),
+        tx.stockBalance.groupBy({ by: ["itemId"], _sum: { onHand: true } }),
+        tx.costPool.findMany(),
+      ]);
+    }, { isolationLevel: "RepeatableRead", maxWait: 10_000, timeout: 30_000 });
+    const rows = bundles.map((bundle) => {
+      const components = recipe
+        .filter((c) => c.bundleId === bundle.id)
+        .map((c) => {
+          const pool = pools.find((p) => p.itemId === c.componentId);
+          return {
+            itemId: c.componentId,
+            sku: c.component.sku,
+            name: c.component.name,
+            qtyPerBundle: c.qty,
+            onHand: balances.find((b) => b.itemId === c.componentId)?._sum.onHand ?? 0,
+            averageCents: pool && pool.qty > 0 ? pool.valueCents / pool.qty : 0,
+          };
+        });
+      const onHand = components.length ? Math.min(...components.map((c) => Math.floor(c.onHand / c.qtyPerBundle))) : 0;
+      const averageCents = components.reduce((s, c) => s + c.averageCents * c.qtyPerBundle, 0);
+      return { itemId: bundle.id, sku: bundle.sku, name: bundle.name, onHand, averageCents, valueCents: Math.round(onHand * averageCents), components };
+    });
+    return { rows };
+  });
+
   /** Units at the dock waiting for a bill, oldest first: the queue accounting works down. */
   app.get("/api/reports/held", async () => {
     const lines = await db.purchaseOrderLine.findMany({ where: { qtyHeld: { gt: 0 } }, include: { po: true } });

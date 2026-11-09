@@ -91,3 +91,14 @@ describe("virtual bundles", () => {
     expect(JSON.stringify(po.body)).toContain("is a bundle");
   });
 });
+
+describe("bundles report", () => {
+  it("lists each bundle with what can be made, its cost at component averages, and its recipe", async () => {
+    const { admin, a, b } = await setup();
+    ok(await admin.post("/api/bundles", { sku: "KIT-R", name: "Report kit", components: [{ itemId: a.id, qty: 2 }, { itemId: b.id, qty: 1 }] }));
+    const { rows } = ok(await admin.get("/api/reports/bundles")).body;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ sku: "KIT-R", onHand: 5, averageCents: 3700, valueCents: 18500 }); // 2 x 1500 + 700
+    expect(rows[0].components.map((c: { sku: string; qtyPerBundle: number; onHand: number }) => [c.sku, c.qtyPerBundle, c.onHand])).toEqual([["BND-A", 2, 20], ["BND-B", 1, 5]]);
+  });
+});

@@ -12,6 +12,7 @@ import type { JournalEntry } from "../../lib/types";
 type Books = { sound: boolean; problems: string[]; figures: Record<string, number> };
 type Tb = { rows: { id: number; code: string; name: string; isHeader: boolean; parentId: number | null; debitCents: number; creditCents: number }[]; totalDebitCents: number; totalCreditCents: number };
 type Valuation = { rows: { itemId: number; sku: string; name: string; onHand: number; held: number; valueCents: number; averageCents: number; glCents: number; varianceCents: number }[]; totalValueCents: number; totalGlCents: number };
+type BundleReport = { rows: { itemId: number; sku: string; name: string; onHand: number; averageCents: number; valueCents: number; components: { itemId: number; sku: string; name: string; qtyPerBundle: number; onHand: number; averageCents: number }[] }[] };
 type ToReceive = {
   orders: { poId: number; poNumber: string; billingStatus: string; vendor: { name: string } | null; warehouse: { id: number; code: string; name: string } | null; days: number; units: number; valueCents: number; lines: { lineId: number; item: { name: string; sku: string }; ordered: number; received: number; outstanding: number; billed: boolean }[] }[];
   totalUnits: number;
@@ -82,6 +83,14 @@ export const movementCsv = (rows: InventoryMovement["rows"]) => ({
   rows: rows.map((r): CsvCell[] => [r.transactionDate.slice(0, 10), r.type, r.sku, r.name, r.brand ?? "", r.category ?? "", r.inboundQty, r.outboundQty, r.endingBalance]),
 });
 
+export const bundlesCsv = (rows: BundleReport["rows"]) => ({
+  header: ["Bundle SKU", "Bundle name", "Component SKU", "Component name", "Qty per bundle", "On hand", "Average", "Value"],
+  rows: rows.flatMap((r): CsvCell[][] => [
+    [r.sku, r.name, "", "", "", r.onHand, cents(Math.round(r.averageCents)), cents(r.valueCents)],
+    ...r.components.map((c): CsvCell[] => [r.sku, r.name, c.sku, c.name, c.qtyPerBundle, c.onHand, cents(Math.round(c.averageCents)), ""]),
+  ]),
+});
+
 export const stockValueCsv = (rows: Valuation["rows"]) => ({
   header: ["Item SKU", "Item name", "On hand", "Average", "Value", "Ledger", "Awaiting bill"],
   rows: rows.map((r): CsvCell[] => [r.sku, r.name, r.onHand, cents(Math.round(r.averageCents)), cents(r.valueCents), cents(r.glCents), r.held || ""]),
@@ -96,6 +105,7 @@ const REPORT_TABS = {
   held: { label: "Awaiting bill", component: HeldStock },
   toReceive: { label: "To receive", component: ToReceiveReport },
   stock: { label: "Stock value", component: StockValue },
+  bundles: { label: "Bundles", component: BundlesReport },
   movement: { label: "Inventory movement", component: InventoryMovementReport },
 };
 
@@ -104,7 +114,7 @@ const REPORT_CATEGORIES: { value: string; label: string; tabs: ReportTab[] }[] =
   { value: "accounting", label: "Accounting", tabs: ["books", "tb", "journal"] },
   { value: "sales", label: "Sales", tabs: [] },
   { value: "purchases", label: "Purchases", tabs: ["held", "toReceive"] },
-  { value: "inventory", label: "Inventory", tabs: ["stock", "movement"] },
+  { value: "inventory", label: "Inventory", tabs: ["stock", "bundles", "movement"] },
 ];
 
 export function Reports() {
@@ -465,6 +475,60 @@ function InventoryMovementReport() {
           </Table>
         </Table.ScrollContainer>
       )}
+    </Stack>
+  );
+}
+
+function BundlesReport() {
+  const filters = useReportFilters("bundles", { q: "", hideZero: "" });
+  const v = useQuery({ queryKey: ["bundles-report"], queryFn: () => get<BundleReport>("/reports/bundles") });
+  if (!v.data) return <Loading />;
+  const rows = v.data.rows.filter((row) => matches(filters.values.q, row.sku, row.name, ...row.components.flatMap((c) => [c.sku, c.name]))
+    && (filters.values.hideZero !== "1" || row.onHand !== 0));
+  return (
+    <Stack>
+      <Group align="flex-end" wrap="wrap">
+        <TextInput label="Search bundles" placeholder="SKU or name" value={filters.values.q} onChange={(e) => filters.set("q", e.currentTarget.value)} style={filterStyle} />
+        <Checkbox label="Hide zero stock" checked={filters.values.hideZero === "1"} onChange={(e) => filters.set("hideZero", e.currentTarget.checked ? "1" : "")} mb="xs" />
+      </Group>
+      <FilterSummary count={rows.length} noun="bundle" clear={filters.clear} />
+      <ExportCsvButton filename="bundles.csv" {...bundlesCsv(rows)} />
+      {rows.length === 0 ? <Text c="dimmed">{filters.active ? "Nothing matches these filters." : "No bundles yet."}</Text> : (
+        <Table.ScrollContainer minWidth={620}>
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Item</Table.Th>
+                <Table.Th ta="right">Qty per bundle</Table.Th>
+                <Table.Th ta="right">On hand</Table.Th>
+                <Table.Th ta="right">Average</Table.Th>
+                <Table.Th ta="right">Value</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {rows.flatMap((r) => [
+                <Table.Tr key={r.itemId} fw={700}>
+                  <Table.Td>{r.sku} · {r.name}</Table.Td>
+                  <Table.Td />
+                  <Table.Td ta="right">{r.onHand}</Table.Td>
+                  <Table.Td ta="right">{usd(Math.round(r.averageCents))}</Table.Td>
+                  <Table.Td ta="right"><Money cents={r.valueCents} /></Table.Td>
+                </Table.Tr>,
+                ...r.components.map((c) => (
+                  <Table.Tr key={`${r.itemId}-${c.itemId}`} c="dimmed">
+                    <Table.Td pl="xl">{c.sku} · {c.name}</Table.Td>
+                    <Table.Td ta="right">{c.qtyPerBundle}</Table.Td>
+                    <Table.Td ta="right">{c.onHand}</Table.Td>
+                    <Table.Td ta="right">{usd(Math.round(c.averageCents))}</Table.Td>
+                    <Table.Td />
+                  </Table.Tr>
+                )),
+              ])}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
+      <Text size="sm" c="dimmed">A bundle owns no stock: on hand is how many can be made from components now. Its value is already counted in Stock value.</Text>
     </Stack>
   );
 }
