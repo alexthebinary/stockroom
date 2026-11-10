@@ -32,6 +32,8 @@ export const HELP_CARDS: HelpCard[] = [
     answer: "On hand is stock that has a posted bill and can be sold. Awaiting bill is stock counted at the dock whose bill is not posted yet. It is not valued or sellable until accounting posts the bill.", screen: "items" },
   { id: "bundles", when: "What a bundle is, how to create or edit a bundle, or what Available means on a bundle.",
     answer: "A bundle is an item made of a fixed recipe of other items. It has no stock of its own: Available is how many complete bundles your components can make. On Stock tap Create bundle, enter Name, SKU, optional price and the components. Serial-tracked items and other bundles can't be components.", screen: "items" },
+  { id: "stocktake", when: "How to count stock, do a stocktake, or post counted differences as one adjustment.",
+    answer: "Open Stocktake under Stock. Choose the warehouse, unless there is only one. Scan a barcode or search for an item and type how many you counted. The line shows short, over, or ok against on hand. Counting the same item again adds to its line. Review posts only the differences as one ADJ document. Items you did not count stay as they are. Serial-tracked items and bundles cannot be counted.", screen: "stocktake" },
   { id: "ship_bundle", when: "How to ship a bundle, or what happens to stock and cost when a bundle ships.",
     answer: "On the bundle's row tap Ship, then choose the Warehouse, How many and a Reference. Every component leaves that warehouse at its average cost and the total goes to Cost of Goods Sold. If a component is short, nothing ships and the message names it.", screen: "items" },
   { id: "receive_delivery", when: "How to receive or count a delivery at the dock, scan boxes and finish.",
