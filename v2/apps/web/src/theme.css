@@ -45,7 +45,7 @@ body { font-variant-numeric: tabular-nums; -webkit-tap-highlight-color: transpar
 /* A figure: tracked caps label above, large tabular value, one hairline rule. */
 .stat { border-top: 1px solid var(--ink); padding-top: 8px; min-width: 0; }
 .stat-label { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-.stat-value { font-size: 28px; font-weight: 600; color: var(--text-strong); line-height: 1.15; overflow-wrap: anywhere; }
+.stat-value { font-size: 28px; font-weight: 600; color: var(--text-strong); line-height: 1.15; overflow-wrap: break-word; }
 .stat-value[data-signal="true"]::after { content: ""; display: inline-block; width: 9px; height: 9px; margin-left: 8px; border-radius: 50%; background: var(--signal); vertical-align: middle; }
 
 /* Phone: the bottom tab bar, thumb-sized, above the home indicator. */
@@ -244,7 +244,7 @@ a.ruled-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px;
 .mantine-Table-table { font-variant-numeric: tabular-nums; }
 .mantine-Table-th { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted);
   padding: var(--space-3); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); white-space: nowrap; }
-.mantine-Table-td { padding: var(--space-4) var(--space-3); color: var(--text); overflow-wrap: anywhere; }
+.mantine-Table-td { padding: var(--space-4) var(--space-3); color: var(--text); overflow-wrap: break-word; }
 .mantine-Table-tr:hover .mantine-Table-td { background: var(--surface-sunken); }
 
 /* Press feedback: buttons dip slightly under a finger or click. Off for reduced motion. */
@@ -339,3 +339,4 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
   .detail-grid { grid-template-columns: minmax(0, 1.618fr) minmax(300px, 1fr); }
   .detail-aside { max-width: 420px; }
 }
+.mantine-Table-td:first-child, .mantine-Table-th:first-child { min-width: 9rem; }
