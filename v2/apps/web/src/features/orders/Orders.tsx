@@ -77,7 +77,7 @@ export function Orders() {
         </Collapse>
         <Group justify="space-between">
           <Text size="sm" c="dimmed" role="status">{filtered.length} of {orders.data.length} orders</Text>
-          <Button variant="subtle" onClick={clearFilters}>Clear filters</Button>
+          {activeCount > 0 || filters.search ? <Button variant="subtle" onClick={clearFilters}>Clear filters</Button> : null}
         </Group>
       </Stack>
       <DataTable

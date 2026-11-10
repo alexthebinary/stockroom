@@ -40,12 +40,12 @@ const row = (id: number, po: string) => ({
   receivedBy: "Tester", po: { number: po }, lines: [{ qty: 2 }, { qty: 3 }],
 });
 
-describe("feedback #30: Warehouse Receipts on Inventory", () => {
-  it("shows a Warehouse Receipts subsection under the Inventory heading", () => {
+describe("feedback #30: Warehouse receipts on Inventory", () => {
+  it("shows a Warehouse receipts subsection under the Inventory heading", () => {
     const html = renderInventory([]);
     expect(html).toMatch(/<h1\b[^>]*>Stock<\/h1>/);
-    expect(html).toContain("Warehouse Receipts");
-    expect(html.indexOf("Stock</h1>")).toBeLessThan(html.lastIndexOf("Warehouse Receipts"));
+    expect(html).toContain("Warehouse receipts");
+    expect(html.indexOf("Stock</h1>")).toBeLessThan(html.lastIndexOf("Warehouse receipts"));
   });
 
   it("lists every receipt with its sequential WH-IN number", () => {

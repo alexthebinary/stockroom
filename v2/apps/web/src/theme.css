@@ -83,7 +83,7 @@ a { text-underline-offset: 3px; }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 /* ── Coaching: a quiet aside, not a lime billboard (lime stays a signal). ── */
-.coach { background: var(--surface-sunken); border: 1px solid var(--line); border-radius: 12px; padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); }
+.coach { background: var(--surface-sunken); border: 1px solid var(--line); border-radius: 12px; padding: var(--space-3) var(--space-4); margin-bottom: var(--space-5); }
 .coach-title { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--text-strong); }
 .coach-title::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--signal); flex: none; }
 
@@ -371,3 +371,6 @@ body:has([role="dialog"]) .fb-tab { display: none; }
 .ruled-empty { display: flex; gap: var(--space-3); align-items: flex-start; }
 .ruled-empty > svg { flex: none; margin-top: 2px; color: var(--text-muted); }
 .section.mantine-Card-root:has(.mantine-Table-table) { border-top: 0; padding-top: 0; }
+
+/* The big dock key is a key, not a slab: capped on desktop. */
+@media (min-width: 900px) { .mantine-AppShell-main .tactile { max-width: 480px; } }

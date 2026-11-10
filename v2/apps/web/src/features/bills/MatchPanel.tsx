@@ -89,7 +89,7 @@ export function MatchPanel({ match, current }: { match: OrderMatch[] | null; cur
       <Title order={3} mb="sm">
         Match to order
       </Title>
-      <Table.ScrollContainer minWidth={760}>
+      <Table.ScrollContainer minWidth={620}>
         <Table>
           <Table.Thead>
             <Table.Tr>
@@ -98,8 +98,7 @@ export function MatchPanel({ match, current }: { match: OrderMatch[] | null; cur
               <Table.Th ta="right">Received</Table.Th>
               <Table.Th ta="right">This bill</Table.Th>
               <Table.Th ta="right">All bills</Table.Th>
-              <Table.Th ta="right">Order cost</Table.Th>
-              <Table.Th ta="right">Bill cost</Table.Th>
+              <Table.Th ta="right">Unit cost</Table.Th>
               <Table.Th>Status</Table.Th>
             </Table.Tr>
           </Table.Thead>
@@ -111,8 +110,10 @@ export function MatchPanel({ match, current }: { match: OrderMatch[] | null; cur
                 <Table.Td ta="right">{row.qtyReceived}</Table.Td>
                 <Table.Td ta="right">{row.qtyThisBill}</Table.Td>
                 <Table.Td ta="right">{row.qtyAllBills}</Table.Td>
-                <Table.Td ta="right">{usd(row.orderUnitCostCents)}</Table.Td>
-                <Table.Td ta="right">{usd(row.billUnitCostCents)}</Table.Td>
+                <Table.Td ta="right">
+                  {usd(row.billUnitCostCents)}
+                  {row.billUnitCostCents !== row.orderUnitCostCents ? <Text size="xs" c="dimmed">order {usd(row.orderUnitCostCents)}</Text> : null}
+                </Table.Td>
                 <Table.Td>
                   <Stack gap={4}>
                     {row.statuses.map((note) => (

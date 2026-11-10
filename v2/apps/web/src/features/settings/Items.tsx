@@ -57,8 +57,8 @@ export function Items() {
       <Tabs value={tab} onChange={(v) => setSearchParams(v && v !== "inventory" ? { tab: v } : {}, { replace: true })} keepMounted={false}>
       <Tabs.List mb="md">
         <Tabs.Tab value="inventory">Inventory</Tabs.Tab>
-        <Tabs.Tab value="receipts">Warehouse Receipts</Tabs.Tab>
-        <Tabs.Tab value="adjustments">Stock Adjustments</Tabs.Tab>
+        <Tabs.Tab value="receipts">Warehouse receipts</Tabs.Tab>
+        <Tabs.Tab value="adjustments">Stock adjustments</Tabs.Tab>
       </Tabs.List>
       <Tabs.Panel value="inventory" className="tab-fade">
       <Stack gap="xs" mb="md">
@@ -132,7 +132,7 @@ export function Items() {
       )}
       </Tabs.Panel>
       <Tabs.Panel value="receipts" className="tab-fade">
-      <section aria-label="Warehouse Receipts">
+      <section aria-label="Warehouse receipts">
         {receipts.error ? <Problem error={receipts.error} retry={() => receipts.refetch()} /> : (
         <DataTable
           label="Warehouse receipts"
@@ -162,7 +162,7 @@ export function Items() {
       </section>
       </Tabs.Panel>
       <Tabs.Panel value="adjustments" className="tab-fade">
-      <section aria-label="Stock Adjustments">
+      <section aria-label="Stock adjustments">
         {otherTx.error ? <Problem error={otherTx.error} retry={() => otherTx.refetch()} /> : (
         <DataTable
           label="Stock adjustments"

@@ -54,12 +54,12 @@ describe("feedback #31: Other Inventory Transactions", () => {
     expect(nums[2]).toBe(nums[1]! + 1);
   });
 
-  it("shows the Stock Adjustments tab with each number", () => {
+  it("shows the Stock adjustments tab with each number", () => {
     const html = renderInventory([
       { number: "ADJ-00002", type: "Inventory adjustment – gain", date: "2026-11-02T10:00:00Z", qty: 2, lines: 1, actor: "Tester" },
       { number: "ADJ-00001", type: "Opening stock", date: "2026-11-01T10:00:00Z", qty: 5, lines: 1, actor: "Tester" },
     ]);
-    expect(html).toContain("Stock Adjustments");
+    expect(html).toContain("Stock adjustments");
     expect(html.indexOf("Stock</h1>")).toBeLessThan(html.indexOf("ADJ-00001"));
     for (const t of ["ADJ-00001", "ADJ-00002", "Opening stock", "Inventory adjustment – gain"]) expect(html).toContain(t);
   });

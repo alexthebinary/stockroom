@@ -128,7 +128,7 @@ export function Problem({ error, retry }: { error: unknown; retry?: () => void }
     return (
       <Stack gap="xs" align="flex-start" py="xl" role="alert">
         <Title order={1}>We couldn't find that</Title>
-        <Text c="dimmed" maw="52ch">It may have been removed, or the link is wrong. {message}.</Text>
+        <Text c="dimmed" maw="52ch">It may have been removed, or the link is wrong.</Text>
         <Button component="a" href="/" variant="default">Back to Home</Button>
       </Stack>
     );
