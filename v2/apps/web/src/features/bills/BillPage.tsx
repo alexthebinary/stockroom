@@ -30,11 +30,12 @@ import { HoldToConfirmButton } from "../../components/kitchen/HoldToConfirmButto
 import { plural, formatDate, Loading, Money, PageHeader, Problem, Stat, StatusBadge, toInputDate, toastErr, toastOk, usd } from "../../components/ui";
 import { del, get, patch, post } from "../../lib/api";
 import type { Bill, PurchaseOrder, Vendor } from "../../lib/types";
+import { MatchPanel, type OrderMatch } from "./MatchPanel";
 
 type Rule = { role: string; account: { code: string; name: string } };
 type Payment = { id: number; number: string; direction: "OUT" | "IN"; amountCents: number; method: string; paidAt: string; status: string; actor: string };
 type Credit = { id: number; number: string; kind: string; totalCents: number; date: string; memo: string | null; actor: string; lines: { id: number; itemId: number; qty: number; amountCents: number }[] };
-type FullBill = Bill & { payments: Payment[]; credits: Credit[]; allocations: { poLineId: number; amountCents: number; inboundCents: number; onHandCents: number; soldCents: number }[] };
+type FullBill = Bill & { payments: Payment[]; credits: Credit[]; allocations: { poLineId: number; amountCents: number; inboundCents: number; onHandCents: number; soldCents: number }[]; match: OrderMatch[] | null };
 
 const dollars = (cents: number) => (cents / 100).toFixed(2);
 const cents = (value: string | number) => parseUsd(String(value)) ?? 0;
@@ -231,6 +232,8 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
           })}
         </Stack>
       </Card>
+
+      <MatchPanel match={bill.match} current={form.lines.map((l) => ({ billLineId: l.id, qty: l.qty, unitCostCents: parseUsd(l.unitCost) }))} />
 
       <Card withBorder>
         <Title order={3} mb="sm">
@@ -541,6 +544,8 @@ function PostedBill({ bill }: { bill: FullBill }) {
           </Table>
         </Table.ScrollContainer>
       </Card>
+
+      {bill.status === "POSTED" ? <MatchPanel match={bill.match} /> : null}
 
       {bill.payments.length || bill.credits.length ? (
         <Card withBorder>

@@ -50,6 +50,8 @@ export const HELP_CARDS: HelpCard[] = [
     answer: "If goods arrive first they wait as awaiting bill, unvalued and unsellable. Posting the draft bill then lands them automatically. If the bill is posted first, the stock sits in transit until the delivery is received.", screen: "bills" },
   { id: "review_post_bill", when: "How accounting reviews and posts a draft vendor bill.",
     answer: "Open Bills, To review, then a draft. Check the vendor, vendor invoice number, dates, quantities, prices and freight. Press and hold Hold to post bill. Posting needs a vendor, an invoice number and a positive total.", screen: "bills" },
+  { id: "bill_match", when: "What Match to order means on a vendor bill, or why a line says the price differs or that billing is more than ordered or received.",
+    answer: "Match to order lists ordered, received, billed on this bill, billed on all bills, and both unit costs. Matches means quantity within the order and what arrived, and unit cost within 1 percent. Price differs by a signed percent. Billing more than ordered means the bills exceed the order. Billing more than received is allowed before arrival. It never blocks save or post. No panel on freight or without an order.", screen: "bills" },
   { id: "bill_accounting", when: "What accounts a vendor bill posts to and how landed cost is worked out.",
     answer: "Posting an inventory bill debits Inventory Asset and credits Accounts Payable at landed cost: price less discounts plus allocated freight. Units already counted move to on hand automatically.", screen: "bills" },
   { id: "freight_bill", when: "How to enter a freight or carrier invoice, and what freight-in versus freight-out means.",
