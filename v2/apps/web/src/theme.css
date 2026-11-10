@@ -374,3 +374,10 @@ body:has([role="dialog"]) .fb-tab { display: none; }
 
 /* The big dock key is a key, not a slab: capped on desktop. */
 @media (min-width: 900px) { .mantine-AppShell-main .tactile { max-width: 480px; } }
+
+/* Saved views: chips with an x; the active one is inked. */
+.saved-views { min-height: 32px; }
+.view-chip { display: inline-flex; align-items: center; gap: 2px; padding: 0 4px 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: var(--text-sm); }
+.view-chip button { all: unset; cursor: pointer; padding: 6px 0; }
+.view-chip[data-active="true"] { border-color: var(--ink); background: var(--ink); color: var(--surface); }
+.view-chip[data-active="true"] .mantine-ActionIcon-root { color: var(--surface); }

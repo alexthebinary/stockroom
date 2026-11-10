@@ -53,6 +53,7 @@ export function BillDesk() {
         <UnknownItems rows={unknown.data ?? []} />
       ) : (
         <DataTable
+          id="bills"
           label="Bills"
           rows={shown}
           rowKey={(b) => b.id}

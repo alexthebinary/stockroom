@@ -1,4 +1,6 @@
-import { Button, Checkbox, Group, Text } from "@mantine/core";
+import { Button, Checkbox, Group, Menu, Text } from "@mantine/core";
+import { IconColumns3 } from "@tabler/icons-react";
+import { useLocalStore } from "../lib/localStore";
 import { useMediaQuery } from "@mantine/hooks";
 import { type ReactNode, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -56,12 +58,19 @@ type Props<T> = {
   /** The two-line version for phones. */
   phone: (row: T) => { title: ReactNode; meta?: ReactNode; aside?: ReactNode };
   selectable?: Selectable<T>;
+  /** Names this table so each person can choose which columns show (kept in this browser). */
+  id?: string;
+  /** Called when a row is hovered or focused, to warm the page it opens. */
+  prefetch?: (row: T) => void;
 };
 
 /** One list pattern for every document and item list: a one-line-per-row table on wide screens, ruled rows on phones. */
-export function DataTable<T>({ rows, rowKey, columns, label, to, onOpen, empty, phone, selectable }: Props<T>) {
+export function DataTable<T>({ rows, rowKey, columns: allColumns, label, to, onOpen, empty, phone, selectable, id, prefetch }: Props<T>) {
   const wide = useMediaQuery("(min-width: 900px)") ?? true;
   const navigate = useNavigate();
+  const [hidden, setHidden] = useLocalStore<string[]>(`pi.cols.${id ?? "_"}`, []);
+  const optional = allColumns.filter((c) => !c.primary && !c.action);
+  const columns = id ? allColumns.filter((c) => c.primary || c.action || !hidden.includes(c.key)) : allColumns;
   const [picked, setPicked] = useState<Set<string | number>>(new Set());
   // Only rows still in the list stay selected (a filter or refresh can drop some).
   const selected = useMemo(() => rows.filter((r) => picked.has(rowKey(r))), [rows, picked, rowKey]);
@@ -91,6 +100,24 @@ export function DataTable<T>({ rows, rowKey, columns, label, to, onOpen, empty, 
   const clickable = Boolean(to || onOpen);
   return (
     <>
+    {id && optional.length > 1 ? (
+      <Group justify="flex-end" mb="xs" className="no-print">
+        <Menu position="bottom-end" closeOnItemClick={false} width={220}>
+          <Menu.Target>
+            <Button variant="subtle" size="compact-md" leftSection={<IconColumns3 size={16} aria-hidden="true" />}>Columns{hidden.length ? ` (${optional.length - hidden.length} of ${optional.length})` : ""}</Button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Label>Show columns</Menu.Label>
+            {optional.map((c) => (
+              <Menu.Item key={c.key} component="div" p="xs">
+                <Checkbox label={c.label} checked={!hidden.includes(c.key)} onChange={() => setHidden(hidden.includes(c.key) ? hidden.filter((k) => k !== c.key) : [...hidden, c.key])} />
+              </Menu.Item>
+            ))}
+            {hidden.length ? <Menu.Item onClick={() => setHidden([])}>Show all</Menu.Item> : null}
+          </Menu.Dropdown>
+        </Menu>
+      </Group>
+    ) : null}
     {selectable && selected.length > 0 ? (
       <Group className="select-bar" role="toolbar" aria-label="Selected rows" justify="space-between" wrap="wrap" gap="xs">
         <Text fw={600} role="status">{selected.length} selected</Text>
@@ -125,7 +152,7 @@ export function DataTable<T>({ rows, rowKey, columns, label, to, onOpen, empty, 
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={rowKey(row)} className={clickable ? "data-row" : undefined} data-selected={picked.has(rowKey(row)) ? "true" : undefined} onClick={clickable ? () => open(row) : undefined}>
+          <tr key={rowKey(row)} className={clickable ? "data-row" : undefined} data-selected={picked.has(rowKey(row)) ? "true" : undefined} onMouseEnter={prefetch ? () => prefetch(row) : undefined} onFocus={prefetch ? () => prefetch(row) : undefined} onClick={clickable ? () => open(row) : undefined}>
             {selectable ? (
               <td className="sel" onClick={(e) => e.stopPropagation()}>
                 <Checkbox aria-label={`Select ${rowName(row)}`} checked={picked.has(rowKey(row))} onChange={() => toggle(rowKey(row))} />

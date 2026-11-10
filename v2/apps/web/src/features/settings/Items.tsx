@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Loading, PageHeader, Problem, StatusBadge, toastErr, toastOk } from "../../components/ui";
 import { DataTable } from "../../components/DataTable";
+import { SavedViews } from "../../components/SavedViews";
 import { get, patch, post, put } from "../../lib/api";
 import type { Item, Vendor, Warehouse } from "../../lib/types";
 import { cmToIn, formatMeasurements, inToCm, kgToLb, lbToKg } from "../../lib/units";
@@ -63,6 +64,11 @@ export function Items() {
       <Tabs.Panel value="inventory" className="tab-fade">
       <Stack gap="xs" mb="md">
         <TextInput placeholder="Search name, SKU, brand or barcode" value={search} onChange={(e) => setSearch(e.currentTarget.value)} size="md" />
+        <SavedViews
+          storageKey="stock"
+          current={Object.fromEntries([["search", search], ["brand", brand ?? ""], ["category", category ?? ""]].filter(([, v]) => v))}
+          apply={(v) => { setSearch(v.search ?? ""); setBrand(v.brand || null); setCategory(v.category || null); }}
+        />
         <Group grow gap="xs">
           <Select aria-label="Brand" placeholder="All brands" data={facets.data?.brands ?? []} value={brand} onChange={setBrand} clearable searchable />
           <Select aria-label="Category" placeholder="All categories" data={facets.data?.categories ?? []} value={category} onChange={setCategory} clearable searchable />
@@ -70,6 +76,7 @@ export function Items() {
       </Stack>
       {items.error ? <Problem error={items.error} retry={() => items.refetch()} /> : (
       <DataTable
+        id="stock-inventory"
         label="Inventory"
         rows={items.data ?? []}
         rowKey={(i) => i.id}
@@ -135,6 +142,8 @@ export function Items() {
       <section aria-label="Warehouse receipts">
         {receipts.error ? <Problem error={receipts.error} retry={() => receipts.refetch()} /> : (
         <DataTable
+          id="stock-receipts"
+          prefetch={(r) => void queryClient.prefetchQuery({ queryKey: ["receipt", String(r.id)], queryFn: () => get(`/receipts/${r.id}`), staleTime: 30_000 })}
           label="Warehouse receipts"
           rows={receipts.data ?? []}
           rowKey={(r) => r.id}
@@ -165,6 +174,7 @@ export function Items() {
       <section aria-label="Stock adjustments">
         {otherTx.error ? <Problem error={otherTx.error} retry={() => otherTx.refetch()} /> : (
         <DataTable
+          id="stock-adjustments"
           label="Stock adjustments"
           rows={otherTx.data ?? []}
           rowKey={(t) => t.number}

@@ -5,6 +5,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { DataTable } from "../../components/DataTable";
+import { SavedViews } from "../../components/SavedViews";
 import { formatDate, Loading, Money, PageHeader, ReceivingBadge, StatusBadge, toastErr, toastOk, usd } from "../../components/ui";
 import { get, post } from "../../lib/api";
 import { filterOrders, orderFilterKeys, orderFilterOptions, readOrderFilters, type OrderFilterKey } from "../../lib/orderFilters";
@@ -23,6 +24,7 @@ function Axes({ po }: { po: PurchaseOrder }) {
 /** Purchase orders. Each shows the WMS doc's three independent statuses: billed, paid, received. */
 export function Orders() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const filters = readOrderFilters(searchParams);
   const updateFilter = (key: OrderFilterKey, value: string | null) => {
     setSearchParams((current) => {
@@ -75,12 +77,19 @@ export function Orders() {
           <TextInput type="date" label="Created to" value={filters.to} onChange={(event) => updateFilter("to", event.currentTarget.value)} />
         </SimpleGrid>
         </Collapse>
+        <SavedViews
+          storageKey="orders"
+          current={Object.fromEntries(orderFilterKeys.flatMap((key) => (searchParams.get(key) ? [[key, searchParams.get(key)!] as const] : [])))}
+          apply={(values) => setSearchParams((cur) => { const next = new URLSearchParams(cur); orderFilterKeys.forEach((key) => next.delete(key)); Object.entries(values).forEach(([k, v]) => next.set(k, v)); return next; }, { replace: true })}
+        />
         <Group justify="space-between">
           <Text size="sm" c="dimmed" role="status">{filtered.length} of {orders.data.length} orders</Text>
           {activeCount > 0 || filters.search ? <Button variant="subtle" onClick={clearFilters}>Clear filters</Button> : null}
         </Group>
       </Stack>
       <DataTable
+        id="orders"
+        prefetch={(po) => void queryClient.prefetchQuery({ queryKey: ["order", String(po.id)], queryFn: () => get(`/purchase-orders/${po.id}`), staleTime: 30_000 })}
         label="Purchase orders"
         rows={filtered}
         rowKey={(po) => po.id}
