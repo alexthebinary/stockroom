@@ -1,9 +1,12 @@
-import { Axis, State } from "@pi/domain";
+import { Axis, DomainError, State } from "@pi/domain";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Deps } from "../app";
+import { audit } from "../audit";
 import { checkBooks } from "../books";
-import { parse } from "../http";
+import { inTx, type Tx } from "../db";
+import { actorOf, parse } from "../http";
+import { createPo } from "../purchasing/po";
 
 const DAY = 86_400_000;
 
@@ -299,4 +302,120 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
       admin: { booksSound: books.sound, problems: books.problems.slice(0, 5) },
     };
   });
+
+  /**
+   * Items at or under their reorder minimum. Position is on hand plus units
+   * still to receive on open orders. Bundles and serial-tracked items are left out.
+   */
+  app.get("/api/reports/reorder", async () => {
+    const rows = await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+      return loadReorderRows(tx);
+    }, { isolationLevel: "RepeatableRead", maxWait: 10_000, timeout: 30_000 });
+    return { rows };
+  });
+
+  /** One unbilled purchase order per default vendor, through the normal order path. */
+  app.post("/api/reports/reorder", async (request) => {
+    const body = parse(z.object({
+      itemIds: z.array(z.number().int().positive()).min(1),
+      warehouseId: z.number().int().positive(),
+    }), request.body);
+    return inTx(db, async (tx) => {
+      const warehouse = await tx.warehouse.findFirst({ where: { id: body.warehouseId, isActive: true } });
+      if (!warehouse) throw new DomainError("Choose a warehouse", 400);
+      const rows = await loadReorderRows(tx, [...new Set(body.itemIds)]);
+      const skipped = rows.filter((row) => row.vendor == null || row.suggestedQty < 1);
+      const byVendor = new Map<number, typeof rows>();
+      for (const row of rows) {
+        if (row.vendor == null || row.suggestedQty < 1) continue;
+        const lines = byVendor.get(row.vendor.id) ?? [];
+        lines.push(row);
+        byVendor.set(row.vendor.id, lines);
+      }
+      const orders: { id: number; number: string; vendorId: number; vendorName: string }[] = [];
+      for (const [vendorId, lines] of [...byVendor.entries()].sort((a, b) => a[0] - b[0])) {
+        const po = await createPo(tx, {
+          vendorId,
+          warehouseId: warehouse.id,
+          source: "MANUAL",
+          actor: actorOf(request),
+          lines: lines.map((line) => ({ itemId: line.item.id, qtyOrdered: line.suggestedQty, unitCostCents: line.item.lastCostCents })),
+        });
+        await audit(tx, actorOf(request), "po.created", "PurchaseOrder", po.id);
+        orders.push({ id: po.id, number: po.number, vendorId, vendorName: lines[0]!.vendor!.name });
+      }
+      return {
+        orders,
+        skipped: skipped.map((row) => ({
+          itemId: row.item.id,
+          name: row.item.name,
+          sku: row.item.sku,
+          reason: row.vendor == null ? "no vendor" : "nothing to order",
+        })),
+      };
+    });
+  });
+}
+
+type ReorderRow = {
+  item: { id: number; sku: string; name: string; lastCostCents: number };
+  onHand: number;
+  onOrder: number;
+  reorderPoint: number;
+  reorderQty: number | null;
+  suggestedQty: number;
+  vendor: { id: number; name: string } | null;
+};
+
+/** suggestedQty is the reorder quantity, raised to the shortfall when that is larger. */
+async function loadReorderRows(tx: Tx, itemIds?: number[]): Promise<ReorderRow[]> {
+  const items = await tx.item.findMany({
+    where: {
+      isActive: true,
+      isBundle: false,
+      trackingMode: { not: "SERIAL" },
+      reorderPoint: { not: null },
+      ...(itemIds ? { id: { in: itemIds } } : {}),
+    },
+    orderBy: { sku: "asc" },
+  });
+  if (items.length === 0) return [];
+  const ids = items.map((item) => item.id);
+  const [balances, lines, vendors] = await Promise.all([
+    tx.stockBalance.groupBy({ by: ["itemId"], where: { itemId: { in: ids } }, _sum: { onHand: true } }),
+    tx.purchaseOrderLine.findMany({
+      where: { itemId: { in: ids }, po: { lifecycle: State.poLifecycle.OPEN } },
+      select: { itemId: true, qtyOrdered: true, qtyReceived: true },
+    }),
+    tx.vendor.findMany({
+      where: { id: { in: items.flatMap((item) => item.defaultVendorId == null ? [] : [item.defaultVendorId]) } },
+      select: { id: true, name: true },
+    }),
+  ]);
+  const onHand = new Map(balances.map((balance) => [balance.itemId, balance._sum.onHand ?? 0]));
+  const onOrder = new Map<number, number>();
+  for (const line of lines) {
+    const outstanding = line.qtyOrdered - line.qtyReceived;
+    if (outstanding > 0) onOrder.set(line.itemId, (onOrder.get(line.itemId) ?? 0) + outstanding);
+  }
+  const vendorById = new Map(vendors.map((vendor) => [vendor.id, vendor]));
+  const rows: ReorderRow[] = [];
+  for (const item of items) {
+    if (item.reorderPoint == null) continue;
+    const hand = onHand.get(item.id) ?? 0;
+    const ordered = onOrder.get(item.id) ?? 0;
+    if (hand + ordered > item.reorderPoint) continue;
+    const shortfall = item.reorderPoint - hand - ordered;
+    rows.push({
+      item: { id: item.id, sku: item.sku, name: item.name, lastCostCents: item.lastCostCents },
+      onHand: hand,
+      onOrder: ordered,
+      reorderPoint: item.reorderPoint,
+      reorderQty: item.reorderQty,
+      suggestedQty: Math.max(item.reorderQty ?? 0, shortfall),
+      vendor: item.defaultVendorId == null ? null : vendorById.get(item.defaultVendorId) ?? null,
+    });
+  }
+  return rows;
 }

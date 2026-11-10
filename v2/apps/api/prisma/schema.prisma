@@ -183,6 +183,10 @@ model Item {
   condition       String   @default("NEW")
   conditionOfId   Int?
   defaultVendorId Int?
+  /// On hand plus units still to receive at or under this lists the item on the reorder report.
+  reorderPoint    Int?
+  /// How many to order. The suggested quantity is this, or the shortfall, whichever is larger.
+  reorderQty      Int?
   lastCostCents   Int      @default(0)
   isActive        Boolean  @default(true)
   isSample        Boolean  @default(false)

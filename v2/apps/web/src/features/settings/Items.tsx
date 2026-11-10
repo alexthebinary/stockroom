@@ -7,7 +7,7 @@ import { useSearchParams } from "react-router-dom";
 import { Loading, PageHeader, Problem, toastErr, toastOk } from "../../components/ui";
 import { DataTable } from "../../components/DataTable";
 import { get, patch, post, put } from "../../lib/api";
-import type { Item, Warehouse } from "../../lib/types";
+import type { Item, Vendor, Warehouse } from "../../lib/types";
 import { cmToIn, formatMeasurements, inToCm, kgToLb, lbToKg } from "../../lib/units";
 
 type Valuation = { rows: { itemId: number; onHand: number; held: number; valueCents: number; averageCents: number }[] };
@@ -327,7 +327,14 @@ function ShipBundle({ bundle, onShipped }: { bundle: Item; onShipped: (docNumber
   );
 }
 
+const wholeOrNull = (value: number | string) => {
+  if (value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+};
+
 export function EditItem({ item, facets, onSaved }: { item: Item | null; facets: Facets | undefined; onSaved: () => Promise<void> }) {
+  const vendors = useQuery({ queryKey: ["vendors", "SUPPLIER"], queryFn: () => get<Vendor[]>("/vendors?kind=SUPPLIER") });
   const [form, setForm] = useState({
     sku: "",
     name: item?.name ?? "",
@@ -339,6 +346,9 @@ export function EditItem({ item, facets, onSaved }: { item: Item | null; facets:
     heightIn: item?.heightCm != null ? cmToIn(item.heightCm) : "",
     brand: item?.brand ?? "",
     category: item?.category ?? "",
+    defaultVendorId: item?.defaultVendorId != null ? String(item.defaultVendorId) : null as string | null,
+    reorderPoint: (item?.reorderPoint ?? "") as number | string,
+    reorderQty: (item?.reorderQty ?? "") as number | string,
   });
   const [busy, setBusy] = useState(false);
   const save = async () => {
@@ -354,6 +364,9 @@ export function EditItem({ item, facets, onSaved }: { item: Item | null; facets:
         heightCm: form.heightIn === "" ? null : inToCm(Number(form.heightIn)),
         brand: form.brand,
         category: form.category,
+        defaultVendorId: form.defaultVendorId ? Number(form.defaultVendorId) : null,
+        reorderPoint: wholeOrNull(form.reorderPoint),
+        reorderQty: wholeOrNull(form.reorderQty),
       };
       if (item) await put(`/items/${item.id}`, body);
       else await post("/items", { ...body, sku: form.sku.trim() });
@@ -380,6 +393,9 @@ export function EditItem({ item, facets, onSaved }: { item: Item | null; facets:
       </Input.Wrapper>
       <Autocomplete label="Brand" placeholder="e.g. XAG" data={facets?.brands ?? []} value={form.brand} onChange={(brand) => setForm({ ...form, brand })} maxLength={60} />
       <Autocomplete label="Category" placeholder="e.g. Chargers" data={facets?.categories ?? []} value={form.category} onChange={(category) => setForm({ ...form, category })} maxLength={60} />
+      <Select label="Default vendor" placeholder="None" clearable searchable data={(vendors.data ?? []).map((vendor) => ({ value: String(vendor.id), label: vendor.name }))} value={form.defaultVendorId} onChange={(defaultVendorId) => setForm({ ...form, defaultVendorId })} />
+      <NumberInput label="Reorder minimum" value={form.reorderPoint} onChange={(reorderPoint) => setForm({ ...form, reorderPoint })} min={0} allowDecimal={false} allowNegative={false} />
+      <NumberInput label="Reorder quantity" value={form.reorderQty} onChange={(reorderQty) => setForm({ ...form, reorderQty })} min={0} allowDecimal={false} allowNegative={false} />
       <Button onClick={save} loading={busy} disabled={!form.name.trim() || (!item && !form.sku.trim())}>
         Save
       </Button>

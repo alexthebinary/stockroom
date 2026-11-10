@@ -17,6 +17,8 @@ export type Item = {
   condition: string;
   conditionOfId: number | null;
   defaultVendorId: number | null;
+  reorderPoint?: number | null;
+  reorderQty?: number | null;
   lastCostCents: number;
   barcodes?: Barcode[];
   isBundle?: boolean;

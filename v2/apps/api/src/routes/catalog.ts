@@ -42,12 +42,25 @@ const itemBody = z.object({
   condition: z.enum(["NEW", "OPEN_BOX", "REFURBISHED", "DAMAGED"]).default("NEW"),
   conditionOfId: z.number().int().positive().nullish(),
   defaultVendorId: z.number().int().positive().nullish(),
+  reorderPoint: z.number().int().min(0).nullish(),
+  reorderQty: z.number().int().min(0).nullish(),
   lastCostCents: z.number().int().min(0).default(0),
   barcodes: z.array(z.object({ raw: z.string().trim().min(1), packQty: z.number().int().positive().default(1) })).default([]),
   vendorItems: z
     .array(z.object({ vendorId: z.number().int().positive(), vendorSku: z.string().trim().min(1), lastCostCents: z.number().int().min(0).nullish() }))
     .default([]),
 });
+
+// Create defaults (tracking, condition, last cost) are omitted so a partial save leaves them alone.
+const itemUpdate = itemBody
+  .omit({ barcodes: true, vendorItems: true, trackingMode: true, condition: true, lastCostCents: true })
+  .partial()
+  .extend({
+    isActive: z.boolean().optional(),
+    trackingMode: z.enum(["NONE", "SERIAL"]).optional(),
+    condition: z.enum(["NEW", "OPEN_BOX", "REFURBISHED", "DAMAGED"]).optional(),
+    lastCostCents: z.number().int().min(0).optional(),
+  });
 
 export function registerCatalog(app: FastifyInstance, { db }: Deps) {
   // ── Profiles ("who's working") ──
@@ -128,7 +141,7 @@ export function registerCatalog(app: FastifyInstance, { db }: Deps) {
   });
   app.put("/api/items/:id", async (request) => {
     const { id } = parse(idParam, request.params);
-    const body = parse(itemBody.omit({ barcodes: true, vendorItems: true }).partial().extend({ isActive: z.boolean().optional() }), request.body);
+    const body = parse(itemUpdate, request.body);
     return db.item.update({ where: { id }, data: body });
   });
   /** Teach an item a barcode — the mapping step for an unknown scan. */
