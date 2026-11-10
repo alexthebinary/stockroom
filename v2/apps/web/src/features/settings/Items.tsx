@@ -3,7 +3,8 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { PageHeader, plural, toastErr, toastOk } from "../../components/ui";
+import { Loading, PageHeader, Problem, toastErr, toastOk } from "../../components/ui";
+import { Ruled, RuledRow } from "../../components/Ruled";
 import { get, patch, post, put } from "../../lib/api";
 import type { Item, Warehouse } from "../../lib/types";
 import { cmToIn, formatMeasurements, inToCm, kgToLb, lbToKg } from "../../lib/units";
@@ -63,113 +64,72 @@ export function Items() {
           <Select aria-label="Category" placeholder="All categories" data={facets.data?.categories ?? []} value={category} onChange={setCategory} clearable searchable />
         </Group>
       </Stack>
-      <Stack gap="xs">
+      {items.error ? <Problem error={items.error} retry={() => items.refetch()} /> : (
+      <Ruled label="Inventory" empty={items.data ? `No items match${brand || category || debounced ? " these filters" : " yet"}.` : <Loading />}>
         {(items.data ?? []).map((i) => {
           const v = valuation.data?.rows.find((r) => r.itemId === i.id);
           const measurements = formatMeasurements(i);
+          const open = () => (i.isBundle ? setBundleForm(i) : setEditing(i));
+          const detail = [
+            i.isBundle ? "Bundle" : null,
+            i.sku + (i.isBundle ? ` · ${i.components?.map((c) => `${c.qty}× ${c.name}`).join(" + ")}` : ""),
+            i.barcodes?.length ? i.barcodes.map((b) => b.raw).join(", ") : null,
+            measurements,
+            [i.brand, i.category].filter(Boolean).join(" · ") || null,
+          ].filter(Boolean).join(" · ");
+          const count = i.isBundle ? (i.available ?? 0) : (v?.onHand ?? 0);
           return (
-            <Card key={i.id} withBorder padding="sm">
-              <Group justify="space-between" wrap="nowrap">
-                <div style={{ minWidth: 0 }}>
-                  <Text fw={600} truncate title={i.name}>
-                    {i.name}
-                  </Text>
-                  <Text size="sm" c="dimmed" truncate title={i.sku}>
-                    {i.sku}
-                    {i.isBundle ? ` · ${i.components?.map((c) => `${c.qty}× ${c.name}`).join(" + ")}` : ""}
-                    {i.barcodes?.length ? ` · ${i.barcodes.map((b) => b.raw).join(", ")}` : ""}
-                  </Text>
-                  {measurements ? (
-                    <Text size="sm" c="dimmed" style={{ overflowWrap: "anywhere" }}>{measurements}</Text>
-                  ) : null}
-                  {i.brand || i.category ? (
-                    <Group gap={6} mt={4}>
-                      {i.brand ? (
-                        <Badge variant="light" color="lime" maw="100%" title={i.brand} onClick={() => setBrand(i.brand!)} style={{ cursor: "pointer" }}>
-                          {i.brand}
-                        </Badge>
-                      ) : null}
-                      {i.category ? (
-                        <Badge variant="outline" color="gray" maw="100%" title={i.category} onClick={() => setCategory(i.category!)} style={{ cursor: "pointer" }}>
-                          {i.category}
-                        </Badge>
-                      ) : null}
-                    </Group>
-                  ) : null}
-                </div>
-                <Group gap="xs" wrap="nowrap">
-                  {i.isBundle ? <Badge color="grape">Bundle</Badge> : null}
-                  {i.trackingMode === "SERIAL" ? <Badge>Serial</Badge> : null}
-                  {i.condition !== "NEW" ? <Badge color="gray">{i.condition.replace("_", " ").toLowerCase()}</Badge> : null}
-                  {i.isBundle ? (
-                    <>
-                      <Stack gap={0} align="flex-end">
-                        <Text fw={700}>{i.available ?? 0} available</Text>
-                        {i.priceCents != null ? <Text size="xs" c="dimmed">${(i.priceCents / 100).toFixed(2)}</Text> : null}
-                      </Stack>
-                      <Button size="xs" variant="light" onClick={() => setShipping(i)} aria-label={`Ship ${i.name}`}>Ship</Button>
-                      <Button size="xs" variant="default" onClick={() => setBundleForm(i)} aria-label={`Edit ${i.name}`}>Edit</Button>
-                    </>
-                  ) : (
-                    <>
-                      <Stack gap={0} align="flex-end">
-                        <Text fw={700}>{v?.onHand ?? 0} on hand</Text>
-                        {v?.held ? (
-                          <Text size="xs" c="orange">
-                            {v.held} awaiting bill
-                          </Text>
-                        ) : null}
-                      </Stack>
-                      <ActionIcon variant="subtle" color="gray" aria-label={`Edit ${i.name}`} onClick={() => setEditing(i)}>
-                        <IconPencil size={18} />
-                      </ActionIcon>
-                    </>
-                  )}
-                </Group>
-              </Group>
-            </Card>
+            <RuledRow
+              key={i.id}
+              title={<button type="button" className="row-open" onClick={open} aria-label={`Edit ${i.name}`}>{i.name}</button>}
+              meta={detail}
+              aside={
+                <>
+                  <span className="fig">{count}</span>
+                  <span className="fig-unit">{i.isBundle ? "available" : "on hand"}{i.priceCents != null ? ` · $${(i.priceCents / 100).toFixed(2)}` : ""}</span>
+                  {!i.isBundle && v?.held ? <span className="fig-unit fig-warn">{v.held} awaiting bill</span> : null}
+                  {i.isBundle ? <Button className="row-action" size="sm" variant="light" onClick={() => setShipping(i)} aria-label={`Ship ${i.name}`}>Ship</Button> : null}
+                </>
+              }
+            />
           );
         })}
-        {items.data && items.data.length === 0 ? <div className="ruled-empty">No items match{brand || category || debounced ? " these filters" : " yet"}.</div> : null}
-      </Stack>
+      </Ruled>
+      )}
       </Tabs.Panel>
       <Tabs.Panel value="receipts" className="tab-fade">
       <section aria-label="Warehouse Receipts">
-        <Stack gap="xs">
-          {(receipts.data ?? []).map((r) => (
-            <Card key={r.id} withBorder padding="sm">
-              <Group justify="space-between" wrap="nowrap">
-                <div style={{ minWidth: 0 }}>
-                  <Text fw={600}>{r.number}</Text>
-                  <Text size="sm" c="dimmed" truncate title={`${r.po.number} · ${r.receivedBy}`}>{r.po.number} · {new Date(r.receivedAt).toLocaleDateString()} · {r.receivedBy}</Text>
-                </div>
-                <Group gap="xs" wrap="nowrap">
-                  <Text fw={700}>{plural(r.lines.reduce((n, l) => n + l.qty, 0), "unit")}</Text>
-                  <Badge variant="light" color="gray">{r.state.replace(/_/g, " ").toLowerCase()}</Badge>
-                </Group>
-              </Group>
-            </Card>
-          ))}
-          {receipts.data && receipts.data.length === 0 ? <div className="ruled-empty">No warehouse receipts yet.</div> : null}
-        </Stack>
+        {receipts.error ? <Problem error={receipts.error} retry={() => receipts.refetch()} /> : (
+        <Ruled label="Warehouse receipts" empty={receipts.data ? "No warehouse receipts yet." : <Loading />}>
+          {(receipts.data ?? []).map((r) => {
+            const units = r.lines.reduce((n, l) => n + l.qty, 0);
+            return (
+              <RuledRow
+                key={r.id}
+                title={r.number}
+                meta={`${r.po.number} · ${new Date(r.receivedAt).toLocaleDateString()} · ${r.receivedBy}`}
+                aside={<><span className="fig">{units}</span><span className="fig-unit">{units === 1 ? "unit" : "units"} · {r.state.replace(/_/g, " ").toLowerCase()}</span></>}
+              />
+            );
+          })}
+        </Ruled>
+        )}
       </section>
       </Tabs.Panel>
       <Tabs.Panel value="adjustments" className="tab-fade">
       <section aria-label="Stock Adjustments">
-        <Stack gap="xs">
+        {otherTx.error ? <Problem error={otherTx.error} retry={() => otherTx.refetch()} /> : (
+        <Ruled label="Stock adjustments" empty={otherTx.data ? "No stock adjustments yet." : <Loading />}>
           {(otherTx.data ?? []).map((t) => (
-            <Card key={t.number} withBorder padding="sm">
-              <Group justify="space-between" wrap="nowrap">
-                <div style={{ minWidth: 0 }}>
-                  <Text fw={600}>{t.number}</Text>
-                  <Text size="sm" c="dimmed" truncate title={`${t.type} · ${t.actor}`}>{t.type} · {new Date(t.date).toLocaleDateString()} · {t.actor}</Text>
-                </div>
-                <Text fw={700}>{t.qty > 0 ? "+" : ""}{plural(t.qty, "unit")}</Text>
-              </Group>
-            </Card>
+            <RuledRow
+              key={t.number}
+              title={t.number}
+              meta={`${t.type} · ${new Date(t.date).toLocaleDateString()} · ${t.actor}`}
+              aside={<><span className="fig">{t.qty > 0 ? "+" : ""}{t.qty}</span><span className="fig-unit">{Math.abs(t.qty) === 1 ? "unit" : "units"}</span></>}
+            />
           ))}
-          {otherTx.data && otherTx.data.length === 0 ? <div className="ruled-empty">No stock adjustments yet.</div> : null}
-        </Stack>
+        </Ruled>
+        )}
       </section>
       </Tabs.Panel>
       </Tabs>

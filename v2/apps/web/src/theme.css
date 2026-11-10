@@ -89,8 +89,22 @@ a { text-underline-offset: 3px; }
 .ruled-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: center; padding: 14px 4px; min-height: 64px;
   border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; transition: background-color 150ms var(--ease-out); }
 a.ruled-row:hover { background: var(--surface-sunken); }
-.ruled-row-title { font-weight: 600; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ruled-row-meta { font-size: 14px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
+a.ruled-row:active, .ruled-row:has(.row-open:active) { background: var(--surface-sunken); }
+a.ruled-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.ruled-row { position: relative; }
+.ruled-row:has(.row-open) { cursor: pointer; }
+.ruled-row:has(.row-open):hover { background: var(--surface-sunken); }
+/* The title button stretches over the whole row, so the row is the touch target. */
+.row-open { all: unset; box-sizing: border-box; cursor: pointer; display: block; max-width: 100%; }
+.row-open::after { content: ""; position: absolute; inset: 0; }
+.row-open:focus-visible::after { outline: 2px solid var(--ink); outline-offset: -2px; }
+.row-action { position: relative; z-index: 1; min-height: 44px; }
+/* Quantities read as measured figures: big tabular number, small unit label. */
+.fig { font-size: 20px; font-weight: 600; line-height: 1.1; color: var(--text-strong); font-variant-numeric: tabular-nums; }
+.fig-unit { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.fig-warn { color: var(--warn-fg); }
+.ruled-row-title { font-weight: 600; color: var(--text-strong); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ruled-row-meta { font-size: 14px; color: var(--text-muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ruled-row-aside { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .ruled-empty { padding: 20px 4px; color: var(--text-muted); border-bottom: 1px solid var(--line); }
 

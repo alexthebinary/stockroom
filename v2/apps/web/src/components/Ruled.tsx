@@ -22,9 +22,11 @@ export function RuledRow({ to, title, meta, aside }: { to?: string; title: React
     </>
   );
   return to ? (
-    <Link className="ruled-row" to={to} role="listitem">
-      {body}
-    </Link>
+    <div role="listitem">
+      <Link className="ruled-row" to={to}>
+        {body}
+      </Link>
+    </div>
   ) : (
     <div className="ruled-row" role="listitem">
       {body}

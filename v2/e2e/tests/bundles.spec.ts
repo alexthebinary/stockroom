@@ -41,7 +41,7 @@ test("create a bundle from components and ship it", async ({ browser }) => {
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(dialog).toBeHidden();
 
-  const row = page.locator("tr, .mantine-Card-root").filter({ hasText: "KIT-PAIR" }).first();
+  const row = page.locator("tr, .mantine-Card-root, .ruled-row").filter({ hasText: "KIT-PAIR" }).first();
   await expect(row.getByText("Bundle")).toBeVisible();
   await row.getByRole("button", { name: "Ship Widget pair" }).click();
   const ship = page.getByRole("dialog", { name: "Ship Widget pair" });
