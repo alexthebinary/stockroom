@@ -15,6 +15,7 @@ import { NewOrder, OrderDetail, Orders } from "./features/orders/Orders";
 import { Payables } from "./features/payables/Payables";
 import { ReceiveWizard } from "./features/receive/ReceiveWizard";
 import { Stocktake } from "./features/stocktake/Stocktake";
+import { LabelSheet } from "./features/labels/LabelSheet";
 import { Items } from "./features/settings/Items";
 import { AdjustmentDetail, ReceiptDetail } from "./features/stock/Documents";
 import { get } from "./lib/api";
@@ -84,6 +85,7 @@ function Screens({ profile, required, pathname }: { profile: boolean; required: 
         <Route path="/payables" element={<Payables />} />
         <Route path="/items" element={<Items />} />
         <Route path="/stocktake" element={<Stocktake />} />
+        <Route path="/labels" element={<LabelSheet />} />
         <Route path="/receipts/:id" element={<ReceiptDetail />} />
         <Route path="/adjustments/:number" element={<AdjustmentDetail />} />
         <Route path="/reports" element={<Reports />} />

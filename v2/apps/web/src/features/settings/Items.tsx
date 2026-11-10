@@ -3,7 +3,7 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Loading, PageHeader, Problem, toastErr, toastOk } from "../../components/ui";
 import { DataTable } from "../../components/DataTable";
 import { get, patch, post, put } from "../../lib/api";
@@ -83,9 +83,14 @@ export function Items() {
           },
           actions: (picked, clear) => {
             const parts = picked.filter((i) => !i.isBundle && i.trackingMode !== "SERIAL");
-            return parts.length >= 2 ? (
+            return (
+              <>
+                <Button size="compact-md" variant="default" component={Link} to={`/labels?items=${picked.map((i) => i.id).join(",")}`}>Print labels</Button>
+                {parts.length >= 2 ? (
               <Button size="compact-md" variant="light" onClick={() => { setBundleSeed(parts.map((i) => ({ itemId: String(i.id), qty: 1 }))); setBundleForm("new"); clear(); }}>Create bundle from {parts.length}</Button>
-            ) : null;
+                ) : null}
+              </>
+            );
           },
         }}
         columns={[

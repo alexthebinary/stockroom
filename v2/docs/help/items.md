@@ -29,3 +29,7 @@ The count starts empty. Scan a barcode or search for an item to add a line. Each
 Serial-tracked items and bundles cannot be counted. They stay in the search list, disabled, with the reason. Count a serial-tracked item from its serial record. Count a bundle by counting its components.
 
 Review lists only the lines whose count differs from on hand. Anything you did not count is left as it is. A partial count is fine. The reason defaults to Stocktake and today's date, and it is stored on the adjustment. Finish stocktake posts every difference as one ADJ document. Open that document to see each line.
+
+## Labels
+
+On Stock, tick one or more items and tap Print labels. Each label has the SKU, the name and a barcode (the item's first barcode, or its SKU). Choose how many copies of each, then Print. Labels print alone, 4 by 2 inches.
