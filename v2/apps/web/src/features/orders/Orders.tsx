@@ -85,6 +85,7 @@ export function Orders() {
         rows={filtered}
         rowKey={(po) => po.id}
         to={(po) => `/orders/${po.id}`}
+        selectable={{ filename: "orders-selected.csv", csv: (po) => ({ Order: po.number, Vendor: po.vendor?.name, Created: formatDate(po.createdAt), By: po.createdBy, Billing: po.billingStatus, Payment: po.paymentStatus, Receiving: po.receivingStatus, Total: ((po.totalEstimateCents ?? 0) / 100).toFixed(2) }) }}
         empty={orders.data.length ? "No orders match these filters" : "No orders yet. Create one, or let the dock open one by scanning a surprise delivery."}
         columns={[
           { key: "number", label: "Order", width: 130, primary: true, strong: true, render: (po) => po.number },

@@ -26,6 +26,7 @@ export function Items() {
   const [editing, setEditing] = useState<Item | null>(null);
   const [adding, setAdding] = useState(false);
   const [bundleForm, setBundleForm] = useState<Item | "new" | null>(null);
+  const [bundleSeed, setBundleSeed] = useState<Row[] | null>(null);
   const [shipping, setShipping] = useState<Item | null>(null);
   const [debounced] = useDebouncedValue(search, 250);
   const facets = useQuery({ queryKey: ["item-facets"], queryFn: () => get<Facets>("/items/facets") });
@@ -74,6 +75,19 @@ export function Items() {
         rowKey={(i) => i.id}
         empty={items.data ? `No items match${brand || category || debounced ? " these filters" : " yet"}.` : <Loading />}
         onOpen={(i) => (i.isBundle ? setBundleForm(i) : setEditing(i))}
+        selectable={{
+          filename: "stock-selected.csv",
+          csv: (i) => {
+            const v = valuation.data?.rows.find((r) => r.itemId === i.id);
+            return { SKU: i.sku, Name: i.name, Brand: i.brand, Category: i.category, "On hand": i.isBundle ? (i.available ?? 0) : (v?.onHand ?? 0), "Awaiting bill": v?.held ?? 0, "Price": i.priceCents != null ? (i.priceCents / 100).toFixed(2) : "" };
+          },
+          actions: (picked, clear) => {
+            const parts = picked.filter((i) => !i.isBundle && i.trackingMode !== "SERIAL");
+            return parts.length >= 2 ? (
+              <Button size="compact-md" variant="light" onClick={() => { setBundleSeed(parts.map((i) => ({ itemId: String(i.id), qty: 1 }))); setBundleForm("new"); clear(); }}>Create bundle from {parts.length}</Button>
+            ) : null;
+          },
+        }}
         columns={[
           { key: "name", label: "Item", primary: true, strong: true, render: (i) => <>{i.name}{i.isBundle ? <span className="tag">Bundle</span> : null}</> },
           { key: "sku", label: "SKU", width: 170, mono: true, render: (i) => i.sku },
@@ -120,6 +134,7 @@ export function Items() {
           rows={receipts.data ?? []}
           rowKey={(r) => r.id}
           to={(r) => `/receipts/${r.id}`}
+          selectable={{ filename: "receipts-selected.csv", csv: (r) => ({ Receipt: r.number, Order: r.po.number, Received: new Date(r.receivedAt).toLocaleDateString(), By: r.receivedBy, Status: r.state, Units: r.lines.reduce((n, l) => n + l.qty, 0) }) }}
           empty={receipts.data ? "No warehouse receipts yet." : <Loading />}
           columns={[
             { key: "number", label: "Receipt", primary: true, strong: true, render: (r) => r.number },
@@ -149,6 +164,7 @@ export function Items() {
           rows={otherTx.data ?? []}
           rowKey={(t) => t.number}
           to={(t) => `/adjustments/${encodeURIComponent(t.number)}`}
+          selectable={{ filename: "adjustments-selected.csv", csv: (t) => ({ Document: t.number, Type: t.type, Date: new Date(t.date).toLocaleDateString(), By: t.actor, "Net change": t.qty }) }}
           empty={otherTx.data ? "No stock adjustments yet." : <Loading />}
           columns={[
             { key: "number", label: "Document", primary: true, strong: true, render: (t) => t.number },
@@ -182,11 +198,12 @@ export function Items() {
           />
         ) : null}
       </Modal>
-      <Modal opened={bundleForm != null} onClose={() => setBundleForm(null)} title={bundleForm && bundleForm !== "new" ? `Edit ${bundleForm.sku}` : "Create bundle"} size="lg">
+      <Modal opened={bundleForm != null} onClose={() => { setBundleForm(null); setBundleSeed(null); }} title={bundleForm && bundleForm !== "new" ? `Edit ${bundleForm.sku}` : "Create bundle"} size="lg">
         {bundleForm ? (
           <BundleForm
             key={bundleForm === "new" ? "new" : bundleForm.id}
             bundle={bundleForm === "new" ? null : bundleForm}
+            seed={bundleForm === "new" ? bundleSeed : null}
             onSaved={async () => {
               const wasEdit = bundleForm !== "new";
               setBundleForm(null);
@@ -216,12 +233,12 @@ export function Items() {
 type Row = { itemId: string; qty: number | string };
 
 /** Create or edit a bundle: one fixed recipe of plain items. */
-function BundleForm({ bundle, onSaved }: { bundle: Item | null; onSaved: () => Promise<void> }) {
+function BundleForm({ bundle, seed, onSaved }: { bundle: Item | null; seed?: Row[] | null; onSaved: () => Promise<void> }) {
   const all = useQuery({ queryKey: ["items"], queryFn: () => get<Item[]>("/items") });
   const [name, setName] = useState(bundle?.name ?? "");
   const [sku, setSku] = useState("");
   const [price, setPrice] = useState<number | string>(bundle?.priceCents != null ? bundle.priceCents / 100 : "");
-  const [rows, setRows] = useState<Row[]>(bundle?.components?.length ? bundle.components.map((c) => ({ itemId: String(c.id), qty: c.qty })) : [{ itemId: "", qty: 1 }]);
+  const [rows, setRows] = useState<Row[]>(bundle?.components?.length ? bundle.components.map((c) => ({ itemId: String(c.id), qty: c.qty })) : seed?.length ? seed : [{ itemId: "", qty: 1 }]);
   const [busy, setBusy] = useState(false);
   const valuation = useQuery({ queryKey: ["valuation"], queryFn: () => get<Valuation>("/reports/valuation") });
   const choices = (all.data ?? []).filter((i) => !i.isBundle && i.trackingMode !== "SERIAL");

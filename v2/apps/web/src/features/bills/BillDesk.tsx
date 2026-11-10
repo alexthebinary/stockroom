@@ -57,6 +57,7 @@ export function BillDesk() {
           rows={shown}
           rowKey={(b) => b.id}
           to={(b) => `/bills/${b.id}`}
+          selectable={{ filename: "bills-selected.csv", csv: (b) => ({ Bill: b.number, Vendor: b.vendor?.name, Type: KIND[b.kind] ?? b.kind, "Vendor invoice": b.vendorInvoiceNumber, Status: b.status, Amount: (((b.status === "POSTED" ? b.openCents : b.totalCents) ?? 0) / 100).toFixed(2) }) }}
           empty={tab === "review" ? "Nothing to review. When the dock receives a delivery that isn't billed yet, its draft bill appears here." : "Nothing here."}
           columns={[
             { key: "number", label: "Bill", width: 130, primary: true, strong: true, render: (b) => b.number },

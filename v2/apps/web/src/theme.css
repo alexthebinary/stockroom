@@ -272,3 +272,9 @@ a.ruled-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px;
   .mantine-Anchor-root { display: inline-flex; align-items: center; min-height: 44px; }
   .tabbar a, .mantine-NavLink-root { min-height: 44px; }
 }
+
+/* Row selection (DataTable `selectable`). */
+.data-table .sel { width: 44px; padding: 0 0 0 12px; overflow: visible; }
+.data-table tr[data-selected="true"] td { background: var(--ok-bg); }
+.select-bar { position: sticky; top: 0; z-index: 5; padding: 8px 12px; margin-bottom: 8px; border: 1px solid var(--line); border-top: 2px solid var(--ink); border-radius: 8px; background: var(--surface-sunken); }
+.data-table .mantine-Checkbox-input { cursor: pointer; }

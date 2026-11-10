@@ -1,5 +1,6 @@
+import { Button, Checkbox, Group, Text } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
-import type { ReactNode } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Ruled, RuledRow } from "./Ruled";
 
@@ -20,6 +21,28 @@ export type Column<T> = {
   srOnly?: boolean;
 };
 
+/** Tick boxes beside rows (wide screens). Selected rows can be exported and given extra actions. */
+export type Selectable<T> = {
+  /** One CSV line per selected row: header name -> value. */
+  csv?: (row: T) => Record<string, string | number | null | undefined>;
+  filename: string;
+  /** Extra buttons in the selection bar; `clear` empties the selection. */
+  actions?: (selected: T[], clear: () => void) => ReactNode;
+};
+
+function downloadCsv(filename: string, rows: Record<string, string | number | null | undefined>[]) {
+  if (rows.length === 0) return;
+  const headers = Object.keys(rows[0]!);
+  const cell = (v: string | number | null | undefined) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const text = [headers.map(cell).join(","), ...rows.map((r) => headers.map((h) => cell(r[h])).join(","))].join("\r\n");
+  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 type Props<T> = {
   rows: T[];
   rowKey: (row: T) => string | number;
@@ -32,12 +55,21 @@ type Props<T> = {
   empty: ReactNode;
   /** The two-line version for phones. */
   phone: (row: T) => { title: ReactNode; meta?: ReactNode; aside?: ReactNode };
+  selectable?: Selectable<T>;
 };
 
 /** One list pattern for every document and item list: a one-line-per-row table on wide screens, ruled rows on phones. */
-export function DataTable<T>({ rows, rowKey, columns, label, to, onOpen, empty, phone }: Props<T>) {
+export function DataTable<T>({ rows, rowKey, columns, label, to, onOpen, empty, phone, selectable }: Props<T>) {
   const wide = useMediaQuery("(min-width: 900px)") ?? true;
   const navigate = useNavigate();
+  const [picked, setPicked] = useState<Set<string | number>>(new Set());
+  // Only rows still in the list stay selected (a filter or refresh can drop some).
+  const selected = useMemo(() => rows.filter((r) => picked.has(rowKey(r))), [rows, picked, rowKey]);
+  const toggle = (key: string | number) => setPicked((cur) => { const next = new Set(cur); if (next.has(key)) next.delete(key); else next.add(key); return next; });
+  const allOn = selected.length === rows.length && rows.length > 0;
+  const clear = () => setPicked(new Set());
+  const primary = columns.find((c) => c.primary);
+  const rowName = (row: T) => { const v = primary?.render(row); return typeof v === "string" || typeof v === "number" ? String(v) : String(rowKey(row)); };
   if (rows.length === 0) return <Ruled label={label} empty={empty} />;
 
   if (!wide) {
@@ -58,13 +90,32 @@ export function DataTable<T>({ rows, rowKey, columns, label, to, onOpen, empty, 
   const open = (row: T) => (to ? navigate(to(row)) : onOpen?.(row));
   const clickable = Boolean(to || onOpen);
   return (
+    <>
+    {selectable && selected.length > 0 ? (
+      <Group className="select-bar" role="toolbar" aria-label="Selected rows" justify="space-between" wrap="wrap" gap="xs">
+        <Text fw={600} role="status">{selected.length} selected</Text>
+        <Group gap="xs">
+          {selectable.csv ? (
+            <Button size="compact-md" variant="default" onClick={() => downloadCsv(selectable.filename, selected.map(selectable.csv!))}>Export CSV</Button>
+          ) : null}
+          {selectable.actions?.(selected, clear)}
+          <Button size="compact-md" variant="subtle" onClick={clear}>Clear</Button>
+        </Group>
+      </Group>
+    ) : null}
     <table className="data-table">
       <caption className="visually-hidden">{label}</caption>
       <colgroup>
+        {selectable ? <col style={{ width: 44 }} /> : null}
         {columns.map((c) => <col key={c.key} style={c.width ? { width: c.width } : undefined} />)}
       </colgroup>
       <thead>
         <tr>
+          {selectable ? (
+            <th scope="col" className="sel">
+              <Checkbox aria-label={`Select all ${label.toLowerCase()}`} checked={allOn} indeterminate={selected.length > 0 && !allOn} onChange={() => setPicked(allOn ? new Set() : new Set(rows.map(rowKey)))} />
+            </th>
+          ) : null}
           {columns.map((c) => (
             <th key={c.key} scope="col" className={c.align === "right" ? "num" : undefined}>
               {c.srOnly ? <span className="visually-hidden">{c.label}</span> : c.label}
@@ -74,7 +125,12 @@ export function DataTable<T>({ rows, rowKey, columns, label, to, onOpen, empty, 
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={rowKey(row)} className={clickable ? "data-row" : undefined} onClick={clickable ? () => open(row) : undefined}>
+          <tr key={rowKey(row)} className={clickable ? "data-row" : undefined} data-selected={picked.has(rowKey(row)) ? "true" : undefined} onClick={clickable ? () => open(row) : undefined}>
+            {selectable ? (
+              <td className="sel" onClick={(e) => e.stopPropagation()}>
+                <Checkbox aria-label={`Select ${rowName(row)}`} checked={picked.has(rowKey(row))} onChange={() => toggle(rowKey(row))} />
+              </td>
+            ) : null}
             {columns.map((c) => {
               const cls = [c.align === "right" ? "num" : "", c.mono ? "mono" : "", c.strong ? "strong" : "", c.primary ? "name" : "", c.action ? "act" : ""].filter(Boolean).join(" ");
               const content = c.render(row);
@@ -95,5 +151,6 @@ export function DataTable<T>({ rows, rowKey, columns, label, to, onOpen, empty, 
         ))}
       </tbody>
     </table>
+    </>
   );
 }
