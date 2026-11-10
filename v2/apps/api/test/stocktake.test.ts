@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { expectBooksSound, ok, sampleCompany, testDb } from "./helpers";
 
-const reason = "Stocktake 2026-11-10";
+const reason = "Stock count 2026-11-10";
 
 describe("stocktake batch adjustment", () => {
   it("posts a loss, a gain and a loss as one ADJ document and keeps the books sound", async () => {

@@ -12,7 +12,7 @@ export const SCREENS = {
   freight_bill: { to: "/bills/freight/new", label: "Freight bill" },
   payables: { to: "/payables", label: "Payables" },
   items: { to: "/items", label: "Inventory" },
-  stocktake: { to: "/stocktake", label: "Stocktake" },
+  stocktake: { to: "/stocktake", label: "Stock count" },
   reports: { to: "/reports", label: "Reports" },
   settings: { to: "/settings", label: "Settings" },
   guide: { to: "/guide", label: "How it works" },

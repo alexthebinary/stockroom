@@ -13,7 +13,7 @@ type Results = Partial<Record<keyof typeof LABELS, Result[]>>;
 const ACTIONS: { title: string; subtitle: string; url: string; words: string }[] = [
   { title: "Receive a delivery", subtitle: "Scan boxes at the dock", url: "/receive", words: "receive delivery scan dock" },
   { title: "New purchase order", subtitle: "Order from a vendor", url: "/orders/new", words: "new purchase order buy" },
-  { title: "Stocktake", subtitle: "Count stock and post the differences", url: "/stocktake", words: "stocktake count cycle adjust" },
+  { title: "Stock count", subtitle: "Count stock and post the differences", url: "/stocktake", words: "stocktake count cycle adjust" },
   { title: "Print labels", subtitle: "Pick items on Stock, tick them, print", url: "/items", words: "print labels barcode" },
   { title: "Reorder report", subtitle: "Items at or under their minimum", url: "/reports", words: "reorder low stock minimum replenish" },
   { title: "Bills to review", subtitle: "Accounting inbox", url: "/bills", words: "bills review post invoice" },

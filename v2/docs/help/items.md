@@ -20,15 +20,15 @@ Create bundle asks for Name, SKU, an optional price and the component rows (pick
 
 Ship on a bundle row asks for Warehouse, How many and a Reference. Shipping takes every component out of that warehouse at its average cost and books the total to Cost of Goods Sold. If any component is short, nothing is shipped and the message names it. Bundles cannot be received or have their stock adjusted; receive and adjust the components instead.
 
-## Stocktake
+## Stock count
 
-Open Stocktake under Stock. Choose the warehouse. When the company has only one warehouse, that warehouse is already selected.
+Open Stock count under Stock. Choose the warehouse. When the company has only one warehouse, that warehouse is already selected.
 
 The count starts empty. Scan a barcode or search for an item to add a line. Each line shows the SKU, the name, how many are on hand in that warehouse, and the number you counted. Use the minus and plus buttons or type the count. The difference reads short, over, or ok. Scanning or picking the same item again adds to its count.
 
 Serial-tracked items and bundles cannot be counted. They stay in the search list, disabled, with the reason. Count a serial-tracked item from its serial record. Count a bundle by counting its components.
 
-Review lists only the lines whose count differs from on hand. Anything you did not count is left as it is. A partial count is fine. The reason defaults to Stocktake and today's date, and it is stored on the adjustment. Finish stocktake posts every difference as one ADJ document. Open that document to see each line.
+Review lists only the lines whose count differs from on hand. Anything you did not count is left as it is. A partial count is fine. The reason defaults to Stock count and today's date, and it is stored on the adjustment. Finish stocktake posts every difference as one ADJ document. Open that document to see each line.
 
 ## Labels
 

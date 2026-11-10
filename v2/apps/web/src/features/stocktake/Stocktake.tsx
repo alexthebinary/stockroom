@@ -25,7 +25,7 @@ const lastWarehouse = () => {
 const stocktakeReason = (now = new Date()) => {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
-  return `Stocktake ${now.getFullYear()}-${month}-${day}`;
+  return `Stock count ${now.getFullYear()}-${month}-${day}`;
 };
 
 /** Serial-tracked units and bundles have no countable on-hand quantity here. */
@@ -81,7 +81,7 @@ export function Stocktake() {
     <Stack gap="md">
       <Group justify="space-between">
         <div>
-          <Title order={1}>Stocktake</Title>
+          <Title order={1}>Stock count</Title>
           <Text c="dimmed" size="sm">Count what is on the shelf and correct any difference.</Text>
         </div>
         <Text c="dimmed" size="sm">
@@ -319,7 +319,7 @@ function CountStep({
             </Button>
             <TactileButton tone="signal" disabled={finishing || diffs.length === 0 || reason.trim().length < 3} onClick={() => void finish()}>
               <IconCheck size={22} aria-hidden="true" />
-              Finish stocktake
+              Finish count
             </TactileButton>
           </Group>
         </>
@@ -397,7 +397,7 @@ function PostedStep({ docNumber, onAnother }: { docNumber: string; onAnother: ()
   return (
     <Stack>
       <Title order={2} size="lg" fw={500}>
-        Stocktake posted
+        Stock count posted
       </Title>
       <Text>
         {docNumber} records every difference from this count.

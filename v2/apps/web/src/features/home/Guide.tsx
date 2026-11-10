@@ -46,7 +46,7 @@ export function Guide() {
           <List.Item><b>Inventory</b> lists every item and bundle with on hand, awaiting bill and price. Tick rows to export them to CSV, print barcode labels or build a bundle from them.</List.Item>
           <List.Item><b>Warehouse Receipts</b> lists every WH-IN. Open one to see its order, vendor and the items counted.</List.Item>
           <List.Item><b>Stock Adjustments</b> lists opening stock, gains and losses. Open one to see each line it moved.</List.Item>
-          <List.Item><b>Stocktake</b> (phone): pick the warehouse, scan or search items, type what you counted and Finish. Every difference posts as one adjustment number. Items you did not count are left alone.</List.Item>
+          <List.Item><b>Stock count</b> (phone): pick the warehouse, scan or search items, type what you counted and Finish. Every difference posts as one adjustment number. Items you did not count are left alone.</List.Item>
         </List>
       </Card>
       <Card withBorder>

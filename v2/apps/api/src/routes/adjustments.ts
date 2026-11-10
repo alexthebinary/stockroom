@@ -67,7 +67,7 @@ async function applyAdjustment(tx: Tx, actor: string, docNumber: string, body: A
 
 /**
  * Found or lost stock (GAAP guide §II.3 #2, #3): a count was off, a box
- * arrived damaged. Always one named item per line. A stocktake posts every
+ * arrived damaged. Always one named item per line. A stock count posts every
  * difference on one shared ADJ number, or posts none of them.
  */
 export function registerAdjustments(app: FastifyInstance, { db }: Deps) {
@@ -82,7 +82,7 @@ export function registerAdjustments(app: FastifyInstance, { db }: Deps) {
   });
 
   app.post("/api/adjustments/batch", async (request) => {
-    const lines = parse(z.array(adjustmentBody).min(1, "a stocktake needs at least one difference"), request.body);
+    const lines = parse(z.array(adjustmentBody).min(1, "a stock count needs at least one difference"), request.body);
     const actor = actorOf(request);
     return inTx(db, async (tx) => {
       const docNumber = await nextNumber(tx, "ADJ");
