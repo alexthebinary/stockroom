@@ -89,17 +89,17 @@ export function MatchPanel({ match, current }: { match: OrderMatch[] | null; cur
       <Title order={3} mb="sm">
         Match to order
       </Title>
-      <Table.ScrollContainer minWidth={920}>
+      <Table.ScrollContainer minWidth={640}>
         <Table>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Item</Table.Th>
               <Table.Th ta="right">Ordered</Table.Th>
               <Table.Th ta="right">Received</Table.Th>
-              <Table.Th ta="right">Billed on this bill</Table.Th>
-              <Table.Th ta="right">Billed on all bills</Table.Th>
-              <Table.Th ta="right">Order unit cost</Table.Th>
-              <Table.Th ta="right">Bill unit cost</Table.Th>
+              <Table.Th ta="right">This bill</Table.Th>
+              <Table.Th ta="right">All bills</Table.Th>
+              <Table.Th ta="right">Order cost</Table.Th>
+              <Table.Th ta="right">Bill cost</Table.Th>
               <Table.Th>Status</Table.Th>
             </Table.Tr>
           </Table.Thead>
