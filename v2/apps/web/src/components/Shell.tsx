@@ -165,7 +165,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </Box>
       </AppShell.Main>
 
-      <Drawer opened={moreOpen} onClose={() => setMoreOpen(false)} position="bottom" size="auto" title="All sections" hiddenFrom="sm" zIndex={1100} radius="lg">
+      <Drawer opened={moreOpen} onClose={() => setMoreOpen(false)} position="bottom" size="min(70dvh, 460px)" title="All sections" hiddenFrom="sm" zIndex={1100} radius="lg">
         <Stack gap={2} pb="md">
           {RAIL[job].filter((key) => key !== "home").map((key) => {
             const s = SECTIONS[key]!;
