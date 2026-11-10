@@ -35,7 +35,7 @@ const SECTIONS: Record<string, Section> = {
   orders: { to: "/orders", label: "Orders", icon: IconReceipt2 },
   bills: { to: "/bills", label: "Bills", icon: IconFileInvoice },
   payables: { to: "/payables", label: "Payables", icon: IconCash },
-  items: { to: "/items", label: "Inventory", icon: IconBox },
+  items: { to: "/items", label: "Stock", icon: IconBox },
   reports: { to: "/reports", label: "Reports", icon: IconChartBar },
   settings: { to: "/settings", label: "Settings", icon: IconSettings },
   sheet: { to: "/test-sheet", label: "Test sheet", icon: IconPrinter },

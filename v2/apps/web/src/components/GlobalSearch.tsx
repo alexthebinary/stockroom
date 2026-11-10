@@ -13,7 +13,7 @@ const LABELS = {
   purchaseOrders: "Purchase orders",
   bills: "Bills",
   vendors: "Vendors",
-  items: "Inventory",
+  items: "Stock",
   journalEntries: "Journal entries",
   credits: "Vendor credits",
   payments: "Payments",

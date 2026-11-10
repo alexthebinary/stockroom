@@ -1,4 +1,4 @@
-import { ActionIcon, Alert, Anchor, Autocomplete, Badge, Button, Card, FileButton, Group, Input, Modal, NumberInput, Select, Stack, Table, Text, TextInput, Title } from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Autocomplete, Badge, Button, Card, FileButton, Group, Input, Modal, NumberInput, Select, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -41,14 +41,21 @@ export function Items() {
   };
   return (
     <>
-      <title>Inventory · ProfitIndex</title>
-      <PageHeader title="Inventory" action={
+      <title>Stock · ProfitIndex</title>
+      <PageHeader title="Stock" action={
         <Group gap="xs">
           <Button onClick={() => setAdding(true)}>+ Add item</Button>
           <Button variant="light" onClick={() => setBundleForm("new")}>Create bundle</Button>
           <ItemCsvImport onImported={refreshItems} />
         </Group>
       } />
+      <Tabs defaultValue="inventory" keepMounted={false}>
+      <Tabs.List mb="md">
+        <Tabs.Tab value="inventory">Inventory</Tabs.Tab>
+        <Tabs.Tab value="receipts">Warehouse Receipts</Tabs.Tab>
+        <Tabs.Tab value="adjustments">Stock Adjustments</Tabs.Tab>
+      </Tabs.List>
+      <Tabs.Panel value="inventory">
       <Stack gap="xs" mb="md">
         <TextInput placeholder="Search name, SKU, brand or barcode" value={search} onChange={(e) => setSearch(e.currentTarget.value)} size="md" />
         <Group grow gap="xs">
@@ -125,8 +132,9 @@ export function Items() {
         })}
         {items.data && items.data.length === 0 ? <div className="ruled-empty">No items match{brand || category || debounced ? " these filters" : " yet"}.</div> : null}
       </Stack>
-      <section aria-labelledby="warehouse-receipts-heading">
-        <Title order={2} size="h3" mt="xl" mb="xs" id="warehouse-receipts-heading">Warehouse Receipts</Title>
+      </Tabs.Panel>
+      <Tabs.Panel value="receipts">
+      <section aria-label="Warehouse Receipts">
         <Stack gap="xs">
           {(receipts.data ?? []).map((r) => (
             <Card key={r.id} withBorder padding="sm">
@@ -145,8 +153,9 @@ export function Items() {
           {receipts.data && receipts.data.length === 0 ? <div className="ruled-empty">No warehouse receipts yet.</div> : null}
         </Stack>
       </section>
-      <section aria-labelledby="other-transactions-heading">
-        <Title order={2} size="h3" mt="xl" mb="xs" id="other-transactions-heading">Other Inventory Transactions</Title>
+      </Tabs.Panel>
+      <Tabs.Panel value="adjustments">
+      <section aria-label="Stock Adjustments">
         <Stack gap="xs">
           {(otherTx.data ?? []).map((t) => (
             <Card key={t.number} withBorder padding="sm">
@@ -159,9 +168,11 @@ export function Items() {
               </Group>
             </Card>
           ))}
-          {otherTx.data && otherTx.data.length === 0 ? <div className="ruled-empty">No other inventory transactions yet.</div> : null}
+          {otherTx.data && otherTx.data.length === 0 ? <div className="ruled-empty">No stock adjustments yet.</div> : null}
         </Stack>
       </section>
+      </Tabs.Panel>
+      </Tabs>
       <Modal opened={adding || editing != null} onClose={() => { setEditing(null); setAdding(false); }} title={editing ? `Edit ${editing.sku}` : "Add item"}>
         {adding || editing ? (
           <EditItem
