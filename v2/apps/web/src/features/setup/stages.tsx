@@ -152,9 +152,6 @@ export function StartStage({ mode, sample }: { mode: "sample" | "empty"; sample:
           <span className="ob-tag">{item.tag}</span>
         </div>
       ))}
-      <div className="ob-paper-muted" style={{ marginTop: 10 }}>
-        Plus a printable test sheet of barcodes and a packing slip.
-      </div>
     </div>
   );
 }

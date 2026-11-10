@@ -59,7 +59,7 @@ function ClerkHome() {
       </Stack>
       <Checklist
         tasks={[
-          { label: "Try a practice scan", done: false, to: "/receive/practice", hint: "Point the camera at the test sheet. Nothing is saved." },
+          { label: "Try a practice scan", done: false, to: "/receive/practice", hint: "Point the camera at any barcode. Nothing is saved." },
           { label: "Receive your first delivery", done: (sessions.data?.length ?? 0) > 0, to: "/receive" },
         ]}
       />
@@ -141,9 +141,6 @@ function AdminHome() {
       <Group>
         <Button component={Link} to="/orders/new" leftSection={<IconPlus size={18} />}>
           New purchase order
-        </Button>
-        <Button component={Link} to="/test-sheet" variant="light">
-          Test sheet
         </Button>
       </Group>
       <Checklist

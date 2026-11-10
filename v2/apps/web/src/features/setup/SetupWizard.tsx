@@ -384,7 +384,7 @@ function StartStep({ frame, goTo, setup, refresh, mode, onMode }: Nav & { mode: 
           icon={<IconSparkles size={22} />}
           title="Try it with sample data"
           badge={<span className="ob-pill">{loaded ? "Added" : "Recommended"}</span>}
-          text="A warehouse, a supplier, a freight carrier and three items, with a printable test sheet of barcodes."
+          text="A warehouse, a supplier, a freight carrier and three items."
           checked={chosen === "sample"}
           disabled={!canSample}
           onSelect={() => onMode("sample")}
@@ -718,7 +718,6 @@ function DoneStep({ frame, setup, refresh }: Nav) {
   const sample = setup.sample.loaded;
   const steps = sample
     ? [
-        "Open the test sheet on another screen, or print it.",
         "On your phone, open this app, tap your name, then Receive a delivery and scan the widget twice.",
         "As accounting, open the draft bill, add $100 of freight and hold to post.",
         "Watch each widget land at $550, then pay the bill.",
@@ -745,11 +744,6 @@ function DoneStep({ frame, setup, refresh }: Nav) {
           <Cta onClick={finish} loading={busy}>
             {first ? "Open ProfitIndex" : "Back to ProfitIndex"}
           </Cta>
-          {sample ? (
-            <Button component="a" href="/test-sheet" target="_blank" variant="subtle" size="md">
-              Open the test sheet
-            </Button>
-          ) : null}
         </>
       }
     >

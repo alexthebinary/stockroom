@@ -23,7 +23,6 @@ const Reports = lazy(() => import("./features/reports/Reports").then((m) => ({ d
 const Practice = lazy(() => import("./features/scan/Practice").then((m) => ({ default: m.Practice })));
 const Settings = lazy(() => import("./features/settings/Settings").then((m) => ({ default: m.Settings })));
 const SetupWizard = lazy(() => import("./features/setup/SetupWizard").then((m) => ({ default: m.SetupWizard })));
-const TestSheet = lazy(() => import("./features/setup/TestSheet").then((m) => ({ default: m.TestSheet })));
 
 const spinner = (
   <Center h="60dvh">
@@ -66,7 +65,6 @@ export function App() {
 }
 
 function Screens({ profile, required, pathname }: { profile: boolean; required: boolean; pathname: string }) {
-  if (pathname === "/test-sheet") return <Suspense fallback={spinner}><TestSheet /></Suspense>;
   if (required || pathname === "/setup") return <Suspense fallback={spinner}><SetupWizard /></Suspense>;
   if (!profile) return <ProfilePicker />;
   return (

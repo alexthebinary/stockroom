@@ -10,7 +10,6 @@ import {
   IconHome,
   IconMessageReport,
   IconMoon,
-  IconPrinter,
   IconReceipt2,
   IconRefresh,
   IconSettings,
@@ -38,7 +37,6 @@ const SECTIONS: Record<string, Section> = {
   items: { to: "/items", label: "Stock", icon: IconBox },
   reports: { to: "/reports", label: "Reports", icon: IconChartBar },
   settings: { to: "/settings", label: "Settings", icon: IconSettings },
-  sheet: { to: "/test-sheet", label: "Test sheet", icon: IconPrinter },
   guide: { to: "/guide", label: "How it works", icon: IconBook2 },
   feedback: { to: "/feedback", label: "Feedback", icon: IconMessageReport },
 };
@@ -52,9 +50,9 @@ const TABS: Record<Job, (keyof typeof SECTIONS)[]> = {
 
 /** The desktop rail: everything, grouped, the job's own work first. */
 const RAIL: Record<Job, (keyof typeof SECTIONS)[]> = {
-  CLERK: ["home", "receive", "items", "orders", "sheet", "guide"],
+  CLERK: ["home", "receive", "items", "orders", "guide"],
   ACCOUNTING: ["home", "bills", "payables", "orders", "items", "reports", "receive", "settings", "guide", "feedback"],
-  ADMIN: ["home", "orders", "bills", "payables", "receive", "items", "reports", "settings", "sheet", "guide", "feedback"],
+  ADMIN: ["home", "orders", "bills", "payables", "receive", "items", "reports", "settings", "guide", "feedback"],
 };
 
 const PURCHASES = ["orders", "bills", "payables", "receive"];

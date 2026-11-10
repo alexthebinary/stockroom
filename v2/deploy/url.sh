@@ -18,7 +18,6 @@ for _ in $(seq 1 30); do
     grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | grep -v '^https://api\.' | tail -n 1 || true)
   if [ -n "$url" ]; then
     echo "The app is at:   $url"
-    echo "Test sheet:      $url/test-sheet   (open on a laptop, or print it)"
     exit 0
   fi
   sleep 2

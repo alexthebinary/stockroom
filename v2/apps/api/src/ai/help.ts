@@ -17,7 +17,6 @@ export const SCREENS = {
   guide: { to: "/guide", label: "How it works" },
   feedback: { to: "/feedback", label: "Feedback" },
   setup: { to: "/setup", label: "Setup" },
-  test_sheet: { to: "/test-sheet", label: "Test sheet" },
 } as const;
 export type Navigation = { to: string; label: string };
 export function goTo(screen: string): Navigation {

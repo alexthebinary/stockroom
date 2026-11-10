@@ -5,7 +5,7 @@ import { useState } from "react";
 import { IconAlertTriangle, IconCircleCheck, IconDownload } from "@tabler/icons-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { plural, formatDate, Loading, Money, PageHeader, Problem, usd } from "../../components/ui";
-import { Ruled, RuledRow } from "../../components/Ruled";
+import { DataTable } from "../../components/DataTable";
 import { get } from "../../lib/api";
 import { downloadCsv, toCsv, type CsvCell } from "../../lib/csv";
 import type { JournalEntry } from "../../lib/types";
@@ -616,21 +616,29 @@ function HeldStock() {
       <FilterSummary count={rows.length} noun="line" clear={filters.clear} />
       {rows.length === 0 ? <Text c="dimmed">{filters.active ? "Nothing matches these filters." : "Nothing is waiting for a bill."}</Text> : null}
       <Text c="dimmed">Received at the dock, counted, not yet sellable or valued. Oldest first.</Text>
-      <Ruled label="Stock awaiting a bill">
-        {rows.map((h, i) => (
-          <RuledRow
-            key={i}
-            to={`/orders/${h.poId}`}
-            title={`${h.qtyHeld} × ${h.item.name}`}
-            meta={`${h.poNumber} · ${h.vendor?.name ?? "vendor not set"} · since ${formatDate(h.receivedAt)}`}
-            aside={
-              <span className={h.days > 7 ? "fig fig-warn" : "fig"}>
-                {h.days} <span className="fig-unit">{h.days === 1 ? "day" : "days"}</span>
-              </span>
-            }
-          />
-        ))}
-      </Ruled>
+      {rows.length > 0 ? (
+        <DataTable
+          label="Stock awaiting a bill"
+          rows={rows}
+          rowKey={(h) => `${h.poId}-${h.item.sku}-${h.receivedAt}`}
+          to={(h) => `/orders/${h.poId}`}
+          empty={null}
+          columns={[
+            { key: "item", label: "Item", primary: true, strong: true, render: (h) => h.item.name },
+            { key: "sku", label: "SKU", width: 170, mono: true, render: (h) => h.item.sku },
+            { key: "qty", label: "Units", width: 80, align: "right", strong: true, render: (h) => h.qtyHeld },
+            { key: "po", label: "Order", width: 120, render: (h) => h.poNumber },
+            { key: "vendor", label: "Vendor", width: 170, render: (h) => h.vendor?.name ?? "—" },
+            { key: "since", label: "Received", width: 130, render: (h) => formatDate(h.receivedAt) },
+            { key: "days", label: "Waiting", width: 100, align: "right", render: (h) => <span className={h.days > 7 ? "warn" : undefined}>{plural(h.days, "day")}</span> },
+          ]}
+          phone={(h) => ({
+            title: `${h.qtyHeld} × ${h.item.name}`,
+            meta: `${h.poNumber} · ${h.vendor?.name ?? "vendor not set"} · since ${formatDate(h.receivedAt)}`,
+            aside: <span className={h.days > 7 ? "fig fig-warn" : "fig"}>{h.days} <span className="fig-unit">{h.days === 1 ? "day" : "days"}</span></span>,
+          })}
+        />
+      ) : null}
     </Stack>
   );
 }
@@ -658,13 +666,24 @@ function ToReceiveReport() {
       <Text c="dimmed">
         {plural(orders.reduce((sum, order) => sum + order.units, 0), "unit")} on order, about {usd(orders.reduce((sum, order) => sum + order.valueCents, 0))} at order cost. Oldest order first. Tap one to receive it.
       </Text>
-      <Ruled label="Orders to receive">
-        {orders.map((o) => (
-          <RuledRow
-            key={o.poId}
-            to={`/receive?po=${o.poId}`}
-            title={`${o.poNumber} · ${o.vendor?.name ?? "vendor not set"}`}
-            meta={
+      {orders.length > 0 ? (
+        <DataTable
+          label="Orders to receive"
+          rows={orders}
+          rowKey={(o) => o.poId}
+          to={(o) => `/receive?po=${o.poId}`}
+          empty={null}
+          columns={[
+            { key: "po", label: "Order", width: 130, primary: true, strong: true, render: (o) => o.poNumber },
+            { key: "vendor", label: "Vendor", width: 180, render: (o) => o.vendor?.name ?? "—" },
+            { key: "items", label: "Outstanding", render: (o) => o.lines.map((l) => `${l.outstanding} × ${l.item.name}`).join(", ") },
+            { key: "wh", label: "Warehouse", width: 150, render: (o) => o.warehouse?.name ?? "—" },
+            { key: "billing", label: "Billing", width: 130, render: (o) => (o.billingStatus === "NOT_BILLED" ? "not billed" : o.billingStatus === "BILLED" ? "billed" : o.billingStatus.replace("_", " ").toLowerCase()) },
+            { key: "days", label: "Ordered", width: 110, align: "right", render: (o) => <span className={o.days > 14 ? "warn" : undefined}>{o.days} {o.days === 1 ? "day ago" : "days ago"}</span> },
+          ]}
+          phone={(o) => ({
+            title: `${o.poNumber} · ${o.vendor?.name ?? "vendor not set"}`,
+            meta: (
               <>
                 {o.lines.map((l) => (
                   <div key={l.lineId}>
@@ -676,15 +695,11 @@ function ToReceiveReport() {
                   {o.warehouse?.name ?? ""} · {o.billingStatus === "NOT_BILLED" ? "not billed yet" : o.billingStatus === "BILLED" ? "billed, owed to the vendor" : o.billingStatus.replace("_", " ").toLowerCase()}
                 </div>
               </>
-            }
-            aside={
-              <span className={o.days > 14 ? "fig fig-warn" : "fig"}>
-                {o.days} <span className="fig-unit">{o.days === 1 ? "day ago" : "days ago"}</span>
-              </span>
-            }
-          />
-        ))}
-      </Ruled>
+            ),
+            aside: <span className={o.days > 14 ? "fig fig-warn" : "fig"}>{o.days} <span className="fig-unit">{o.days === 1 ? "day ago" : "days ago"}</span></span>,
+          })}
+        />
+      ) : null}
     </Stack>
   );
 }

@@ -1,11 +1,11 @@
 import { ActionIcon, Alert, Anchor, Autocomplete, Badge, Button, Card, FileButton, Group, Input, Modal, NumberInput, Select, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
-import { useDebouncedValue, useMediaQuery } from "@mantine/hooks";
+import { useDebouncedValue } from "@mantine/hooks";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Loading, PageHeader, Problem, toastErr, toastOk } from "../../components/ui";
-import { Ruled, RuledRow } from "../../components/Ruled";
+import { DataTable } from "../../components/DataTable";
 import { get, patch, post, put } from "../../lib/api";
 import type { Item, Warehouse } from "../../lib/types";
 import { cmToIn, formatMeasurements, inToCm, kgToLb, lbToKg } from "../../lib/units";
@@ -28,7 +28,6 @@ export function Items() {
   const [bundleForm, setBundleForm] = useState<Item | "new" | null>(null);
   const [shipping, setShipping] = useState<Item | null>(null);
   const [debounced] = useDebouncedValue(search, 250);
-  const wide = useMediaQuery("(min-width: 900px)") ?? true;
   const facets = useQuery({ queryKey: ["item-facets"], queryFn: () => get<Facets>("/items/facets") });
   const query = new URLSearchParams();
   if (debounced) query.set("search", debounced);
@@ -68,115 +67,102 @@ export function Items() {
           <Select aria-label="Category" placeholder="All categories" data={facets.data?.categories ?? []} value={category} onChange={setCategory} clearable searchable />
         </Group>
       </Stack>
-      {items.error ? <Problem error={items.error} retry={() => items.refetch()} /> : wide ? (
-      <table className="stock-table">
-        <caption className="visually-hidden">Inventory</caption>
-        <colgroup><col /><col style={{ width: 170 }} /><col style={{ width: 190 }} /><col style={{ width: 150 }} /><col style={{ width: 80 }} /><col style={{ width: 76 }} /></colgroup>
-        <thead>
-          <tr>
-            <th scope="col">Item</th>
-            <th scope="col">SKU</th>
-            <th scope="col">Brand · Category</th>
-            <th scope="col" className="num">On hand</th>
-            <th scope="col" className="num">Price</th>
-            <th scope="col"><span className="visually-hidden">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {(items.data ?? []).map((i) => {
-            const v = valuation.data?.rows.find((r) => r.itemId === i.id);
-            const open = () => (i.isBundle ? setBundleForm(i) : setEditing(i));
-            const count = i.isBundle ? (i.available ?? 0) : (v?.onHand ?? 0);
-            const parts = i.isBundle ? i.components?.map((c) => `${c.qty}× ${c.name}`).join(" + ") : "";
-            return (
-              <tr key={i.id} className="stock-row" onClick={open}>
-                <td className="name" title={parts ? `${i.name}: ${parts}` : i.name}>
-                  <button type="button" className="row-link" onClick={(e) => { e.stopPropagation(); open(); }} aria-label={`Edit ${i.name}`}>{i.name}</button>
-                  {i.isBundle ? <span className="tag">Bundle</span> : null}
-                </td>
-                <td className="mono" title={i.sku}>{i.sku}</td>
-                <td title={[i.brand, i.category].filter(Boolean).join(" · ")}>{[i.brand, i.category].filter(Boolean).join(" · ") || "—"}</td>
-                <td className="num strong">
-                  {!i.isBundle && v?.held ? <span className="unit warn" title="Counted at the dock, awaiting a bill">{v.held} awaiting bill · </span> : null}
-                  {count}{i.isBundle ? <span className="unit"> avail.</span> : null}
-                </td>
-                <td className="num">{i.priceCents != null ? `$${(i.priceCents / 100).toFixed(2)}` : "—"}</td>
-                <td className="act">
-                  {i.isBundle ? <Button size="compact-sm" variant="light" onClick={(e) => { e.stopPropagation(); setShipping(i); }} aria-label={`Ship ${i.name}`}>Ship</Button> : null}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-        {items.data && items.data.length === 0 ? <tfoot><tr><td colSpan={6} className="ruled-empty">{`No items match${brand || category || debounced ? " these filters" : " yet"}.`}</td></tr></tfoot> : null}
-      </table>
-      ) : (
-      <Ruled label="Inventory" empty={items.data ? `No items match${brand || category || debounced ? " these filters" : " yet"}.` : <Loading />}>
-        {(items.data ?? []).map((i) => {
+      {items.error ? <Problem error={items.error} retry={() => items.refetch()} /> : (
+      <DataTable
+        label="Inventory"
+        rows={items.data ?? []}
+        rowKey={(i) => i.id}
+        empty={items.data ? `No items match${brand || category || debounced ? " these filters" : " yet"}.` : <Loading />}
+        onOpen={(i) => (i.isBundle ? setBundleForm(i) : setEditing(i))}
+        columns={[
+          { key: "name", label: "Item", primary: true, strong: true, render: (i) => <>{i.name}{i.isBundle ? <span className="tag">Bundle</span> : null}</> },
+          { key: "sku", label: "SKU", width: 170, mono: true, render: (i) => i.sku },
+          { key: "bc", label: "Brand · Category", width: 190, render: (i) => [i.brand, i.category].filter(Boolean).join(" · ") || "—" },
+          { key: "qty", label: "On hand", width: 150, align: "right", strong: true, render: (i) => {
+            const held = !i.isBundle ? valuation.data?.rows.find((r) => r.itemId === i.id)?.held : 0;
+            const count = i.isBundle ? (i.available ?? 0) : (valuation.data?.rows.find((r) => r.itemId === i.id)?.onHand ?? 0);
+            return <>{held ? <span className="unit warn" title="Counted at the dock, awaiting a bill">{held} awaiting bill · </span> : null}{count}{i.isBundle ? <span className="unit"> avail.</span> : null}</>;
+          } },
+          { key: "price", label: "Price", width: 80, align: "right", render: (i) => (i.priceCents != null ? `$${(i.priceCents / 100).toFixed(2)}` : "—") },
+          { key: "act", label: "Actions", width: 76, action: true, srOnly: true, align: "right", render: (i) => (i.isBundle ? <Button size="compact-sm" variant="light" onClick={() => setShipping(i)} aria-label={`Ship ${i.name}`}>Ship</Button> : null) },
+        ]}
+        phone={(i) => {
           const v = valuation.data?.rows.find((r) => r.itemId === i.id);
-          const measurements = formatMeasurements(i);
-          const open = () => (i.isBundle ? setBundleForm(i) : setEditing(i));
           const detail = [
             i.isBundle ? "Bundle" : null,
             i.sku + (i.isBundle ? ` · ${i.components?.map((c) => `${c.qty}× ${c.name}`).join(" + ")}` : ""),
             i.barcodes?.length ? i.barcodes.map((b) => b.raw).join(", ") : null,
-            measurements,
+            formatMeasurements(i),
             [i.brand, i.category].filter(Boolean).join(" · ") || null,
           ].filter(Boolean).join(" · ");
           const count = i.isBundle ? (i.available ?? 0) : (v?.onHand ?? 0);
-          return (
-            <RuledRow
-              key={i.id}
-              title={<button type="button" className="row-open" onClick={open} aria-label={`Edit ${i.name}`}>{i.name}</button>}
-              meta={detail}
-              aside={
-                <>
-                  <span className="fig">{count}</span>
-                  <span className="fig-unit">{i.isBundle ? "available" : "on hand"}{i.priceCents != null ? ` · $${(i.priceCents / 100).toFixed(2)}` : ""}</span>
-                  {!i.isBundle && v?.held ? <span className="fig-unit fig-warn">{v.held} awaiting bill</span> : null}
-                  {i.isBundle ? <Button className="row-action" size="sm" variant="light" onClick={() => setShipping(i)} aria-label={`Ship ${i.name}`}>Ship</Button> : null}
-                </>
-              }
-            />
-          );
-        })}
-      </Ruled>
+          return {
+            title: i.name,
+            meta: detail,
+            aside: (
+              <>
+                <span className="fig">{count}</span>
+                <span className="fig-unit">{i.isBundle ? "available" : "on hand"}{i.priceCents != null ? ` · $${(i.priceCents / 100).toFixed(2)}` : ""}</span>
+                {!i.isBundle && v?.held ? <span className="fig-unit fig-warn">{v.held} awaiting bill</span> : null}
+                {i.isBundle ? <Button className="row-action" size="sm" variant="light" onClick={(e) => { e.stopPropagation(); setShipping(i); }} aria-label={`Ship ${i.name}`}>Ship</Button> : null}
+              </>
+            ),
+          };
+        }}
+      />
       )}
       </Tabs.Panel>
       <Tabs.Panel value="receipts" className="tab-fade">
       <section aria-label="Warehouse Receipts">
         {receipts.error ? <Problem error={receipts.error} retry={() => receipts.refetch()} /> : (
-        <Ruled label="Warehouse receipts" empty={receipts.data ? "No warehouse receipts yet." : <Loading />}>
-          {(receipts.data ?? []).map((r) => {
+        <DataTable
+          label="Warehouse receipts"
+          rows={receipts.data ?? []}
+          rowKey={(r) => r.id}
+          to={(r) => `/receipts/${r.id}`}
+          empty={receipts.data ? "No warehouse receipts yet." : <Loading />}
+          columns={[
+            { key: "number", label: "Receipt", primary: true, strong: true, render: (r) => r.number },
+            { key: "po", label: "Order", width: 130, render: (r) => r.po.number },
+            { key: "date", label: "Received", width: 130, render: (r) => new Date(r.receivedAt).toLocaleDateString() },
+            { key: "by", label: "By", width: 140, render: (r) => r.receivedBy },
+            { key: "state", label: "Status", width: 130, render: (r) => r.state.replace(/_/g, " ").toLowerCase() },
+            { key: "units", label: "Units", width: 90, align: "right", strong: true, render: (r) => r.lines.reduce((n, l) => n + l.qty, 0) },
+          ]}
+          phone={(r) => {
             const units = r.lines.reduce((n, l) => n + l.qty, 0);
-            return (
-              <RuledRow
-                key={r.id}
-                to={`/receipts/${r.id}`}
-                title={r.number}
-                meta={`${r.po.number} · ${new Date(r.receivedAt).toLocaleDateString()} · ${r.receivedBy}`}
-                aside={<><span className="fig">{units}</span><span className="fig-unit">{units === 1 ? "unit" : "units"} · {r.state.replace(/_/g, " ").toLowerCase()}</span></>}
-              />
-            );
-          })}
-        </Ruled>
+            return {
+              title: r.number,
+              meta: `${r.po.number} · ${new Date(r.receivedAt).toLocaleDateString()} · ${r.receivedBy}`,
+              aside: <><span className="fig">{units}</span><span className="fig-unit">{units === 1 ? "unit" : "units"} · {r.state.replace(/_/g, " ").toLowerCase()}</span></>,
+            };
+          }}
+        />
         )}
       </section>
       </Tabs.Panel>
       <Tabs.Panel value="adjustments" className="tab-fade">
       <section aria-label="Stock Adjustments">
         {otherTx.error ? <Problem error={otherTx.error} retry={() => otherTx.refetch()} /> : (
-        <Ruled label="Stock adjustments" empty={otherTx.data ? "No stock adjustments yet." : <Loading />}>
-          {(otherTx.data ?? []).map((t) => (
-            <RuledRow
-              key={t.number}
-              to={`/adjustments/${encodeURIComponent(t.number)}`}
-              title={t.number}
-              meta={`${t.type} · ${new Date(t.date).toLocaleDateString()} · ${t.actor}`}
-              aside={<><span className="fig">{t.qty > 0 ? "+" : ""}{t.qty}</span><span className="fig-unit">{Math.abs(t.qty) === 1 ? "unit" : "units"}</span></>}
-            />
-          ))}
-        </Ruled>
+        <DataTable
+          label="Stock adjustments"
+          rows={otherTx.data ?? []}
+          rowKey={(t) => t.number}
+          to={(t) => `/adjustments/${encodeURIComponent(t.number)}`}
+          empty={otherTx.data ? "No stock adjustments yet." : <Loading />}
+          columns={[
+            { key: "number", label: "Document", primary: true, strong: true, render: (t) => t.number },
+            { key: "type", label: "Type", width: 230, render: (t) => t.type },
+            { key: "date", label: "Date", width: 130, render: (t) => new Date(t.date).toLocaleDateString() },
+            { key: "by", label: "By", width: 140, render: (t) => t.actor },
+            { key: "qty", label: "Net change", width: 110, align: "right", strong: true, render: (t) => `${t.qty > 0 ? "+" : ""}${t.qty}` },
+          ]}
+          phone={(t) => ({
+            title: t.number,
+            meta: `${t.type} · ${new Date(t.date).toLocaleDateString()} · ${t.actor}`,
+            aside: <><span className="fig">{t.qty > 0 ? "+" : ""}{t.qty}</span><span className="fig-unit">{Math.abs(t.qty) === 1 ? "unit" : "units"}</span></>,
+          })}
+        />
         )}
       </section>
       </Tabs.Panel>

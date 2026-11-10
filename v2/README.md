@@ -30,10 +30,7 @@ npm run dev                       # API on :4100, web app on :5173
 
 Open http://localhost:5173. A fresh install opens the **setup wizard**:
 company, team, then *Add minimal sample data* (1 warehouse, a supplier, a
-freight carrier, 3 items — no stock, no transactions) or *Start empty*. The
-**test sheet** (`/test-sheet`) has the sample barcodes, serial labels and a
-packing slip to scan off a second screen or a printout.
-
+freight carrier, 3 items — no stock, no transactions) or *Start empty*. 
 The phone camera needs HTTPS (or `localhost`). To try it on a real phone,
 put the dev server behind any HTTPS tunnel.
 

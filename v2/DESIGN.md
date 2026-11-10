@@ -67,3 +67,17 @@ Design passes follow [impeccable](https://github.com/pbakaus/impeccable)'s
 Operate-mode guidance and craft floor: build fully, inspect once in a batch
 (phone and desktop, light and dark — the e2e saves these screenshots to
 `e2e/screenshots/`), fix everything in one go, confirm once, stop.
+
+## Lists and tables (2026-11-10)
+
+- **One list pattern: `DataTable`** (`components/DataTable.tsx`). Stock, Orders, Bills,
+  receipts, adjustments and the Reports held/to-receive lists are one-line-per-row tables
+  on wide screens (>= 900 px) and two-line `RuledRow`s on phones. The whole row opens its
+  document; the name cell holds the real link or button. Payables and the detail pages use
+  Mantine tables, styled to match in `theme.css` (caps tracked headers, ink top rule).
+- Status and warning text use `--ok-fg` / `--warn-fg` (and `--ok-bg` / `--warn-bg`); muted
+  text is `--text-muted` (also Mantine `dimmed`). Paper and Card sit on `--surface`.
+- Motion additions: 160 ms tab-panel fade, Home stat count-up (once), button press dip;
+  all off for `prefers-reduced-motion`.
+- Touch screens (`pointer: coarse`): buttons, tabs, inputs, links and nav are >= 44 px.
+- There is no test sheet page any more.

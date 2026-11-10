@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 /** A datasheet list: hairline rows under one ink rule. Rows with `to` are tappable and say so on hover. */
-export function Ruled({ children, empty, label }: { children: ReactNode; empty?: ReactNode; label?: string }) {
+export function Ruled({ children, empty, label }: { children?: ReactNode; empty?: ReactNode; label?: string }) {
   const items = Array.isArray(children) ? children.filter(Boolean) : children ? [children] : [];
   return (
     <div className="ruled" role="list" aria-label={label}>

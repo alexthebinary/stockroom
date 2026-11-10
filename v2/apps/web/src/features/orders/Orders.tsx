@@ -4,7 +4,7 @@ import { IconAdjustmentsHorizontal, IconPlus, IconTrash } from "@tabler/icons-re
 import { useMediaQuery } from "@mantine/hooks";
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Ruled, RuledRow } from "../../components/Ruled";
+import { DataTable } from "../../components/DataTable";
 import { formatDate, Loading, Money, PageHeader, ReceivingBadge, StatusBadge, toastErr, toastOk, usd } from "../../components/ui";
 import { get, post } from "../../lib/api";
 import { filterOrders, orderFilterKeys, orderFilterOptions, readOrderFilters, type OrderFilterKey } from "../../lib/orderFilters";
@@ -80,29 +80,36 @@ export function Orders() {
           <Button variant="subtle" onClick={clearFilters}>Clear filters</Button>
         </Group>
       </Stack>
-      <Ruled label="Purchase orders" empty={orders.data.length ? "No orders match these filters" : "No orders yet. Create one, or let the dock open one by scanning a surprise delivery."}>
-        {filtered.map((po) => (
-          <RuledRow
-            key={po.id}
-            to={`/orders/${po.id}`}
-            title={`${po.number} · ${po.vendor?.name ?? "Vendor not set"}`}
-            meta={
-              <Stack gap={6} mt={4}>
-                <span>
-                  {po.source === "SCAN" ? "Opened at the dock" : `By ${po.createdBy}`} · {formatDate(po.createdAt)}
-                  {po.lifecycle !== "OPEN" ? ` · ${po.lifecycle.toLowerCase()}` : ""}
-                </span>
-                <Axes po={po} />
-              </Stack>
-            }
-            aside={
-              <Text fw={600}>
-                <Money cents={po.totalEstimateCents} />
-              </Text>
-            }
-          />
-        ))}
-      </Ruled>
+      <DataTable
+        label="Purchase orders"
+        rows={filtered}
+        rowKey={(po) => po.id}
+        to={(po) => `/orders/${po.id}`}
+        empty={orders.data.length ? "No orders match these filters" : "No orders yet. Create one, or let the dock open one by scanning a surprise delivery."}
+        columns={[
+          { key: "number", label: "Order", width: 130, primary: true, strong: true, render: (po) => po.number },
+          { key: "vendor", label: "Vendor", render: (po) => po.vendor?.name ?? "Vendor not set" },
+          { key: "date", label: "Created", width: 120, render: (po) => formatDate(po.createdAt) },
+          { key: "by", label: "By", width: 110, render: (po) => (po.source === "SCAN" ? "Dock" : po.createdBy) },
+          { key: "billing", label: "Billing", width: 120, render: (po) => <StatusBadge status={po.billingStatus} /> },
+          { key: "payment", label: "Payment", width: 110, render: (po) => <StatusBadge status={po.paymentStatus} /> },
+          { key: "receiving", label: "Receiving", width: 190, render: (po) => <ReceivingBadge status={po.receivingStatus} held={po.heldUnits ?? po.lines.reduce((s, l) => s + l.qtyHeld, 0)} /> },
+          { key: "total", label: "Total", width: 120, align: "right", strong: true, render: (po) => <Money cents={po.totalEstimateCents} /> },
+        ]}
+        phone={(po) => ({
+          title: `${po.number} · ${po.vendor?.name ?? "Vendor not set"}`,
+          meta: (
+            <Stack gap={6} mt={4}>
+              <span>
+                {po.source === "SCAN" ? "Opened at the dock" : `By ${po.createdBy}`} · {formatDate(po.createdAt)}
+                {po.lifecycle !== "OPEN" ? ` · ${po.lifecycle.toLowerCase()}` : ""}
+              </span>
+              <Axes po={po} />
+            </Stack>
+          ),
+          aside: <Text fw={600}><Money cents={po.totalEstimateCents} /></Text>,
+        })}
+      />
     </>
   );
 }

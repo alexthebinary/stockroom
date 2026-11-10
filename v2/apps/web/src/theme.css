@@ -215,24 +215,24 @@ a.ruled-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px;
 .tab-fade { animation: tab-fade 160ms cubic-bezier(0.23, 1, 0.32, 1); }
 @media (prefers-reduced-motion: reduce) { .tab-fade { animation: none; } }
 
-/* ── Stock table: one line per item on a wide screen (phones keep the two-line ruled rows). ── */
-.stock-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-.stock-table thead th { text-align: left; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted);
+/* ── Data table: one line per row on a wide screen (phones get the two-line ruled rows). Used by DataTable. ── */
+.data-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.data-table thead th { text-align: left; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted);
   padding: 10px 10px; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); white-space: nowrap; }
-.stock-table td { padding: 0 10px; height: 52px; border-bottom: 1px solid var(--line); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.stock-table .num { text-align: right; }
-.stock-table .strong { font-weight: 600; color: var(--text-strong); }
-.stock-table .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
-.stock-table .warn { color: var(--warn-fg); font-weight: 600; }
-.stock-table .unit { font-size: 12px; font-weight: 400; color: var(--text-muted); }
-.stock-table .act { text-align: right; overflow: visible; }
-.stock-table td.name { font-weight: 600; color: var(--text-strong); }
-.stock-row { cursor: pointer; transition: background-color 150ms var(--ease-out); }
-.stock-row:hover, .stock-row:active { background: var(--surface-sunken); }
-.stock-row:has(.row-link:focus-visible) { outline: 2px solid var(--ink); outline-offset: -2px; }
+.data-table td { padding: 0 10px; height: 52px; border-bottom: 1px solid var(--line); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.data-table .num { text-align: right; }
+.data-table .strong { font-weight: 600; color: var(--text-strong); }
+.data-table .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.data-table .warn { color: var(--warn-fg); font-weight: 600; }
+.data-table .unit { font-size: 12px; font-weight: 400; color: var(--text-muted); }
+.data-table .act { text-align: right; overflow: visible; }
+.data-table td.name { font-weight: 600; color: var(--text-strong); }
+.data-row { cursor: pointer; transition: background-color 150ms var(--ease-out); }
+.data-row:hover, .data-row:active { background: var(--surface-sunken); }
+.data-row:has(.row-link:focus-visible) { outline: 2px solid var(--ink); outline-offset: -2px; }
 .row-link { all: unset; cursor: pointer; }
 .row-link:focus-visible { text-decoration: underline; }
-.stock-table .tag { margin-left: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted);
+.data-table .tag { margin-left: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted);
   border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; vertical-align: 1px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 

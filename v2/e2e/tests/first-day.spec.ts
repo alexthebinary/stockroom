@@ -200,8 +200,5 @@ test("fresh install to a paid bill, with the books proved sound", async ({ brows
   await dark.goto("/bills");
   await shot(dark, "12-bills-dark");
 
-  // Test sheet: the barcode writer's WebAssembly must also run under the policy.
-  await dark.goto("/test-sheet");
-  await expect(dark.locator("svg").first()).toBeVisible();
   expect(blocked, "nothing blocked by the Content-Security-Policy").toEqual([]);
 });

@@ -9,7 +9,7 @@ import { get } from "../../lib/api";
 import type { Item } from "../../lib/types";
 import { Scanner } from "./Scanner";
 
-/** Point the camera at the test sheet and see what it reads. Nothing is saved. */
+/** Point the camera at a barcode and see what it reads. Nothing is saved. */
 export function Practice() {
   const items = useQuery({ queryKey: ["items"], queryFn: () => get<Item[]>("/items") });
   const [open, setOpen] = useState(false);
@@ -23,8 +23,8 @@ export function Practice() {
   return (
     <Stack>
       <PageHeader title="Practice scan" subtitle="Nothing you scan here is saved." />
-      <Coach id="practice" title="Try the test sheet">
-        Open the test sheet on another screen (or print it) and aim at each barcode. Hold steady about a hand's width away; good light helps more than getting closer.
+      <Coach id="practice" title="Try a scan">
+        Aim at any barcode, on a box or on another screen. Hold steady about a hand's width away; good light helps more than getting closer.
       </Coach>
       <Button size="xl" h={72} leftSection={<IconBarcode size={28} />} onClick={() => setOpen(true)}>
         Open scanner

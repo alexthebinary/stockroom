@@ -4,7 +4,7 @@ import { IconPlus, IconTruck } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Coach } from "../../components/Coach";
-import { Ruled, RuledRow } from "../../components/Ruled";
+import { DataTable } from "../../components/DataTable";
 import { plural, formatDate, Loading, Money, PageHeader, StatusBadge, toastErr, toastOk } from "../../components/ui";
 import { get, post } from "../../lib/api";
 import type { Bill, Item } from "../../lib/types";
@@ -52,39 +52,50 @@ export function BillDesk() {
       {tab === "unknown" ? (
         <UnknownItems rows={unknown.data ?? []} />
       ) : (
-        <Ruled label="Bills" empty={tab === "review" ? "Nothing to review. When the dock receives a delivery that isn't billed yet, its draft bill appears here." : "Nothing here."}>
-          {shown.map((b) => (
-            <RuledRow
-              key={b.id}
-              to={`/bills/${b.id}`}
-              title={
-                <>
-                  {b.vendor?.name ?? "Vendor not set"}
-                  <Text span c="dimmed" fw={400} size="sm">
-                    {" "}
-                    · {KIND[b.kind]}
-                  </Text>
-                </>
-              }
-              meta={
-                <>
-                  {b.number}
-                  {b.vendorInvoiceNumber ? ` · invoice ${b.vendorInvoiceNumber}` : ""}
-                  {b.status === "DRAFT" ? ` · ${b.source === "SCAN" ? "from the dock, " : ""}${plural(days(b.createdAt), "day")} old` : ` · due ${formatDate(b.dueDate)}`}
-                  {b.heldUnits ? ` · ${plural(b.heldUnits, "unit")} waiting` : ""}
-                </>
-              }
-              aside={
-                <>
-                  <Text fw={600}>
-                    <Money cents={b.status === "POSTED" ? b.openCents : b.totalCents} />
-                  </Text>
-                  <StatusBadge status={b.status} />
-                </>
-              }
-            />
-          ))}
-        </Ruled>
+        <DataTable
+          label="Bills"
+          rows={shown}
+          rowKey={(b) => b.id}
+          to={(b) => `/bills/${b.id}`}
+          empty={tab === "review" ? "Nothing to review. When the dock receives a delivery that isn't billed yet, its draft bill appears here." : "Nothing here."}
+          columns={[
+            { key: "number", label: "Bill", width: 130, primary: true, strong: true, render: (b) => b.number },
+            { key: "vendor", label: "Vendor", render: (b) => b.vendor?.name ?? "Vendor not set" },
+            { key: "kind", label: "Type", width: 130, render: (b) => KIND[b.kind] },
+            { key: "invoice", label: "Vendor invoice", width: 150, render: (b) => b.vendorInvoiceNumber ?? "—" },
+            { key: "when", label: "Due / age", width: 150, render: (b) => (b.status === "DRAFT" ? `${plural(days(b.createdAt), "day")} old` : formatDate(b.dueDate)) },
+            { key: "units", label: "Waiting", width: 100, align: "right", render: (b) => (b.heldUnits ? plural(b.heldUnits, "unit") : "—") },
+            { key: "status", label: "Status", width: 120, render: (b) => <StatusBadge status={b.status} /> },
+            { key: "amount", label: "Amount", width: 120, align: "right", strong: true, render: (b) => <Money cents={b.status === "POSTED" ? b.openCents : b.totalCents} /> },
+          ]}
+          phone={(b) => ({
+            title: (
+              <>
+                {b.vendor?.name ?? "Vendor not set"}
+                <Text span c="dimmed" fw={400} size="sm">
+                  {" "}
+                  · {KIND[b.kind]}
+                </Text>
+              </>
+            ),
+            meta: (
+              <>
+                {b.number}
+                {b.vendorInvoiceNumber ? ` · invoice ${b.vendorInvoiceNumber}` : ""}
+                {b.status === "DRAFT" ? ` · ${b.source === "SCAN" ? "from the dock, " : ""}${plural(days(b.createdAt), "day")} old` : ` · due ${formatDate(b.dueDate)}`}
+                {b.heldUnits ? ` · ${plural(b.heldUnits, "unit")} waiting` : ""}
+              </>
+            ),
+            aside: (
+              <>
+                <Text fw={600}>
+                  <Money cents={b.status === "POSTED" ? b.openCents : b.totalCents} />
+                </Text>
+                <StatusBadge status={b.status} />
+              </>
+            ),
+          })}
+        />
       )}
     </>
   );

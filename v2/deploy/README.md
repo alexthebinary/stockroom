@@ -78,7 +78,6 @@ The first build takes a few minutes. Then it prints the address:
 
 ```
 The app is at:   https://some-random-words.trycloudflare.com
-Test sheet:      https://some-random-words.trycloudflare.com/test-sheet   (open on a laptop, or print it)
 ```
 
 Everything runs in the background and restarts on its own, so you can close
@@ -112,9 +111,8 @@ the terminal. `./url.sh` prints the address again at any time.
    (company, a few team names such as *Demo Clerk* and *Demo Accounting*, then
    **Add minimal sample data**). The wizard runs only once, so testers land on
    *Who's working?* instead. There they tap a name or add themselves.
-2. **Send testers the link and the test sheet link.** They open the test sheet
-   on a laptop (or print it) and scan it with their phone:
-   *Receive a delivery*, then point the camera at the sheet. Whoever plays
+2. **Send testers the link.** They scan a barcode with their phone:
+   *Receive a delivery*, then point the camera at it. Whoever plays
    accounting opens the draft bill, adds freight, and *holds to post*.
 3. **Wipe it between rounds of testing:** `./reset.sh` (it backs up first,
    and the link stays the same), then do step 1 again.
