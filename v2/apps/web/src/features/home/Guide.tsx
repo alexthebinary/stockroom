@@ -40,6 +40,28 @@ export function Guide() {
       </Card>
       <Card withBorder>
         <Title order={3} mb="xs">
+          Stock: where things are
+        </Title>
+        <List spacing={4}>
+          <List.Item><b>Inventory</b> lists every item and bundle with on hand, awaiting bill and price. Tick rows to export them to CSV or build a bundle from them.</List.Item>
+          <List.Item><b>Warehouse Receipts</b> lists every WH-IN. Open one to see its order, vendor and the items counted.</List.Item>
+          <List.Item><b>Stock Adjustments</b> lists opening stock, gains and losses. Open one to see each line it moved.</List.Item>
+          <List.Item><b>Stocktake</b> (phone): pick the warehouse, scan or search items, type what you counted and Finish. Every difference posts as one adjustment number. Items you did not count are left alone.</List.Item>
+        </List>
+      </Card>
+      <Card withBorder>
+        <Title order={3} mb="xs">
+          Helpers that suggest, never post
+        </Title>
+        <List spacing={4}>
+          <List.Item><b>Reorder</b> (Reports, Purchases): items at or under their minimum, counting what is already on order. Tick rows and create one draft order per vendor.</List.Item>
+          <List.Item><b>Match to order</b> on a vendor bill: ordered, received and billed side by side, with a warning when a price is more than 1% off the order. It never blocks posting.</List.Item>
+          <List.Item><b>Unknown items</b> (Bills): the likely items for an unrecognised box are offered as one-tap matches. A person always confirms.</List.Item>
+          <List.Item><b>Help</b> answers common questions at once from the help pages, and links to the right screen.</List.Item>
+        </List>
+      </Card>
+      <Card withBorder>
+        <Title order={3} mb="xs">
           The books check
         </Title>
         <Text>Four comparisons run on demand (Reports): debits equal credits; inventory on hand equals stock at average cost, item by item; inventory in transit equals billed stock not yet arrived; Accounts Payable equals open bills, vendor by vendor.</Text>

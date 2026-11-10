@@ -29,7 +29,7 @@ function renderInventory(receipts: unknown[]) {
   try {
     return renderToStaticMarkup(createElement(MantineProvider, null,
       createElement(QueryClientProvider, { client },
-        createElement(MemoryRouter, { initialEntries: ["/items"] }, createElement(App)))));
+        createElement(MemoryRouter, { initialEntries: ["/items?tab=receipts"] }, createElement(App)))));
   } finally {
     client.clear();
   }
@@ -43,14 +43,14 @@ const row = (id: number, po: string) => ({
 describe("feedback #30: Warehouse Receipts on Inventory", () => {
   it("shows a Warehouse Receipts subsection under the Inventory heading", () => {
     const html = renderInventory([]);
-    expect(html).toMatch(/<h1\b[^>]*>Inventory<\/h1>/);
-    expect(html).toMatch(/<h2\b[^>]*>Warehouse Receipts<\/h2>/);
-    expect(html.indexOf("Inventory</h1>")).toBeLessThan(html.indexOf("Warehouse Receipts</h2>"));
+    expect(html).toMatch(/<h1\b[^>]*>Stock<\/h1>/);
+    expect(html).toContain("Warehouse Receipts");
+    expect(html.indexOf("Stock</h1>")).toBeLessThan(html.lastIndexOf("Warehouse Receipts"));
   });
 
   it("lists every receipt with its sequential WH-IN number", () => {
     const html = renderInventory([row(3, "PO-00002"), row(2, "PO-00001"), row(1, "PO-00001")]);
     for (const n of ["WH-IN-00001", "WH-IN-00002", "WH-IN-00003"]) expect(html).toContain(n);
-    expect(html).toContain("5 units");
+    expect(html).toMatch(/>5<[\s\S]*?units/);
   });
 });

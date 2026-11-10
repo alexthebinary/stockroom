@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MantineProvider } from "@mantine/core";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import type { Item } from "../../web/src/lib/types";
 
@@ -14,8 +15,12 @@ const item: Item = {
   weightKg: 2.5, lengthCm: 25.4, widthCm: 12.7, heightCm: 5.08,
 };
 
-const render = () => renderToStaticMarkup(createElement(MantineProvider, null,
-  createElement(EditItem, { item, facets: undefined, onSaved: async () => {} })));
+const render = () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  client.setQueryData(["vendors", "SUPPLIER"], []);
+  return renderToStaticMarkup(createElement(MantineProvider, null,
+    createElement(QueryClientProvider, { client }, createElement(EditItem, { item, facets: undefined, onSaved: async () => {} }))));
+};
 
 describe("item weight and dimensions in pounds and inches", () => {
   it("labels the edit form in lb and in, not kg and cm", () => {

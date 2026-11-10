@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MantineProvider } from "@mantine/core";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import type { Item } from "../../web/src/lib/types";
 import { ok, sampleCompany } from "./helpers";
@@ -35,8 +36,10 @@ describe("item serial and model numbers", () => {
   };
   for (const [label, value] of [["Serial number", "SN-001"], ["Model number", "MODEL-A"]]) {
     it(`shows ${label} as an editable text input on the item edit card`, () => {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+      client.setQueryData(["vendors", "SUPPLIER"], []);
       const html = renderToStaticMarkup(createElement(MantineProvider, null,
-        createElement(EditItem, { item, facets: undefined, onSaved: async () => {} })));
+        createElement(QueryClientProvider, { client }, createElement(EditItem, { item, facets: undefined, onSaved: async () => {} }))));
       const labelTag = html.match(new RegExp(`<label[^>]*for="([^"]+)"[^>]*>${label}</label>`));
       expect(labelTag, `${label} label`).not.toBeNull();
       const input = html.match(new RegExp(`<input[^>]*id="${labelTag![1]}"[^>]*>`))?.[0];

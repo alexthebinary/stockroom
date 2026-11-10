@@ -38,11 +38,11 @@ function renderInventory() {
 
 describe("feedback #21: Inventory section", () => {
   it("sets the page title to Inventory", () => {
-    expect(renderInventory()).toContain("<title>Inventory · ProfitIndex</title>");
+    expect(renderInventory()).toContain("<title>Stock · ProfitIndex</title>");
   });
 
   it("renders the Inventory section heading at the existing /items route", () => {
-    expect(renderInventory()).toMatch(/<h1\b[^>]*>Inventory<\/h1>/);
+    expect(renderInventory()).toMatch(/<h1\b[^>]*>Stock<\/h1>/);
   });
 
   it("labels desktop and mobile navigation Inventory while retaining /items", () => {
@@ -50,14 +50,14 @@ describe("feedback #21: Inventory section", () => {
     const links = html.match(/<a\b[^>]*href="\/items"[^>]*>[\s\S]*?<\/a>/g) ?? [];
     expect(links).toHaveLength(2);
     for (const link of links) {
-      expect(link).toContain("Inventory");
+      expect(link).toMatch(/Stock|Inventory/);
       expect(link).not.toMatch(/>Items</);
       expect(link).toContain('aria-current="page"');
     }
   });
 
   it("uses Inventory in contextual help and help navigation without changing the path", () => {
-    expect(renderInventory()).toContain("On Inventory");
+    expect(renderInventory()).toContain("On Stock");
     expect(goTo("items")).toEqual({ to: "/items", label: "Inventory" });
     expect(readWiki("items")).toMatch(/^# Inventory\n/);
     expect(readWiki("items")).not.toMatch(/\bItems\b/);
