@@ -73,7 +73,7 @@ export function Items() {
         label="Inventory"
         rows={items.data ?? []}
         rowKey={(i) => i.id}
-        empty={items.data ? `No items match${brand || category || debounced ? " these filters" : " yet"}.` : <Loading />}
+        empty={items.data ? (brand || category || debounced ? "No items match these filters." : <><div>No items yet. Add one, or import a CSV.</div><Button size="compact-md" mt="sm" onClick={() => setAdding(true)}>+ Add item</Button></>) : <Loading />}
         onOpen={(i) => (i.isBundle ? setBundleForm(i) : setEditing(i))}
         selectable={{
           filename: "stock-selected.csv",

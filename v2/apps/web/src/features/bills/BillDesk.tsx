@@ -186,7 +186,7 @@ function UnknownCard({ row, busy, onSuggest, onChoose }: { row: UnknownRow; busy
   const body = suggestions.data ?? null;
   const list = body?.suggestions ?? [];
   return (
-    <Card withBorder>
+    <Card withBorder className="section">
       <Text fw={600}>{row.name ?? "No description"}</Text>
       <Text size="sm" c="dimmed">
         Code {row.code ?? "—"} · {plural(row.qty, "unit")} · scanned by {row.startedBy} {formatDate(row.submittedAt)}

@@ -20,7 +20,7 @@ export function Guide() {
           </Card>
         ))}
       </SimpleGrid>
-      <Card withBorder>
+      <Card withBorder className="section">
         <Title order={3} mb="xs">
           When the boxes arrive before the bill
         </Title>
@@ -28,7 +28,7 @@ export function Guide() {
           The clerk scans them anyway. They are counted and visible as <b>awaiting bill</b>, but not sellable and not valued, because only a bill may create the financial entry. A draft bill is made from what arrived; when accounting posts it, the units land in stock at their landed cost — automatically, in the same moment.
         </Text>
       </Card>
-      <Card withBorder>
+      <Card withBorder className="section">
         <Title order={3} mb="xs">
           Average cost
         </Title>
@@ -38,7 +38,7 @@ export function Guide() {
           <List.Item>Returns leave at average cost; if the vendor credits a different amount, the difference goes to cost of goods sold.</List.Item>
         </List>
       </Card>
-      <Card withBorder>
+      <Card withBorder className="section">
         <Title order={3} mb="xs">
           Stock: where things are
         </Title>
@@ -49,7 +49,7 @@ export function Guide() {
           <List.Item><b>Stock count</b> (phone): pick the warehouse, scan or search items, type what you counted and Finish. Every difference posts as one adjustment number. Items you did not count are left alone.</List.Item>
         </List>
       </Card>
-      <Card withBorder>
+      <Card withBorder className="section">
         <Title order={3} mb="xs">
           Helpers that suggest, never post
         </Title>
@@ -60,7 +60,7 @@ export function Guide() {
           <List.Item><b>Help</b> answers common questions at once from the help pages, and links to the right screen.</List.Item>
         </List>
       </Card>
-      <Card withBorder>
+      <Card withBorder className="section">
         <Title order={3} mb="xs">
           The books check
         </Title>

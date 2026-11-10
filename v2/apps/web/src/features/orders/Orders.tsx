@@ -86,7 +86,7 @@ export function Orders() {
         rowKey={(po) => po.id}
         to={(po) => `/orders/${po.id}`}
         selectable={{ filename: "orders-selected.csv", csv: (po) => ({ Order: po.number, Vendor: po.vendor?.name, Created: formatDate(po.createdAt), By: po.createdBy, Billing: po.billingStatus, Payment: po.paymentStatus, Receiving: po.receivingStatus, Total: ((po.totalEstimateCents ?? 0) / 100).toFixed(2) }) }}
-        empty={orders.data.length ? "No orders match these filters" : "No orders yet. Create one, or let the dock open one by scanning a surprise delivery."}
+        empty={orders.data.length ? "No orders match these filters." : <><div>No orders yet. Create one, or let the dock open one by scanning a surprise delivery.</div><Button component={Link} to="/orders/new" size="compact-md" mt="sm">New purchase order</Button></>}
         columns={[
           { key: "number", label: "Order", width: 130, primary: true, strong: true, render: (po) => po.number },
           { key: "vendor", label: "Vendor", render: (po) => po.vendor?.name ?? "Vendor not set" },
@@ -199,7 +199,7 @@ export function OrderDetail() {
     <Stack gap="lg">
       <PageHeader back={{ to: "/orders", label: "Orders" }} title={p.number} subtitle={`${p.vendor?.name ?? "Vendor not set"} · to ${p.warehouse.name} · ${p.source === "SCAN" ? "opened at the dock" : `by ${p.createdBy}`}`} action={<Axes po={p} />} />
       {p.notes ? <Text c="dimmed">{p.notes}</Text> : null}
-      <Card withBorder>
+      <Card withBorder className="section">
         <Table.ScrollContainer minWidth={560}>
           <Table>
             <Table.Thead>
@@ -238,7 +238,7 @@ export function OrderDetail() {
         </Table.ScrollContainer>
       </Card>
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
-        <Card withBorder>
+        <Card withBorder className="section">
           <Title order={3} mb="xs">
             Bills
           </Title>
@@ -259,7 +259,7 @@ export function OrderDetail() {
             </Button>
           ) : null}
         </Card>
-        <Card withBorder>
+        <Card withBorder className="section">
           <Title order={3} mb="xs">
             Warehouse receipts
           </Title>

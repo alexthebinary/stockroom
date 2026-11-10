@@ -174,7 +174,7 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
         Posting books Dr Inventory / Cr Accounts Payable for the total, with freight spread over the lines (by value unless you choose quantity). Units the dock is holding for this bill become sellable stock at that landed cost, in the same moment.
       </Coach>
 
-      <Card withBorder>
+      <Card withBorder className="section">
         <Title order={3} mb="sm">
           Vendor and invoice
         </Title>
@@ -196,7 +196,7 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
         </Group>
       </Card>
 
-      <Card withBorder>
+      <Card withBorder className="section">
         <Title order={3} mb="sm">
           Lines
         </Title>
@@ -237,7 +237,7 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
 
       <MatchPanel match={bill.match} current={form.lines.map((l) => ({ billLineId: l.id, qty: l.qty, unitCostCents: parseUsd(l.unitCost) }))} />
 
-      <Card withBorder>
+      <Card withBorder className="section">
         <Title order={3} mb="sm">
           Freight on this bill
         </Title>
@@ -255,7 +255,7 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
         </Text>
       </Card>
 
-      <Card withBorder>
+      <Card withBorder className="section">
         <Title order={3} mb="sm">
           What will be booked
         </Title>
@@ -364,7 +364,7 @@ function DraftFreightBill({ bill }: { bill: FullBill }) {
   return (
     <Stack gap="lg">
       <PageHeader title={`${bill.kind === "FREIGHT_IN" ? "Freight-in" : "Freight-out"} ${bill.number}`} subtitle={bill.kind === "FREIGHT_IN" ? "Added to the cost of the goods it brought in (GAAP: freight-in is part of inventory cost)." : "Shipping to customers: an expense, not inventory."} action={<StatusBadge status="DRAFT" />} />
-      <Card withBorder>
+      <Card withBorder className="section">
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <Select label="Carrier" data={(carriers.data ?? []).map((v) => ({ value: String(v.id), label: v.name }))} value={form.vendorId} onChange={(v) => setForm({ ...form, vendorId: v })} searchable />
           <TextInput label="Carrier's invoice number" value={form.invoice} onChange={(e) => setForm({ ...form, invoice: e.currentTarget.value })} />
@@ -379,7 +379,7 @@ function DraftFreightBill({ bill }: { bill: FullBill }) {
         ) : null}
       </Card>
       {bill.kind === "FREIGHT_IN" && preview.data?.length ? (
-        <Card withBorder>
+        <Card withBorder className="section">
           <Text fw={600} mb="xs">
             Spread (as last saved)
           </Text>
@@ -510,7 +510,7 @@ function PostedBill({ bill }: { bill: FullBill }) {
         </Group>
       ) : null}
       {voiding && bill.status === "POSTED" ? (
-        <Card withBorder>
+        <Card withBorder className="section">
           <Text size="sm" mb="sm" maw="68ch">
             Voiding reverses the bill's entry. Stock it brought in goes back to "awaiting a bill" and a fresh draft is made for it. Not possible once it's paid, credited, or its stock has been used — use a vendor credit then.
           </Text>
@@ -522,7 +522,7 @@ function PostedBill({ bill }: { bill: FullBill }) {
 
       </aside>
       <div className="detail-main">
-      <Card withBorder>
+      <Card withBorder className="section">
         <Title order={3} mb="sm">
           Lines
         </Title>
@@ -555,7 +555,7 @@ function PostedBill({ bill }: { bill: FullBill }) {
       {bill.status === "POSTED" ? <MatchPanel match={bill.match} /> : null}
 
       {bill.payments.length || bill.credits.length ? (
-        <Card withBorder>
+        <Card withBorder className="section">
           <Title order={3} mb="sm">
             Payments and credits
           </Title>
@@ -642,7 +642,7 @@ function PostedBill({ bill }: { bill: FullBill }) {
         </Card>
       ) : null}
 
-      <Card withBorder>
+      <Card withBorder className="section">
         <Title order={3} mb="sm">
           In the ledger
         </Title>

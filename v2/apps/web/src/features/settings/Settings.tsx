@@ -83,7 +83,7 @@ function Places() {
   const vendors = useQuery({ queryKey: ["vendors"], queryFn: () => get<Vendor[]>("/vendors") });
   return (
     <Stack>
-      <Card withBorder>
+      <Card withBorder className="section">
         <Text fw={600} mb="xs">
           Warehouses
         </Text>
@@ -100,7 +100,7 @@ function Places() {
           </Button>
         </Group>
       </Card>
-      <Card withBorder>
+      <Card withBorder className="section">
         <Text fw={600} mb="xs">
           Vendors
         </Text>
@@ -144,7 +144,7 @@ function Accounts() {
   const usable = (accounts.data ?? []).filter((a) => !a.isHeader && a.isActive).map((a) => ({ value: String(a.id), label: `${a.code} ${a.name}` }));
   return (
     <Stack>
-      <Card withBorder>
+      <Card withBorder className="section">
         <Text fw={600}>Account assignment</Text>
         <Text size="sm" c="dimmed" mb="sm">
           Which account each kind of posting lands in. Inventory always posts to 1200 Inventory Asset (locked): the books check compares it to the stock records.
@@ -164,7 +164,7 @@ function Accounts() {
           ))}
         </Stack>
       </Card>
-      <Card withBorder>
+      <Card withBorder className="section">
         <Text fw={600} mb="xs">
           Chart of accounts
         </Text>
@@ -238,7 +238,7 @@ function Company() {
           </Button>
         </Alert>
       ) : null}
-      <Card withBorder>
+      <Card withBorder className="section">
         <Text fw={600} mb="xs">
           Test companies
         </Text>
