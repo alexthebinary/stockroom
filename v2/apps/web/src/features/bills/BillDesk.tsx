@@ -102,36 +102,53 @@ export function BillDesk() {
   );
 }
 
-function UnknownItems({ rows }: { rows: { sessionId: number; code: string | null; name: string | null; qty: number; startedBy: string; submittedAt: string }[] }) {
+type UnknownRow = { sessionId: number; code: string | null; name: string | null; qty: number; startedBy: string; submittedAt: string };
+type Suggestion = { itemId: number; name: string; reason: string };
+type SuggestionBody = { judgmentId: number | null; suggestions: Suggestion[] };
+
+function UnknownItems({ rows }: { rows: UnknownRow[] }) {
   const items = useQuery({ queryKey: ["items"], queryFn: () => get<Item[]>("/items") });
   const queryClient = useQueryClient();
-  const [mapping, setMapping] = useState<(typeof rows)[number] | null>(null);
+  const [mapping, setMapping] = useState<{ row: UnknownRow; judgmentId: number | null; suggestedIds: number[] } | null>(null);
   const [itemId, setItemId] = useState<string | null>(null);
-  const resolve = async () => {
-    if (!mapping) return;
+  const [busy, setBusy] = useState(false);
+  const match = async (row: UnknownRow, chosenId: number, judgmentId: number | null, suggestedIds: number[]) => {
+    if (busy) return;
+    setBusy(true);
     try {
-      await post(`/scan-sessions/${mapping.sessionId}/resolve`, { code: mapping.code, name: mapping.name, itemId: Number(itemId), learn: mapping.code != null });
+      await post(`/scan-sessions/${row.sessionId}/resolve`, { code: row.code, name: row.name, itemId: chosenId, learn: row.code != null });
+      if (judgmentId != null) {
+        const outcome = suggestedIds.includes(chosenId) ? "ACCEPTED" : "CORRECTED";
+        try {
+          await post(`/ai/judgments/${judgmentId}/outcome`, { outcome, value: { itemId: chosenId } });
+        } catch {
+          // The match is already saved. A missed note must not look like a failed match.
+        }
+      }
       toastOk("Matched. The barcode is learned and the units are on their order.");
       setMapping(null);
       setItemId(null);
       queryClient.invalidateQueries();
     } catch (error) {
       toastErr(error);
+    } finally {
+      setBusy(false);
     }
   };
   if (rows.length === 0) return <Text c="dimmed">No unknown items. Everything scanned matched the catalog.</Text>;
   return (
     <SimpleGrid cols={{ base: 1, sm: 2 }}>
-      {rows.map((r, i) => (
-        <Card key={i} withBorder>
-          <Text fw={600}>{r.name ?? "No description"}</Text>
-          <Text size="sm" c="dimmed">
-            Code {r.code ?? "—"} · {plural(r.qty, "unit")} · scanned by {r.startedBy} {formatDate(r.submittedAt)}
-          </Text>
-          <Button mt="sm" variant="light" onClick={() => setMapping(r)} leftSection={<IconPlus size={16} />}>
-            Match to an item
-          </Button>
-        </Card>
+      {rows.map((row, i) => (
+        <UnknownCard
+          key={i}
+          row={row}
+          busy={busy}
+          onSuggest={(suggestion, body) => match(row, suggestion.itemId, body.judgmentId, body.suggestions.map((s) => s.itemId))}
+          onChoose={(body) => {
+            setItemId(null);
+            setMapping({ row, judgmentId: body?.judgmentId ?? null, suggestedIds: body?.suggestions.map((s) => s.itemId) ?? [] });
+          }}
+        />
       ))}
       <Modal opened={mapping != null} onClose={() => setMapping(null)} title="Match to an item">
         <Stack>
@@ -142,11 +159,53 @@ function UnknownItems({ rows }: { rows: { sessionId: number; code: string | null
           <Text size="xs" c="dimmed">
             Serial-tracked items need each unit's serial: receive those through a new delivery.
           </Text>
-          <Button onClick={resolve} disabled={!itemId}>
+          <Button onClick={() => mapping && itemId && match(mapping.row, Number(itemId), mapping.judgmentId, mapping.suggestedIds)} disabled={!itemId || busy}>
             Match
           </Button>
         </Stack>
       </Modal>
     </SimpleGrid>
+  );
+}
+
+function UnknownCard({ row, busy, onSuggest, onChoose }: { row: UnknownRow; busy: boolean; onSuggest: (suggestion: Suggestion, body: SuggestionBody) => void; onChoose: (body: SuggestionBody | null) => void }) {
+  const params = new URLSearchParams({ sessionId: String(row.sessionId) });
+  if (row.code) params.set("code", row.code);
+  if (row.name) params.set("name", row.name);
+  const suggestions = useQuery({
+    queryKey: ["unknown-suggestions", row.sessionId, row.code, row.name],
+    retry: false,
+    queryFn: async (): Promise<SuggestionBody> => {
+      try {
+        return await get<SuggestionBody>(`/ai/unknown-suggestions?${params.toString()}`);
+      } catch {
+        return { judgmentId: null, suggestions: [] };
+      }
+    },
+  });
+  const body = suggestions.data ?? null;
+  const list = body?.suggestions ?? [];
+  return (
+    <Card withBorder>
+      <Text fw={600}>{row.name ?? "No description"}</Text>
+      <Text size="sm" c="dimmed">
+        Code {row.code ?? "—"} · {plural(row.qty, "unit")} · scanned by {row.startedBy} {formatDate(row.submittedAt)}
+      </Text>
+      <Stack gap="xs" mt="sm">
+        {list.map((suggestion) => (
+          <div key={suggestion.itemId}>
+            <Button variant="light" disabled={busy} onClick={() => body && onSuggest(suggestion, body)}>
+              Match to {suggestion.name}
+            </Button>
+            <Text size="xs" c="dimmed">
+              {suggestion.reason}
+            </Text>
+          </div>
+        ))}
+        <Button variant="light" disabled={busy} onClick={() => onChoose(body)} leftSection={<IconPlus size={16} />}>
+          Match to an item
+        </Button>
+      </Stack>
+    </Card>
   );
 }

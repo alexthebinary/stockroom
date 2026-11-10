@@ -615,3 +615,19 @@ model FeedbackTurn {
 
   @@index([feedbackId])
 }
+
+/// One typed Jev judgment. question is a catalog key (unknown_item_match).
+/// band: HIGH | MEDIUM | NONE. outcome: PENDING | ACCEPTED | CORRECTED | IGNORED.
+model AiJudgment {
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  question     String
+  subject      String
+  suggestion   Json
+  band         String
+  outcome      String   @default("PENDING")
+  outcomeValue Json?
+  actor        String?
+  latencyMs    Int
+  model        String
+}

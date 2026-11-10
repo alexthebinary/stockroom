@@ -28,8 +28,9 @@ declare module "fastify" {
   }
 }
 
-/** db is the request's company (see companies.ts); companies is null in tests and single-company installs. */
-export type Deps = { db: Db; reader: Reader | null; clarifier?: Clarifier | null; helpModel?: HelpModel | null; jevHelp?: JevHelp | null; companies?: Companies | null };
+/** db is the request's company (see companies.ts); companies is null in tests and single-company installs.
+ *  typesafeApiKey and judgeFetch inject Jev for judge(). Omit the key to read the env or the key file. */
+export type Deps = { db: Db; reader: Reader | null; clarifier?: Clarifier | null; helpModel?: HelpModel | null; jevHelp?: JevHelp | null; companies?: Companies | null; typesafeApiKey?: string | null; judgeFetch?: typeof fetch };
 
 const OPEN_WITHOUT_PROFILE = ["/api/companies", "/api/setup", "/api/profiles", "/api/health", "/api/feedback"];
 
