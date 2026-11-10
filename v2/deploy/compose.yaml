@@ -45,6 +45,8 @@ services:
       NOTIFY_URL: ${NOTIFY_URL:-}
       CLARIFY_URL: ${CLARIFY_URL:-}
       CLARIFY_SECRET: ${CLARIFY_SECRET:-}
+      # Jev (TypeSafe) picks an instant help answer card; unset = help always uses the model.
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
       # local-llm (llama-server on the Dell) was retired 2026-11-09. Help uses the clarify Worker when CLARIFY_URL and CLARIFY_SECRET are set.
       LOCAL_LLM_URL: ${LOCAL_LLM_URL:-}
       AUTO_TOKEN: ${AUTO_TOKEN:-}

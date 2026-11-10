@@ -1,6 +1,6 @@
 // A fake camera feed for Chromium: the sample widget's barcode on white for
 // 3 s, then an empty frame for 2 s, looping. Same barcode library the app
-// uses for its printable test sheet, so the e2e scans what a person would.
+// uses for its printable barcodes, so the e2e scans what a person would.
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";

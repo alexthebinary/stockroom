@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { createClarifier, withFallback } from "./ai/clarifier";
 import { createLocalClarifier } from "./ai/local-clarifier";
 import { createCloudHelpModel, createLocalHelpModel } from "./ai/help";
+import { createJevHelp } from "./ai/jev";
 import { createReader } from "./ai/reader";
 import { buildApp } from "./app";
 import { Companies } from "./companies";
@@ -22,6 +23,7 @@ const app = buildApp({
   helpModel: process.env.CLARIFY_URL && process.env.CLARIFY_SECRET
     ? createCloudHelpModel(process.env.CLARIFY_URL, process.env.CLARIFY_SECRET)
     : process.env.LOCAL_LLM_URL ? createLocalHelpModel(process.env.LOCAL_LLM_URL) : null,
+  jevHelp: process.env.TYPESAFE_API_KEY ? createJevHelp(process.env.TYPESAFE_API_KEY) : null,
   clarifier: withFallback(createClarifier(), process.env.LOCAL_LLM_URL ? createLocalClarifier(process.env.LOCAL_LLM_URL) : null),
 });
 

@@ -8,7 +8,7 @@ import { createItem } from "./routes/catalog";
  * makes the first PO, scan, bill and payment themselves.
  *
  * The barcodes are valid GS1 check digits in the 0-12345 demonstration range,
- * printed on the in-app test sheet so a phone can scan them off a screen.
+ * scanned by phone off a screen or printout.
  */
 export const SAMPLE = {
   warehouse: { code: "MAIN", name: "Main warehouse" },

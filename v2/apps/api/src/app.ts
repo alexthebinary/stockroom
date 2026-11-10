@@ -2,6 +2,7 @@ import { DERIVED, DomainError, MACHINES } from "@pi/domain";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { Clarifier } from "./ai/clarifier";
 import type { HelpModel } from "./ai/help";
+import type { JevHelp } from "./ai/jev";
 import type { Reader } from "./ai/reader";
 import { type Companies, scopedDb } from "./companies";
 import type { Db } from "./db";
@@ -28,7 +29,7 @@ declare module "fastify" {
 }
 
 /** db is the request's company (see companies.ts); companies is null in tests and single-company installs. */
-export type Deps = { db: Db; reader: Reader | null; clarifier?: Clarifier | null; helpModel?: HelpModel | null; companies?: Companies | null };
+export type Deps = { db: Db; reader: Reader | null; clarifier?: Clarifier | null; helpModel?: HelpModel | null; jevHelp?: JevHelp | null; companies?: Companies | null };
 
 const OPEN_WITHOUT_PROFILE = ["/api/companies", "/api/setup", "/api/profiles", "/api/health", "/api/feedback"];
 

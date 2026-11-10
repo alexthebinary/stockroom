@@ -25,7 +25,7 @@ const chatBody = z.object({
   route: z.string().max(200).startsWith("/").default("/"),
 });
 
-export function registerHelp(app: FastifyInstance, { db, helpModel }: Deps) {
+export function registerHelp(app: FastifyInstance, { db, helpModel, jevHelp }: Deps) {
   const hit = createHelpRateLimit();
   app.get("/api/help/status", async () => ({ configured: Boolean(helpModel) }));
   for (const stream of [false, true]) {
@@ -37,6 +37,11 @@ export function registerHelp(app: FastifyInstance, { db, helpModel }: Deps) {
         return sendError(reply, 429, "A lot of questions came from this device. Try again in a few minutes.");
       }
       const run = async (emit?: Parameters<typeof chat>[2]): Promise<HelpResult> => {
+        // A first question that matches a documented topic gets its answer card at once; the rest go to the model.
+        if (jevHelp && input.messages.length === 1) {
+          const card = await jevHelp(input.messages[0]!.content, input.route);
+          if (card) return card;
+        }
         const result = await chat(helpModel, input, emit);
         if (result.unanswered) {
           const feedback = await db.feedback.create({ data: {
