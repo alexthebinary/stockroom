@@ -1,5 +1,5 @@
 import { ActionIcon, Alert, Anchor, Autocomplete, Badge, Button, Card, FileButton, Group, Input, Modal, NumberInput, Select, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
-import { useDebouncedValue } from "@mantine/hooks";
+import { useDebouncedValue, useMediaQuery } from "@mantine/hooks";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
@@ -28,6 +28,7 @@ export function Items() {
   const [bundleForm, setBundleForm] = useState<Item | "new" | null>(null);
   const [shipping, setShipping] = useState<Item | null>(null);
   const [debounced] = useDebouncedValue(search, 250);
+  const wide = useMediaQuery("(min-width: 900px)") ?? true;
   const facets = useQuery({ queryKey: ["item-facets"], queryFn: () => get<Facets>("/items/facets") });
   const query = new URLSearchParams();
   if (debounced) query.set("search", debounced);
@@ -67,7 +68,49 @@ export function Items() {
           <Select aria-label="Category" placeholder="All categories" data={facets.data?.categories ?? []} value={category} onChange={setCategory} clearable searchable />
         </Group>
       </Stack>
-      {items.error ? <Problem error={items.error} retry={() => items.refetch()} /> : (
+      {items.error ? <Problem error={items.error} retry={() => items.refetch()} /> : wide ? (
+      <table className="stock-table">
+        <caption className="visually-hidden">Inventory</caption>
+        <thead>
+          <tr>
+            <th scope="col">Item</th>
+            <th scope="col">SKU</th>
+            <th scope="col">Brand</th>
+            <th scope="col">Category</th>
+            <th scope="col" className="num">On hand</th>
+            <th scope="col" className="num">Awaiting bill</th>
+            <th scope="col" className="num">Price</th>
+            <th scope="col"><span className="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {(items.data ?? []).map((i) => {
+            const v = valuation.data?.rows.find((r) => r.itemId === i.id);
+            const open = () => (i.isBundle ? setBundleForm(i) : setEditing(i));
+            const count = i.isBundle ? (i.available ?? 0) : (v?.onHand ?? 0);
+            const parts = i.isBundle ? i.components?.map((c) => `${c.qty}× ${c.name}`).join(" + ") : "";
+            return (
+              <tr key={i.id} className="stock-row" onClick={open}>
+                <td className="name" title={parts ? `${i.name}: ${parts}` : i.name}>
+                  <button type="button" className="row-link" onClick={(e) => { e.stopPropagation(); open(); }} aria-label={`Edit ${i.name}`}>{i.name}</button>
+                  {i.isBundle ? <span className="tag">Bundle</span> : null}
+                </td>
+                <td className="mono" title={i.sku}>{i.sku}</td>
+                <td title={i.brand ?? ""}>{i.brand ?? "—"}</td>
+                <td title={i.category ?? ""}>{i.category ?? "—"}</td>
+                <td className="num strong">{count}{i.isBundle ? <span className="unit"> avail.</span> : null}</td>
+                <td className={`num${!i.isBundle && v?.held ? " warn" : ""}`}>{!i.isBundle && v?.held ? v.held : "—"}</td>
+                <td className="num">{i.priceCents != null ? `$${(i.priceCents / 100).toFixed(2)}` : "—"}</td>
+                <td className="act">
+                  {i.isBundle ? <Button size="compact-sm" variant="light" onClick={(e) => { e.stopPropagation(); setShipping(i); }} aria-label={`Ship ${i.name}`}>Ship</Button> : null}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+        {items.data && items.data.length === 0 ? <tfoot><tr><td colSpan={8} className="ruled-empty">{`No items match${brand || category || debounced ? " these filters" : " yet"}.`}</td></tr></tfoot> : null}
+      </table>
+      ) : (
       <Ruled label="Inventory" empty={items.data ? `No items match${brand || category || debounced ? " these filters" : " yet"}.` : <Loading />}>
         {(items.data ?? []).map((i) => {
           const v = valuation.data?.rows.find((r) => r.itemId === i.id);
