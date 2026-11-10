@@ -1,5 +1,5 @@
 import { formatUsd } from "@pi/domain";
-import { Alert, Badge, Button, Center, Group, Loader, Stack, Text, Title } from "@mantine/core";
+import { Alert, Button, Group, Skeleton, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle, IconCheck, IconCircleDashed, IconClockHour4 } from "@tabler/icons-react";
 import { type ReactNode, useEffect, useState } from "react";
@@ -54,7 +54,7 @@ export function Stat({ label, value, signal, hint }: { label: string; value: Rea
 
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: ReactNode; action?: ReactNode }) {
   return (
-    <Group justify="space-between" align="flex-start" mb="lg" gap="sm">
+    <Group className="page-header" justify="space-between" align="flex-start" gap="sm">
       <Stack gap={4} style={{ minWidth: 0, flex: "1 1 260px" }}>
         <Title order={1}>{title}</Title>
         {subtitle ? (
@@ -109,19 +109,32 @@ export function ReceivingBadge({ status, held }: { status: string; held?: number
   return <StatusBadge status={status} />;
 }
 
+/** Placeholder rows in the shape of a list, so the page keeps its layout while it loads. */
 export function Loading() {
   return (
-    <Center py="xl">
-      <Loader />
-    </Center>
+    <div className="skeleton-page" role="status" aria-label="Loading">
+      <Skeleton height={20} width="38%" radius="sm" />
+      {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} height={44} radius="sm" opacity={1 - i * 0.14} />)}
+    </div>
   );
 }
 
 export function Problem({ error, retry }: { error: unknown; retry?: () => void }) {
+  const message = error instanceof Error ? error.message : String(error);
+  // A record that does not exist is not a failed load: say so, and offer the way back.
+  if (/not found/i.test(message)) {
+    return (
+      <Stack gap="xs" align="flex-start" py="xl" role="alert">
+        <Title order={2}>We couldn't find that</Title>
+        <Text c="dimmed" maw="52ch">It may have been removed, or the link is wrong. {message}.</Text>
+        <Button component="a" href="/" variant="default">Back to Home</Button>
+      </Stack>
+    );
+  }
   return (
     <Alert color="orange" icon={<IconAlertTriangle size={18} />} title="That didn't load">
       <Stack gap="xs" align="flex-start">
-        <Text size="sm">{error instanceof Error ? error.message : String(error)}</Text>
+        <Text size="sm">{message}</Text>
         {retry ? (
           <Button size="xs" variant="light" onClick={retry}>
             Try again

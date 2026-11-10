@@ -32,7 +32,11 @@ export const theme = createTheme({
   autoContrast: true,
   colors: { ink, lime },
   fontFamily: "'Funnel Sans Variable', system-ui, -apple-system, sans-serif",
-  headings: { fontWeight: "600", sizes: { h1: { fontSize: "28px" }, h2: { fontSize: "22px" }, h3: { fontSize: "18px" } } },
+  // One scale: 4/8/12/16/24/32/48 spacing, a 1.25 ratio for type (12 14 16 20 25 31), line-height 1.5.
+  spacing: { xs: "8px", sm: "12px", md: "16px", lg: "24px", xl: "32px" },
+  fontSizes: { xs: "12px", sm: "14px", md: "16px", lg: "20px", xl: "25px" },
+  lineHeights: { xs: "1.4", sm: "1.5", md: "1.5", lg: "1.4", xl: "1.3" },
+  headings: { fontWeight: "600", sizes: { h1: { fontSize: "31px", lineHeight: "1.2" }, h2: { fontSize: "25px", lineHeight: "1.25" }, h3: { fontSize: "20px", lineHeight: "1.3" } } },
   defaultRadius: "md",
   cursorType: "pointer",
   components: {
@@ -41,6 +45,9 @@ export const theme = createTheme({
     Badge: { defaultProps: { radius: "sm", variant: "light" } },
     Anchor: { defaultProps: { c: "var(--text-strong)", underline: "always" } },
     Progress: { defaultProps: { color: "lime.4" } },
+    Modal: { defaultProps: { transitionProps: { duration: 180, timingFunction: "cubic-bezier(0.23, 1, 0.32, 1)" } } },
+    Drawer: { defaultProps: { transitionProps: { duration: 220, timingFunction: "cubic-bezier(0.23, 1, 0.32, 1)" } } },
+    Menu: { defaultProps: { transitionProps: { duration: 120, transition: "pop" } } },
   },
 });
 

@@ -1,5 +1,8 @@
 /* Tokens. Light first; dark follows Mantine's own scheme attribute. */
 :root {
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px; --space-7: 48px;
+  --text-xs: 12px; --text-sm: 14px; --text-md: 16px; --text-lg: 20px; --text-xl: 25px; --text-2xl: 31px;
+  --phi: 1.618;
   --surface: #fafaf7;
   --surface-sunken: #f0f1ec;
   --surface-border: #dcded6;
@@ -86,7 +89,7 @@ a { text-underline-offset: 3px; }
 
 /* ── Ruled rows: lists read like a datasheet, not a pile of cards. ── */
 .ruled { border-top: 1px solid var(--ink); }
-.ruled-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: center; padding: 14px 4px; min-height: 64px;
+.ruled-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: center; padding: var(--space-4) var(--space-2); min-height: 64px;
   border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; transition: background-color 150ms var(--ease-out); }
 a.ruled-row:hover { background: var(--surface-sunken); }
 a.ruled-row:active, .ruled-row:has(.row-open:active) { background: var(--surface-sunken); }
@@ -218,7 +221,7 @@ a.ruled-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px;
 /* ── Data table: one line per row on a wide screen (phones get the two-line ruled rows). Used by DataTable. ── */
 .data-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .data-table thead th { text-align: left; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted);
-  padding: 10px 10px; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); white-space: nowrap; }
+  padding: var(--space-3); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); white-space: nowrap; }
 .data-table td { padding: 0 10px; height: 52px; border-bottom: 1px solid var(--line); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .data-table .num { text-align: right; }
 .data-table .strong { font-weight: 600; color: var(--text-strong); }
@@ -240,8 +243,8 @@ a.ruled-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px;
 .mantine-Card-root:has(.mantine-Table-table) { border: 0; background: transparent; padding: 0; box-shadow: none; }
 .mantine-Table-table { font-variant-numeric: tabular-nums; }
 .mantine-Table-th { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted);
-  padding: 10px 10px; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); white-space: nowrap; }
-.mantine-Table-td { padding: 14px 10px; color: var(--text); overflow-wrap: anywhere; }
+  padding: var(--space-3); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); white-space: nowrap; }
+.mantine-Table-td { padding: var(--space-4) var(--space-3); color: var(--text); overflow-wrap: anywhere; }
 .mantine-Table-tr:hover .mantine-Table-td { background: var(--surface-sunken); }
 
 /* Press feedback: buttons dip slightly under a finger or click. Off for reduced motion. */
@@ -321,3 +324,18 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 .guide-next { padding-top: 12px; border-top: 1px solid var(--line); }
 .ask-help { display: flex; flex-direction: column; gap: 10px; }
 .ask-answer { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-left: 3px solid var(--signal); background: var(--surface-sunken); border-radius: 0 8px 8px 0; margin-top: 6px; max-width: 70ch; }
+
+/* Flow: each route fades up on arrival; the page header gap is fixed; rows respond to hover and press. */
+@keyframes route-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.route-fade { animation: route-in 180ms var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) { .route-fade { animation: none; } }
+.page-header { margin-bottom: var(--space-5); }
+.skeleton-page { display: flex; flex-direction: column; gap: var(--space-4); padding-top: var(--space-2); }
+.mantine-NavLink-root { transition: background-color 150ms var(--ease-out); }
+.data-table tr.data-row:active td { background: var(--surface-sunken); }
+.chip { transition: background-color 150ms var(--ease-out); }
+/* Detail pages: the document and its side panel split in golden proportion. */
+@media (min-width: 1100px) {
+  .detail-grid { grid-template-columns: minmax(0, 1.618fr) minmax(300px, 1fr); }
+  .detail-aside { max-width: 420px; }
+}
