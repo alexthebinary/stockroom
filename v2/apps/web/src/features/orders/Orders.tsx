@@ -146,8 +146,8 @@ export function NewOrder() {
     setLines(lines.map((l, j) => (j === i ? { ...l, itemId: value, cost: item ? item.lastCostCents / 100 : l.cost } : l)));
   };
   return (
-    <Stack>
-      <PageHeader title="New purchase order" />
+    <Stack gap="lg">
+      <PageHeader back={{ to: "/orders", label: "Orders" }} title="New purchase order" />
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
         <Select label="Vendor" data={(vendors.data ?? []).map((v) => ({ value: String(v.id), label: v.name }))} value={vendorId} onChange={setVendorId} searchable />
         <Select label="Deliver to" data={(warehouses.data ?? []).map((w) => ({ value: String(w.id), label: w.name }))} value={warehouseId ?? (warehouses.data?.[0] ? String(warehouses.data[0].id) : null)} onChange={setWarehouseId} />
@@ -197,7 +197,7 @@ export function OrderDetail() {
   const unbilled = p.lines.some((l) => l.qtyOrdered > l.qtyBilled) && !p.bills.some((b) => b.status === "DRAFT");
   return (
     <Stack gap="lg">
-      <PageHeader title={p.number} subtitle={`${p.vendor?.name ?? "Vendor not set"} · to ${p.warehouse.name} · ${p.source === "SCAN" ? "opened at the dock" : `by ${p.createdBy}`}`} action={<Axes po={p} />} />
+      <PageHeader back={{ to: "/orders", label: "Orders" }} title={p.number} subtitle={`${p.vendor?.name ?? "Vendor not set"} · to ${p.warehouse.name} · ${p.source === "SCAN" ? "opened at the dock" : `by ${p.createdBy}`}`} action={<Axes po={p} />} />
       {p.notes ? <Text c="dimmed">{p.notes}</Text> : null}
       <Card withBorder>
         <Table.ScrollContainer minWidth={560}>

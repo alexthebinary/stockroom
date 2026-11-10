@@ -151,6 +151,7 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
   return (
     <Stack gap="lg">
       <PageHeader
+        back={{ to: "/bills", label: "Bills" }}
         title={`Review ${bill.number}`}
         subtitle={
           <>
@@ -471,6 +472,7 @@ function PostedBill({ bill }: { bill: FullBill }) {
   return (
     <Stack gap="lg">
       <PageHeader
+        back={{ to: "/bills", label: "Bills" }}
         title={bill.number}
         subtitle={`${bill.vendor?.name ?? ""} · invoice ${bill.vendorInvoiceNumber ?? "—"} · billed ${formatDate(bill.billDate)} · due ${formatDate(bill.dueDate)}`}
         action={<StatusBadge status={bill.status} />}

@@ -78,7 +78,7 @@ export function Stocktake() {
   const warehouse = warehouses.data?.find((w) => w.id === warehouseId) ?? null;
 
   return (
-    <Stack gap="md">
+    <Stack gap="lg">
       <Group justify="space-between">
         <div>
           <Title order={1}>Stock count</Title>

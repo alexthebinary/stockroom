@@ -3,6 +3,7 @@ import { Alert, Button, Group, Skeleton, Stack, Text, Title } from "@mantine/cor
 import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle, IconBan, IconCheck, IconCircleDashed, IconClockHour4 } from "@tabler/icons-react";
 import { type ReactNode, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 export const usd = (cents: number | null | undefined) => (cents == null ? "—" : formatUsd(cents));
 
@@ -52,10 +53,11 @@ export function Stat({ label, value, signal, hint }: { label: string; value: Rea
   );
 }
 
-export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: ReactNode; action?: ReactNode }) {
+export function PageHeader({ title, subtitle, action, back }: { title: string; subtitle?: ReactNode; action?: ReactNode; back?: { to: string; label: string } }) {
   return (
     <Group className="page-header" justify="space-between" align="flex-start" gap="sm">
       <Stack gap={4} style={{ minWidth: 0, flex: "1 1 260px" }}>
+        {back ? <Link to={back.to} className="back-link">← {back.label}</Link> : null}
         <Title order={1}>{title}</Title>
         {subtitle ? (
           <Text c="dimmed" size="sm">
@@ -125,7 +127,7 @@ export function Problem({ error, retry }: { error: unknown; retry?: () => void }
   if (/not found/i.test(message)) {
     return (
       <Stack gap="xs" align="flex-start" py="xl" role="alert">
-        <Title order={2}>We couldn't find that</Title>
+        <Title order={1}>We couldn't find that</Title>
         <Text c="dimmed" maw="52ch">It may have been removed, or the link is wrong. {message}.</Text>
         <Button component="a" href="/" variant="default">Back to Home</Button>
       </Stack>

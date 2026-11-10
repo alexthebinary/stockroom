@@ -17,7 +17,7 @@ import { cssVariablesResolver, theme } from "./theme";
 watchProblems();
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, staleTime: 5_000, refetchOnWindowFocus: true } },
+  defaultOptions: { queries: { retry: (count, error) => count < 1 && !/not found|forbidden|unauthori/i.test(error instanceof Error ? error.message : ""), staleTime: 5_000, refetchOnWindowFocus: true } },
 });
 
 watchCompanyChanges(() => queryClient.clear());

@@ -89,7 +89,7 @@ export function MatchPanel({ match, current }: { match: OrderMatch[] | null; cur
       <Title order={3} mb="sm">
         Match to order
       </Title>
-      <Table.ScrollContainer minWidth={640}>
+      <Table.ScrollContainer minWidth={760}>
         <Table>
           <Table.Thead>
             <Table.Tr>
@@ -106,7 +106,7 @@ export function MatchPanel({ match, current }: { match: OrderMatch[] | null; cur
           <Table.Tbody>
             {rows.map((row) => (
               <Table.Tr key={row.billLineId}>
-                <Table.Td>{row.itemName ?? "Item"}</Table.Td>
+                <Table.Td style={{ minWidth: "9rem" }}>{row.itemName ?? "Item"}</Table.Td>
                 <Table.Td ta="right">{row.qtyOrdered}</Table.Td>
                 <Table.Td ta="right">{row.qtyReceived}</Table.Td>
                 <Table.Td ta="right">{row.qtyThisBill}</Table.Td>

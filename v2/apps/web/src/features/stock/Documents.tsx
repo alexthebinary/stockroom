@@ -17,12 +17,6 @@ type Adjustment = {
   lines: { id: number; qty: number; valueCents: number | null; item: Named; warehouse: { id: number; name: string; code: string } | null }[];
 };
 
-const BackToStock = ({ tab }: { tab: string }) => (
-  <Button component={Link} to={`/items?tab=${tab}`} variant="subtle" size="compact-sm" mb="xs" style={{ alignSelf: "flex-start" }}>
-    ← Back to Stock
-  </Button>
-);
-
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -42,8 +36,8 @@ export function ReceiptDetail() {
   const units = r.lines.reduce((n, l) => n + l.qty, 0);
   return (
     <Stack gap="lg">
-      <BackToStock tab="receipts" />
       <PageHeader
+        back={{ to: "/items?tab=receipts", label: "Stock" }}
         title={r.number}
         subtitle={`Received ${formatDate(r.receivedAt)} by ${r.receivedBy}`}
         action={<StatusBadge status={r.state} />}
@@ -84,8 +78,7 @@ export function AdjustmentDetail() {
   const a = q.data;
   return (
     <Stack gap="lg">
-      <BackToStock tab="adjustments" />
-      <PageHeader title={a.number} subtitle={`${a.type} · ${formatDate(a.date)} · ${a.actor}`} />
+      <PageHeader back={{ to: "/items?tab=adjustments", label: "Stock" }} title={a.number} subtitle={`${a.type} · ${formatDate(a.date)} · ${a.actor}`} />
       <Group gap="xl" align="flex-start">
         <Fact label="Type">{a.type}</Fact>
         <Fact label="Net change">{a.qty > 0 ? "+" : ""}{plural(a.qty, "unit")}</Fact>

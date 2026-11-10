@@ -113,7 +113,7 @@ export function ReceiveWizard() {
   };
 
   return (
-    <Stack gap="md">
+    <Stack gap="lg">
       <Group justify="space-between">
         <div>
           <Title order={1}>Receive a delivery</Title>
