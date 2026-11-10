@@ -2,15 +2,16 @@ import { Alert, Button, Group, SimpleGrid, Stack, Text, Title } from "@mantine/c
 import { useQuery } from "@tanstack/react-query";
 import { IconAlertTriangle, IconBarcode, IconCircleCheck, IconFileInvoice, IconPlus, IconTruckDelivery } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
-import { Checklist } from "../../components/Checklist";
+import { GuidedPath } from "./GuidedPath";
+import { AskHelp } from "./AskHelp";
 import { TactileButton } from "../../components/kitchen/TactileButton";
 import { Ruled, RuledRow } from "../../components/Ruled";
-import { Coach } from "../../components/Coach";
 import { Loading, Money, Problem, Stat, usd } from "../../components/ui";
 import { get } from "../../lib/api";
 import { useProfile } from "../../lib/profile";
 import type { Bill, Home, PurchaseOrder, Setup } from "../../lib/types";
 
+const practiced = () => { try { return localStorage.getItem("pi.practiced") === "1"; } catch { return false; } };
 const useHome = () => useQuery({ queryKey: ["home"], queryFn: () => get<Home>("/home"), refetchInterval: 30_000 });
 const useOrders = () => useQuery({ queryKey: ["orders", "ALL"], queryFn: () => get<PurchaseOrder[]>("/purchase-orders?lifecycle=ALL") });
 const useBills = () => useQuery({ queryKey: ["bills"], queryFn: () => get<Bill[]>("/bills"), refetchInterval: 30_000 });
@@ -29,15 +30,18 @@ export function HomePage() {
 }
 
 function ClerkHome() {
+  const { profile } = useProfile();
+  const name = profile?.name.split(" ")[0] ?? "";
   const home = useHome();
   const sessions = useQuery({ queryKey: ["sessions", "SUBMITTED"], queryFn: () => get<unknown[]>("/scan-sessions?status=SUBMITTED") });
   const expected = useQuery({ queryKey: ["expected", "all"], queryFn: () => get<{ id: number; number: string; vendor: { name: string } | null; lines: { outstanding: number; item: { name: string } }[] }[]>("/receiving/expected") });
   return (
     <Stack gap="lg">
       <Greeting />
-      <Coach id="clerk-home" title="Your job here is short">
-        When a truck arrives: tap Receive, scan every box, finish. You never deal with prices or bills — accounting does that from what you scanned.
-      </Coach>
+      <GuidedPath name={name} intro="Your job is short: when a truck arrives, scan every box and finish. Accounting handles prices and bills from what you scanned." steps={[
+        { label: "Try a practice scan", why: "Point the camera at any barcode. Nothing is saved.", to: "/receive/practice", done: practiced(), cta: "Practice" },
+        { label: "Receive your first delivery", why: "Choose the warehouse and the order, scan each box, check the count, finish.", to: "/receive", done: (sessions.data?.length ?? 0) > 0, cta: "Receive a delivery" },
+      ]} />
       <TactileButton to="/receive" size="xl" fullWidth>
         <IconBarcode size={30} aria-hidden="true" />
         Receive a delivery
@@ -58,17 +62,14 @@ function ClerkHome() {
           {(expected.data?.length ?? 0) > 8 ? <RuledRow key="more" to="/reports" title={`and ${expected.data!.length - 8} more`} /> : null}
         </Ruled>
       </Stack>
-      <Checklist
-        tasks={[
-          { label: "Try a practice scan", done: false, to: "/receive/practice", hint: "Point the camera at any barcode. Nothing is saved." },
-          { label: "Receive your first delivery", done: (sessions.data?.length ?? 0) > 0, to: "/receive" },
-        ]}
-      />
+      <AskHelp />
     </Stack>
   );
 }
 
 function AccountingHome() {
+  const { profile } = useProfile();
+  const name = profile?.name.split(" ")[0] ?? "";
   const home = useHome();
   const bills = useBills();
   if (home.error) return <Problem error={home.error} retry={() => home.refetch()} />;
@@ -92,26 +93,26 @@ function AccountingHome() {
           Review the next bill ({drafts[0]!.number})
         </Button>
       ) : (
-        <Group>
-          <IconCircleCheck color="var(--ok-fg)" />
-          <Text>No bills waiting for review.</Text>
+        <Group gap="xs">
+          <IconCircleCheck color="var(--ok-fg)" aria-hidden="true" />
+          <Text>Nothing needs you right now.{a.dueThisWeekCents > 0 ? " Bills are due this week." : ""}</Text>
+          {a.dueThisWeekCents > 0 ? <Button component={Link} to="/payables" variant="light" size="compact-md">Open Payables</Button> : null}
         </Group>
       )}
-      <Coach id="accounting-home" title="Where bills come from">
-        When the dock scans a delivery that hasn't been billed, a draft bill appears here with what arrived. Set the vendor's invoice number, check prices, add freight, post. Posting turns the waiting units into stock at their landed cost.
-      </Coach>
-      <Checklist
-        tasks={[
-          { label: "Post your first bill", done: posted.some((b) => b.kind === "INVENTORY"), to: "/bills" },
-          { label: "Add a freight bill from a carrier", done: posted.some((b) => b.kind !== "INVENTORY"), to: "/bills/freight/new" },
-          { label: "Pay a bill", done: posted.some((b) => b.paidCents > 0), to: "/payables" },
-        ]}
-      />
+      <GuidedPath name={name} intro="You turn what the dock counted into stock and money: review each draft bill, post it, then pay it when it is due." steps={[
+        { label: "Review and post your first bill", why: "A draft bill appears when the dock scans a delivery. Check the invoice number, prices and freight, then hold to post. The waiting units become stock at landed cost.", to: drafts[0] ? `/bills/${drafts[0].id}` : "/bills", done: posted.some((b) => b.kind === "INVENTORY"), cta: drafts[0] ? "Open the draft" : "Open Bills" },
+        { label: "Add a freight bill", why: "A carrier's invoice spreads its cost over the units it carried.", to: "/bills/freight/new", done: posted.some((b) => b.kind !== "INVENTORY"), cta: "New freight bill" },
+        { label: "Pay a bill", why: "Open a posted bill and record a full or part payment.", to: "/payables", done: posted.some((b) => b.paidCents > 0), cta: "Open Payables" },
+      ]} />
+      <AskHelp />
     </Stack>
   );
 }
 
 function AdminHome() {
+  const { profile } = useProfile();
+  const name = profile?.name.split(" ")[0] ?? "";
+  const reorder = useQuery({ queryKey: ["reorder-count"], queryFn: () => get<unknown[]>("/reports/reorder"), retry: false });
   const home = useHome();
   const orders = useOrders();
   const setup = useQuery({ queryKey: ["setup"], queryFn: () => get<Setup>("/setup") });
@@ -139,19 +140,26 @@ function AdminHome() {
         <Stat label="Bills to review" value={home.data.accounting.draftBills} />
         <Stat label="We owe" value={<Money cents={home.data.accounting.payableCents} />} />
       </SimpleGrid>
+      <Ruled label="Needs attention" empty="Nothing needs you right now.">
+        {[
+          home.data.accounting.draftBills > 0 ? <RuledRow key="d" to="/bills" title={`${home.data.accounting.draftBills} bill${home.data.accounting.draftBills === 1 ? "" : "s"} to review`} meta="Drafts from the dock are waiting for accounting" /> : null,
+          home.data.accounting.heldUnits > 0 ? <RuledRow key="h" to="/reports" title={`${home.data.accounting.heldUnits} unit${home.data.accounting.heldUnits === 1 ? "" : "s"} awaiting a bill`} meta="Counted at the dock, not yet sellable" /> : null,
+          home.data.accounting.overdueCents > 0 ? <RuledRow key="o" to="/payables" title="Payables are overdue" aside={<Money cents={home.data.accounting.overdueCents} />} /> : null,
+          (reorder.data?.length ?? 0) > 0 ? <RuledRow key="r" to="/reports" title={`${reorder.data!.length} item${reorder.data!.length === 1 ? "" : "s"} at or under the reorder minimum`} meta="Open Reports, Purchases, Reorder" /> : null,
+        ]}
+      </Ruled>
       <Group>
         <Button component={Link} to="/orders/new" leftSection={<IconPlus size={18} />}>
           New purchase order
         </Button>
       </Group>
-      <Checklist
-        tasks={[
-          { label: "Finish setup", done: setup.data?.company.setupCompletedAt != null, to: "/setup" },
-          { label: "Place a purchase order", done: (orders.data ?? []).some((o) => o.source === "MANUAL"), to: "/orders/new", hint: "Or let the dock create one by scanning a surprise delivery." },
-          { label: "See a delivery received", done: (orders.data ?? []).some((o) => o.receivingStatus !== "NOT_RECEIVED"), to: "/receive" },
-          { label: "See a bill posted", done: (bills.data ?? []).some((b) => b.status === "POSTED"), to: "/bills" },
-        ]}
-      />
+      <GuidedPath name={name} intro="You set the business up and watch it run. Four steps take you from an empty company to a posted bill." steps={[
+        { label: "Finish setup", why: "Company details, people, warehouses, vendors and items.", to: "/setup", done: setup.data?.company.setupCompletedAt != null, cta: "Continue setup" },
+        { label: "Place a purchase order", why: "An order commits to buy and posts no money. The dock can also create one by scanning a surprise delivery.", to: "/orders/new", done: (orders.data ?? []).some((o) => o.source === "MANUAL"), cta: "New purchase order" },
+        { label: "See a delivery received", why: "On a phone, open Receive, scan the boxes and finish.", to: "/receive", done: (orders.data ?? []).some((o) => o.receivingStatus !== "NOT_RECEIVED"), cta: "Open Receive" },
+        { label: "See a bill posted", why: "Accounting posts the draft bill and the units land in stock at landed cost.", to: "/bills", done: (bills.data ?? []).some((b) => b.status === "POSTED"), cta: "Open Bills" },
+      ]} />
+      <AskHelp />
     </Stack>
   );
 }

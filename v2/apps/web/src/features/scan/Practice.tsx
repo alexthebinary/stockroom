@@ -13,6 +13,7 @@ import { Scanner } from "./Scanner";
 export function Practice() {
   const items = useQuery({ queryKey: ["items"], queryFn: () => get<Item[]>("/items") });
   const [open, setOpen] = useState(false);
+  try { localStorage.setItem("pi.practiced", "1"); } catch { /* storage blocked */ }
   const [reads, setReads] = useState<{ code: string; what: string }[]>([]);
   const lookup = (code: string) => {
     const key = barcodeKey(code);

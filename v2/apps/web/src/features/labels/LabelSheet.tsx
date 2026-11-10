@@ -9,12 +9,19 @@ import { get } from "../../lib/api";
 import type { Item } from "../../lib/types";
 import "./labels.css";
 
-prepareZXingModule({ overrides: { locateFile: (path: string, prefix: string) => (path.endsWith(".wasm") ? wasmUrl : prefix + path) }, fireImmediately: true });
+let prepared = false;
+/** Load the barcode writer the first time a label is drawn, not when the app starts. */
+function prepare() {
+  if (prepared) return;
+  prepared = true;
+  prepareZXingModule({ overrides: { locateFile: (path: string, prefix: string) => (path.endsWith(".wasm") ? wasmUrl : prefix + path) }, fireImmediately: true });
+}
 
 function Code({ text }: { text: string }) {
   const [svg, setSvg] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
+    prepare();
     writeBarcode(text, { format: "Code128", scale: 2, addHRT: true, addQuietZones: true }).then((r) => { if (live) setSvg(r.svg); }).catch(() => { if (live) setSvg(""); });
     return () => { live = false; };
   }, [text]);
