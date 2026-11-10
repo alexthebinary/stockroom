@@ -80,7 +80,10 @@ export function Stocktake() {
   return (
     <Stack gap="md">
       <Group justify="space-between">
-        <Title order={1}>Stocktake</Title>
+        <div>
+          <Title order={1}>Stocktake</Title>
+          <Text c="dimmed" size="sm">Count what is on the shelf and correct any difference.</Text>
+        </div>
         <Text c="dimmed" size="sm">
           Step {visibleStep} of {visibleSteps}
         </Text>

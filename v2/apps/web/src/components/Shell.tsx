@@ -58,8 +58,8 @@ const RAIL: Record<Job, (keyof typeof SECTIONS)[]> = {
   ADMIN: ["home", "orders", "bills", "payables", "receive", "items", "stocktake", "reports", "settings", "guide", "feedback"],
 };
 
-const PURCHASES = ["orders", "bills", "payables", "receive"];
-const STOCK = ["items", "stocktake"];
+const PURCHASES = ["orders", "bills", "payables"];
+const STOCK = ["items", "receive", "stocktake"];
 
 const isActive = (pathname: string, to: string) => (to === "/" ? pathname === "/" : pathname.startsWith(to));
 
@@ -155,7 +155,7 @@ export function Shell({ children }: { children: ReactNode }) {
               {stockKeys.map((key) => sectionLink(key, key === "items" ? "Inventory" : undefined))}
             </NavLink>
           ) : null}
-          {RAIL[job].filter((key) => key !== "home" && !PURCHASES.includes(key) && !(stockGrouped && (key === "items" || key === "stocktake"))).map((key) => sectionLink(key))}
+          {RAIL[job].filter((key) => key !== "home" && !PURCHASES.includes(key) && !(stockGrouped && STOCK.includes(key))).map((key) => sectionLink(key))}
         </Stack>
       </AppShell.Navbar>
 

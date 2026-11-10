@@ -115,7 +115,10 @@ export function ReceiveWizard() {
   return (
     <Stack gap="md">
       <Group justify="space-between">
-        <Title order={1}>Receive a delivery</Title>
+        <div>
+          <Title order={1}>Receive a delivery</Title>
+          <Text c="dimmed" size="sm">A delivery has arrived: count it against its order.</Text>
+        </div>
         <Badge variant="outline" color="gray">
           Step {Math.min(step + 1, 5)} of 5
         </Badge>
