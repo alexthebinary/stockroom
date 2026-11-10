@@ -1,6 +1,7 @@
-import { ActionIcon, Anchor, Button, Card, Group, NumberInput, Select, SimpleGrid, Stack, Table, Text, Textarea, TextInput, Title } from "@mantine/core";
+import { ActionIcon, Anchor, Button, Card, Collapse, Group, NumberInput, Select, SimpleGrid, Stack, Table, Text, Textarea, TextInput, Title } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconAdjustmentsHorizontal, IconPlus, IconTrash } from "@tabler/icons-react";
+import { useMediaQuery } from "@mantine/hooks";
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Ruled, RuledRow } from "../../components/Ruled";
@@ -36,6 +37,10 @@ export function Orders() {
     orderFilterKeys.forEach((key) => next.delete(key));
     return next;
   });
+  const wide = useMediaQuery("(min-width: 900px)") ?? true;
+  const activeCount = (["vendorId", "billingStatus", "paymentStatus", "receivingStatus", "from", "to"] as const).filter((key) => filters[key]).length + (filters.lifecycle !== "OPEN" ? 1 : 0);
+  const [filtersOpen, setFiltersOpen] = useState<boolean | null>(null);
+  const showFilters = filtersOpen ?? (wide || activeCount > 0);
   const orders = useQuery({ queryKey: ["orders", "ALL"], queryFn: () => get<PurchaseOrder[]>("/purchase-orders?lifecycle=ALL") });
   if (!orders.data) return <Loading />;
   const filtered = filterOrders(orders.data, filters);
@@ -54,6 +59,12 @@ export function Orders() {
       />
       <Stack gap="sm" mb="lg">
         <TextInput label="Search orders" placeholder="PO number, vendor, item SKU or name" value={filters.search} onChange={(event) => updateFilter("search", event.currentTarget.value)} />
+        <Group>
+          <Button variant="default" size="compact-md" leftSection={<IconAdjustmentsHorizontal size={16} />} onClick={() => setFiltersOpen(!showFilters)} aria-expanded={showFilters} aria-controls="order-filters">
+            Filters{activeCount ? ` (${activeCount})` : ""}
+          </Button>
+        </Group>
+        <Collapse expanded={showFilters} id="order-filters">
         <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }} style={{ minWidth: 0 }}>
           <Select label="Vendor" placeholder="All vendors" data={vendors} value={filters.vendorId || null} onChange={(value) => updateFilter("vendorId", value)} searchable clearable nothingFoundMessage="No vendors found" />
           <Select label="Billing" placeholder="All billing statuses" data={orderFilterOptions.billingStatus} value={filters.billingStatus || null} onChange={(value) => updateFilter("billingStatus", value)} clearable />
@@ -63,6 +74,7 @@ export function Orders() {
           <TextInput type="date" label="Created from" value={filters.from} onChange={(event) => updateFilter("from", event.currentTarget.value)} />
           <TextInput type="date" label="Created to" value={filters.to} onChange={(event) => updateFilter("to", event.currentTarget.value)} />
         </SimpleGrid>
+        </Collapse>
         <Group justify="space-between">
           <Text size="sm" c="dimmed" role="status">{filtered.length} of {orders.data.length} orders</Text>
           <Button variant="subtle" onClick={clearFilters}>Clear filters</Button>

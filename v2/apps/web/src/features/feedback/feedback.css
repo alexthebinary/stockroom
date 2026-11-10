@@ -5,7 +5,14 @@
 .fb-tab:hover { padding-right: 12px; }
 .fb-tab-label { writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: 0.02em; }
 .fb-tab-count { display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--signal); color: var(--signal-ink); font-size: 11px; }
-@media (max-width: 640px) { .fb-tab { top: 38%; padding: 10px 6px; } .fb-tab-label { display: none; } }
+/* Phones: a 44px round button above the tab bar instead of an edge tab over the content. */
+@media (max-width: 640px) {
+  .fb-tab { top: auto; bottom: calc(76px + env(safe-area-inset-bottom)); right: 12px; transform: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; justify-content: center; gap: 0; }
+  .fb-tab:hover { padding-right: 0; }
+  .fb-tab-label { display: none; }
+  .fb-tab-count { position: absolute; top: -4px; right: -4px; }
+  body:has(.fb-tab) .mantine-AppShell-main { padding-bottom: calc(8rem + env(safe-area-inset-bottom)); }
+}
 
 .fb-overlay { position: fixed; inset: 0; z-index: 1000; cursor: crosshair; }
 .fb-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 999px;
