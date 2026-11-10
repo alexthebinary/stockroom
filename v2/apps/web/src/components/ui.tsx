@@ -1,7 +1,7 @@
 import { formatUsd } from "@pi/domain";
 import { Alert, Badge, Button, Center, Group, Loader, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconAlertTriangle } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCheck, IconCircleDashed, IconClockHour4 } from "@tabler/icons-react";
 import { type ReactNode, useEffect, useState } from "react";
 
 export const usd = (cents: number | null | undefined) => (cents == null ? "—" : formatUsd(cents));
@@ -72,29 +72,34 @@ export function PageHeader({ title, subtitle, action }: { title: string; subtitl
  * Status means one of four things, whatever the document: nothing yet
  * (gray), in flight (blue), done (lime), needs a person (orange).
  */
-const MEANING: Record<string, { color: string; label: string }> = {
-  NOT_BILLED: { color: "gray", label: "Not billed" },
-  DRAFT: { color: "orange", label: "Draft" },
-  BILLED: { color: "lime", label: "Billed" },
-  UNPAID: { color: "gray", label: "Unpaid" },
-  PARTIAL: { color: "blue", label: "Part paid" },
-  PAID: { color: "lime", label: "Paid" },
-  NOT_RECEIVED: { color: "gray", label: "Not received" },
-  RECEIVED: { color: "lime", label: "Received" },
-  PENDING_BILL: { color: "orange", label: "Awaiting bill" },
-  POSTED: { color: "lime", label: "Posted" },
-  VOID: { color: "gray", label: "Void" },
-  OPEN: { color: "blue", label: "Open" },
-  SUBMITTED: { color: "lime", label: "Done" },
-  CANCELED: { color: "gray", label: "Cancelled" },
+/** The four states a status can mean. Every chip shows an icon and words, never colour alone. */
+type Tone = "none" | "progress" | "done" | "attention";
+const TONE_ICON: Record<Tone, typeof IconCheck> = { none: IconCircleDashed, progress: IconClockHour4, done: IconCheck, attention: IconAlertTriangle };
+const MEANING: Record<string, { tone: Tone; label: string }> = {
+  NOT_BILLED: { tone: "none", label: "Not billed" },
+  DRAFT: { tone: "attention", label: "Draft" },
+  BILLED: { tone: "done", label: "Billed" },
+  UNPAID: { tone: "none", label: "Unpaid" },
+  PARTIAL: { tone: "progress", label: "Part paid" },
+  PAID: { tone: "done", label: "Paid" },
+  NOT_RECEIVED: { tone: "none", label: "Not received" },
+  RECEIVED: { tone: "done", label: "Received" },
+  PENDING_BILL: { tone: "attention", label: "Awaiting bill" },
+  POSTED: { tone: "done", label: "Posted" },
+  VOID: { tone: "none", label: "Void" },
+  OPEN: { tone: "progress", label: "Open" },
+  SUBMITTED: { tone: "done", label: "Done" },
+  CANCELED: { tone: "none", label: "Cancelled" },
 };
 
 export function StatusBadge({ status, label }: { status: string; label?: string }) {
-  const meaning = MEANING[status] ?? { color: "gray", label: status };
+  const meaning = MEANING[status] ?? { tone: "none" as Tone, label: status };
+  const Icon = TONE_ICON[meaning.tone];
   return (
-    <Badge color={meaning.color} variant="light" styles={{ label: { textTransform: "none", fontWeight: 600 } }}>
+    <span className="chip" data-tone={meaning.tone}>
+      <Icon size={13} aria-hidden="true" />
       {label ?? meaning.label}
-    </Badge>
+    </span>
   );
 }
 

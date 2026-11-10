@@ -17,7 +17,7 @@
 .fb-overlay { position: fixed; inset: 0; z-index: 1000; cursor: crosshair; }
 .fb-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 999px;
   background: var(--ink); color: var(--surface); font-size: 14px; font-weight: 600; white-space: nowrap; cursor: default; box-shadow: 0 12px 28px -14px rgba(0, 0, 0, 0.6); }
-.fb-hover { position: fixed; pointer-events: none; border-radius: 6px; outline: 2px solid var(--signal); background: rgba(198, 213, 90, 0.12); transition: all 80ms linear; }
+.fb-hover { position: fixed; pointer-events: none; border-radius: 6px; outline: 2px solid var(--signal); background: rgba(198, 213, 90, 0.12); transition: top 80ms linear, left 80ms linear, width 80ms linear, height 80ms linear; }
 
 .fb-pin { position: absolute; z-index: 950; width: 28px; height: 28px; margin: -14px 0 0 -14px; display: grid; place-items: center; border-radius: 50% 50% 50% 4px;
   border: 2px solid var(--surface); background: var(--ink); color: var(--surface); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;

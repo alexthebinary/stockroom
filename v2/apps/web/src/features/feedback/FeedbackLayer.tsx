@@ -117,7 +117,7 @@ export function FeedbackLayer() {
     };
   }, [showPins, draft]);
 
-  if (hidden || setup.data?.company.feedbackEnabled === false) return null;
+  if (hidden || pathname.startsWith("/receive") || pathname.startsWith("/stocktake") || pathname.startsWith("/labels") || setup.data?.company.feedbackEnabled === false) return null;
 
   const under = (event: PointerEvent) => document.elementsFromPoint(event.clientX, event.clientY).find((el) => !el.closest(".fb-ui"));
   const pick = (event: PointerEvent) => {

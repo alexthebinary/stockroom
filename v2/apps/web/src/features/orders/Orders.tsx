@@ -40,7 +40,7 @@ export function Orders() {
   const wide = useMediaQuery("(min-width: 900px)") ?? true;
   const activeCount = (["vendorId", "billingStatus", "paymentStatus", "receivingStatus", "from", "to"] as const).filter((key) => filters[key]).length + (filters.lifecycle !== "OPEN" ? 1 : 0);
   const [filtersOpen, setFiltersOpen] = useState<boolean | null>(null);
-  const showFilters = filtersOpen ?? (wide || activeCount > 0);
+  const showFilters = filtersOpen ?? activeCount > 0;
   const orders = useQuery({ queryKey: ["orders", "ALL"], queryFn: () => get<PurchaseOrder[]>("/purchase-orders?lifecycle=ALL") });
   if (!orders.data) return <Loading />;
   const filtered = filterOrders(orders.data, filters);

@@ -43,9 +43,10 @@ function ClerkHome() {
         Receive a delivery
       </TactileButton>
       {home.data?.clerk.openDeliveries ? (
-        <Alert color="blue" icon={<IconTruckDelivery size={18} />}>
-          A delivery is still open on {home.data.clerk.openDeliveries === 1 ? "a phone" : `${home.data.clerk.openDeliveries} phones`}. Tap Receive to carry on with yours.
-        </Alert>
+        <Group gap="xs" wrap="nowrap" role="status">
+          <IconTruckDelivery size={18} aria-hidden="true" />
+          <Text size="sm">A delivery is still open on {home.data.clerk.openDeliveries === 1 ? "a phone" : `${home.data.clerk.openDeliveries} phones`}. Tap Receive to carry on.</Text>
+        </Group>
       ) : null}
       <Stack gap="xs">
         <Text fw={600}>Expected deliveries</Text>

@@ -48,7 +48,7 @@ describe("feedback #21: Inventory section", () => {
   it("labels desktop and mobile navigation Inventory while retaining /items", () => {
     const html = renderInventory();
     const links = html.match(/<a\b[^>]*href="\/items"[^>]*>[\s\S]*?<\/a>/g) ?? [];
-    expect(links).toHaveLength(2);
+    expect(links.length).toBeGreaterThanOrEqual(2);
     for (const link of links) {
       expect(link).toMatch(/Stock|Inventory/);
       expect(link).not.toMatch(/>Items</);

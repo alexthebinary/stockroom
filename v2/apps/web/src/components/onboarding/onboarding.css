@@ -63,7 +63,7 @@
 .ob-choice-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 600; font-size: 17px; color: var(--text-strong); }
 .ob-choice-text { font-size: 15px; line-height: 1.45; color: var(--text-muted); margin-top: 4px; }
 .ob-choice-tick { position: absolute; top: 18px; right: 16px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
-  border: 1.5px solid var(--surface-border); color: transparent; transition: all 150ms var(--ease-out); }
+  border: 1.5px solid var(--surface-border); color: transparent; transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out), color 150ms var(--ease-out); }
 .ob-choice[aria-checked="true"] .ob-choice-tick { background: var(--ink); border-color: var(--ink); color: var(--surface); }
 .ob-pill { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
   background: var(--ok-bg); color: var(--ok-fg); }

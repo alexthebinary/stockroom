@@ -1,9 +1,10 @@
-import { ActionIcon, AppShell, Avatar, Box, Group, Menu, NavLink, Stack, Text, useMantineColorScheme } from "@mantine/core";
+import { ActionIcon, AppShell, Avatar, Box, Drawer, Group, Menu, NavLink, Stack, Text, useMantineColorScheme } from "@mantine/core";
 import {
   IconBarcode,
   IconBook2,
   IconBuilding,
   IconBox,
+  IconMenu2,
   IconCash,
   IconClipboardList,
   IconChartBar,
@@ -70,6 +71,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const [purchasesOpened, setPurchasesOpened] = useState(true);
   const [stockOpened, setStockOpened] = useState(true);
   const [companiesOpen, setCompaniesOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const purchases = PURCHASES.filter((key) => RAIL[job].includes(key));
   const purchasesActive = purchases.some((key) => isActive(pathname, SECTIONS[key]!.to));
 
@@ -111,9 +113,11 @@ export function Shell({ children }: { children: ReactNode }) {
                 <Menu.Item leftSection={<IconUserCircle size={16} />} onClick={() => choose(null)}>
                   Switch person
                 </Menu.Item>
-                <Menu.Item leftSection={<IconBuilding size={16} />} onClick={() => setCompaniesOpen(true)}>
-                  Switch company…
-                </Menu.Item>
+                {job === "ADMIN" ? (
+                  <Menu.Item leftSection={<IconBuilding size={16} />} onClick={() => setCompaniesOpen(true)}>
+                    Switch company…
+                  </Menu.Item>
+                ) : null}
                 <Menu.Divider />
                 <Menu.Label>Appearance</Menu.Label>
                 {(
@@ -161,6 +165,14 @@ export function Shell({ children }: { children: ReactNode }) {
         </Box>
       </AppShell.Main>
 
+      <Drawer opened={moreOpen} onClose={() => setMoreOpen(false)} position="bottom" size="auto" title="All sections" hiddenFrom="sm" zIndex={1100} radius="lg">
+        <Stack gap={2} pb="md">
+          {RAIL[job].filter((key) => key !== "home").map((key) => {
+            const s = SECTIONS[key]!;
+            return <NavLink key={key} component={RouterNavLink} to={s.to} label={s.label} leftSection={<s.icon size={20} />} active={isActive(pathname, s.to)} onClick={() => setMoreOpen(false)} style={{ borderRadius: 8, minHeight: 48 }} />;
+          })}
+        </Stack>
+      </Drawer>
       <Box component="nav" className="tabbar no-print" hiddenFrom="sm" aria-label="Main">
         {TABS[job].map((key) => {
           const s = SECTIONS[key]!;
@@ -171,6 +183,12 @@ export function Shell({ children }: { children: ReactNode }) {
             </Link>
           );
         })}
+        {RAIL[job].some((key) => key !== "home" && !TABS[job].includes(key)) ? (
+          <button type="button" onClick={() => setMoreOpen(true)} aria-haspopup="dialog">
+            <IconMenu2 size={24} stroke={1.75} />
+            More
+          </button>
+        ) : null}
       </Box>
     </AppShell>
   );
