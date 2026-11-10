@@ -71,6 +71,7 @@ export function Items() {
       {items.error ? <Problem error={items.error} retry={() => items.refetch()} /> : wide ? (
       <table className="stock-table">
         <caption className="visually-hidden">Inventory</caption>
+        <colgroup><col /><col style={{ width: 190 }} /><col style={{ width: 110 }} /><col style={{ width: 160 }} /><col style={{ width: 96 }} /><col style={{ width: 124 }} /><col style={{ width: 84 }} /><col style={{ width: 84 }} /></colgroup>
         <thead>
           <tr>
             <th scope="col">Item</th>
