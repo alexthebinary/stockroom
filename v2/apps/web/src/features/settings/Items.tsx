@@ -3,7 +3,7 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { PageHeader, toastErr, toastOk } from "../../components/ui";
+import { PageHeader, plural, toastErr, toastOk } from "../../components/ui";
 import { get, patch, post, put } from "../../lib/api";
 import type { Item, Warehouse } from "../../lib/types";
 import { cmToIn, formatMeasurements, inToCm, kgToLb, lbToKg } from "../../lib/units";
@@ -55,7 +55,7 @@ export function Items() {
         <Tabs.Tab value="receipts">Warehouse Receipts</Tabs.Tab>
         <Tabs.Tab value="adjustments">Stock Adjustments</Tabs.Tab>
       </Tabs.List>
-      <Tabs.Panel value="inventory">
+      <Tabs.Panel value="inventory" className="tab-fade">
       <Stack gap="xs" mb="md">
         <TextInput placeholder="Search name, SKU, brand or barcode" value={search} onChange={(e) => setSearch(e.currentTarget.value)} size="md" />
         <Group grow gap="xs">
@@ -71,26 +71,26 @@ export function Items() {
             <Card key={i.id} withBorder padding="sm">
               <Group justify="space-between" wrap="nowrap">
                 <div style={{ minWidth: 0 }}>
-                  <Text fw={600} truncate>
+                  <Text fw={600} truncate title={i.name}>
                     {i.name}
                   </Text>
-                  <Text size="sm" c="dimmed" truncate>
+                  <Text size="sm" c="dimmed" truncate title={i.sku}>
                     {i.sku}
                     {i.isBundle ? ` · ${i.components?.map((c) => `${c.qty}× ${c.name}`).join(" + ")}` : ""}
                     {i.barcodes?.length ? ` · ${i.barcodes.map((b) => b.raw).join(", ")}` : ""}
                   </Text>
                   {measurements ? (
-                    <Text size="sm" c="dimmed">{measurements}</Text>
+                    <Text size="sm" c="dimmed" style={{ overflowWrap: "anywhere" }}>{measurements}</Text>
                   ) : null}
                   {i.brand || i.category ? (
                     <Group gap={6} mt={4}>
                       {i.brand ? (
-                        <Badge variant="light" color="lime" onClick={() => setBrand(i.brand!)} style={{ cursor: "pointer" }}>
+                        <Badge variant="light" color="lime" maw="100%" title={i.brand} onClick={() => setBrand(i.brand!)} style={{ cursor: "pointer" }}>
                           {i.brand}
                         </Badge>
                       ) : null}
                       {i.category ? (
-                        <Badge variant="outline" color="gray" onClick={() => setCategory(i.category!)} style={{ cursor: "pointer" }}>
+                        <Badge variant="outline" color="gray" maw="100%" title={i.category} onClick={() => setCategory(i.category!)} style={{ cursor: "pointer" }}>
                           {i.category}
                         </Badge>
                       ) : null}
@@ -133,7 +133,7 @@ export function Items() {
         {items.data && items.data.length === 0 ? <div className="ruled-empty">No items match{brand || category || debounced ? " these filters" : " yet"}.</div> : null}
       </Stack>
       </Tabs.Panel>
-      <Tabs.Panel value="receipts">
+      <Tabs.Panel value="receipts" className="tab-fade">
       <section aria-label="Warehouse Receipts">
         <Stack gap="xs">
           {(receipts.data ?? []).map((r) => (
@@ -141,10 +141,10 @@ export function Items() {
               <Group justify="space-between" wrap="nowrap">
                 <div style={{ minWidth: 0 }}>
                   <Text fw={600}>{r.number}</Text>
-                  <Text size="sm" c="dimmed" truncate>{r.po.number} · {new Date(r.receivedAt).toLocaleDateString()} · {r.receivedBy}</Text>
+                  <Text size="sm" c="dimmed" truncate title={`${r.po.number} · ${r.receivedBy}`}>{r.po.number} · {new Date(r.receivedAt).toLocaleDateString()} · {r.receivedBy}</Text>
                 </div>
                 <Group gap="xs" wrap="nowrap">
-                  <Text fw={700}>{r.lines.reduce((n, l) => n + l.qty, 0)} units</Text>
+                  <Text fw={700}>{plural(r.lines.reduce((n, l) => n + l.qty, 0), "unit")}</Text>
                   <Badge variant="light" color="gray">{r.state.replace(/_/g, " ").toLowerCase()}</Badge>
                 </Group>
               </Group>
@@ -154,7 +154,7 @@ export function Items() {
         </Stack>
       </section>
       </Tabs.Panel>
-      <Tabs.Panel value="adjustments">
+      <Tabs.Panel value="adjustments" className="tab-fade">
       <section aria-label="Stock Adjustments">
         <Stack gap="xs">
           {(otherTx.data ?? []).map((t) => (
@@ -162,9 +162,9 @@ export function Items() {
               <Group justify="space-between" wrap="nowrap">
                 <div style={{ minWidth: 0 }}>
                   <Text fw={600}>{t.number}</Text>
-                  <Text size="sm" c="dimmed" truncate>{t.type} · {new Date(t.date).toLocaleDateString()} · {t.actor}</Text>
+                  <Text size="sm" c="dimmed" truncate title={`${t.type} · ${t.actor}`}>{t.type} · {new Date(t.date).toLocaleDateString()} · {t.actor}</Text>
                 </div>
-                <Text fw={700}>{t.qty > 0 ? "+" : ""}{t.qty} units</Text>
+                <Text fw={700}>{t.qty > 0 ? "+" : ""}{plural(t.qty, "unit")}</Text>
               </Group>
             </Card>
           ))}
