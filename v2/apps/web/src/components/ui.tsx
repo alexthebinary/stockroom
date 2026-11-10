@@ -114,7 +114,7 @@ export function Loading() {
   return (
     <div className="skeleton-page" role="status" aria-label="Loading">
       <Skeleton height={20} width="38%" radius="sm" />
-      {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} height={44} radius="sm" opacity={1 - i * 0.14} />)}
+      {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} height={48} radius="sm" opacity={1 - i * 0.14} />)}
     </div>
   );
 }
@@ -132,7 +132,7 @@ export function Problem({ error, retry }: { error: unknown; retry?: () => void }
     );
   }
   return (
-    <Alert color="orange" icon={<IconAlertTriangle size={18} />} title="That didn't load">
+    <Alert color="orange" styles={{ root: { background: "var(--warn-bg)", border: "1px solid transparent" }, title: { color: "var(--warn-fg)" }, icon: { color: "var(--warn-fg)" } }} icon={<IconAlertTriangle size={18} />} title="That didn't load">
       <Stack gap="xs" align="flex-start">
         <Text size="sm">{message}</Text>
         {retry ? (

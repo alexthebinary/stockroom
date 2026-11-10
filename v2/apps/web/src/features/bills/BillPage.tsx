@@ -2,7 +2,6 @@ import { type AllocationBasis, formatUsd, landedCost, parseUsd } from "@pi/domai
 import {
   Alert,
   Anchor,
-  Badge,
   Button,
   Card,
   FileButton,
@@ -192,7 +191,7 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
               </Button>
             )}
           </FileButton>
-          {form.attachment?.startsWith("data:image/") ? <Image src={form.attachment} h={64} w="auto" radius="sm" alt="Attached bill" /> : form.attachment ? <Badge>PDF attached</Badge> : null}
+          {form.attachment?.startsWith("data:image/") ? <Image src={form.attachment} h={64} w="auto" radius="sm" alt="Attached bill" /> : form.attachment ? <span className="chip" data-tone="none">PDF attached</span> : null}
         </Group>
       </Card>
 

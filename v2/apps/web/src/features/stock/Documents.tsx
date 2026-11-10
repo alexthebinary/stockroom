@@ -1,8 +1,8 @@
-import { Anchor, Badge, Button, Group, Stack, Table, Text } from "@mantine/core";
+import { Anchor, Button, Group, Stack, Table, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { get } from "../../lib/api";
-import { formatDate, Loading, Money, PageHeader, Problem, plural } from "../../components/ui";
+import { formatDate, Loading, Money, PageHeader, Problem, plural, StatusBadge } from "../../components/ui";
 
 type Named = { id: number; sku: string; name: string } | null;
 type Receipt = {
@@ -46,7 +46,7 @@ export function ReceiptDetail() {
       <PageHeader
         title={r.number}
         subtitle={`Received ${formatDate(r.receivedAt)} by ${r.receivedBy}`}
-        action={<Badge variant="light" color="gray">{r.state.replace(/_/g, " ").toLowerCase()}</Badge>}
+        action={<StatusBadge status={r.state} />}
       />
       <Group gap="xl" align="flex-start">
         <Fact label="Order"><Anchor component={Link} to={`/orders/${r.po.id}`} fw={600}>{r.po.number}</Anchor></Fact>

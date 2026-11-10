@@ -42,7 +42,7 @@ export function Orders() {
   const [filtersOpen, setFiltersOpen] = useState<boolean | null>(null);
   const showFilters = filtersOpen ?? activeCount > 0;
   const orders = useQuery({ queryKey: ["orders", "ALL"], queryFn: () => get<PurchaseOrder[]>("/purchase-orders?lifecycle=ALL") });
-  if (!orders.data) return <Loading />;
+  if (!orders.data) return <><PageHeader title="Purchase orders" /><Loading /></>;
   const filtered = filterOrders(orders.data, filters);
   const vendors = [...new Map(orders.data.flatMap((po) => po.vendor ? [[String(po.vendor.id), po.vendor.name] as const] : [])).entries()]
     .map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
@@ -218,7 +218,7 @@ export function OrderDetail() {
                   <Table.Td>
                     {l.item?.name}
                     {l.addedAtDock ? (
-                      <Text span size="xs" c="blue">
+                      <Text span size="xs" c="dimmed">
                         {" "}
                         · added at the dock
                       </Text>

@@ -17,7 +17,7 @@ export function BillDesk() {
   const bills = useQuery({ queryKey: ["bills"], queryFn: () => get<Bill[]>("/bills"), refetchInterval: 30_000 });
   const unknown = useQuery({ queryKey: ["unknown"], queryFn: () => get<{ sessionId: number; code: string | null; name: string | null; qty: number; startedBy: string; submittedAt: string }[]>("/receiving/unknown") });
   const [tab, setTab] = useState<string | null>("review");
-  if (!bills.data) return <Loading />;
+  if (!bills.data) return <><PageHeader title="Bills" /><Loading /></>;
   const drafts = bills.data.filter((b) => b.status === "DRAFT");
   const open = bills.data.filter((b) => b.status === "POSTED" && (b.openCents ?? 0) !== 0);
   const shown = tab === "review" ? drafts : tab === "open" ? open : bills.data;

@@ -6,7 +6,7 @@ import { GuidedPath } from "./GuidedPath";
 import { AskHelp } from "./AskHelp";
 import { TactileButton } from "../../components/kitchen/TactileButton";
 import { Ruled, RuledRow } from "../../components/Ruled";
-import { Loading, Money, Problem, Stat, usd } from "../../components/ui";
+import { Loading, Money, PageHeader, Problem, Stat, usd } from "../../components/ui";
 import { get } from "../../lib/api";
 import { useProfile } from "../../lib/profile";
 import type { Bill, Home, PurchaseOrder, Setup } from "../../lib/types";
@@ -16,10 +16,11 @@ const useHome = () => useQuery({ queryKey: ["home"], queryFn: () => get<Home>("/
 const useOrders = () => useQuery({ queryKey: ["orders", "ALL"], queryFn: () => get<PurchaseOrder[]>("/purchase-orders?lifecycle=ALL") });
 const useBills = () => useQuery({ queryKey: ["bills"], queryFn: () => get<Bill[]>("/bills"), refetchInterval: 30_000 });
 
+const SUBTITLE = { CLERK: "Receive deliveries and count stock.", ACCOUNTING: "Review bills and keep payables current.", ADMIN: "Where the business stands today." } as const;
 function Greeting() {
   const { profile } = useProfile();
   const hour = new Date().getHours();
-  return <Title order={1}>{`Good ${hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening"}, ${profile?.name.split(" ")[0] ?? ""}`}</Title>;
+  return <PageHeader title={`Good ${hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening"}, ${profile?.name.split(" ")[0] ?? ""}`} subtitle={SUBTITLE[profile?.job ?? "CLERK"]} />;
 }
 
 export function HomePage() {

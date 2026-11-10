@@ -109,7 +109,7 @@ a.ruled-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px;
 .ruled-row-title { font-weight: 600; color: var(--text-strong); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ruled-row-meta { font-size: 14px; color: var(--text-muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ruled-row-aside { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.ruled-empty { padding: 20px 4px; color: var(--text-muted); border-bottom: 1px solid var(--line); }
+.ruled-empty { padding: var(--space-5) var(--space-2); color: var(--text-muted); border-bottom: 1px solid var(--line); }
 
 /* ── Kitchen: TactileButton ── */
 .tactile { --t-depth: 6px; --t-radius: 14px; position: relative; display: inline-grid; padding: 0 0 var(--t-depth); border: 0; background: transparent;

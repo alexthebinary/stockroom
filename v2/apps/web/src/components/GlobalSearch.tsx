@@ -99,8 +99,8 @@ export function GlobalSearch() {
 
   return (
     <>
-      <Button variant="subtle" onClick={open} aria-label="Search" style={{ height: 44, minWidth: 44, paddingInline: 10 }}>
-        <Group gap={6} wrap="nowrap">
+      <Button variant="subtle" onClick={open} aria-label="Search" style={{ height: 44, minWidth: 44, paddingInline: 12 }}>
+        <Group gap={8} wrap="nowrap">
           <IconSearch size={20} />
           <Text component="span" size="sm" visibleFrom="sm">Search</Text>
         </Group>

@@ -1,5 +1,5 @@
 import { Anchor, Button, Group, Text, TextInput } from "@mantine/core";
-import { IconSparkles } from "@tabler/icons-react";
+import { IconSearch } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { post } from "../../lib/api";
@@ -30,7 +30,7 @@ export function AskHelp() {
     <section aria-label="Ask how something works" className="ask-help no-print">
       <form onSubmit={(e) => { e.preventDefault(); void ask(); }}>
         <Group gap="xs" wrap="nowrap" align="flex-end">
-          <TextInput style={{ flex: 1 }} label="Ask how something works" placeholder="For example: how do I receive a delivery?" leftSection={<IconSparkles size={16} aria-hidden="true" />} value={q} onChange={(e) => setQ(e.currentTarget.value)} maxLength={500} />
+          <TextInput style={{ flex: 1 }} label="Ask how something works" placeholder="For example: how do I receive a delivery?" leftSection={<IconSearch size={16} aria-hidden="true" />} value={q} onChange={(e) => setQ(e.currentTarget.value)} maxLength={500} />
           <Button type="submit" variant="default" loading={busy} disabled={!q.trim()}>Ask</Button>
         </Group>
       </form>

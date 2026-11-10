@@ -93,7 +93,7 @@ export function HelpPanel() {
             <Group align="flex-end" wrap="nowrap" gap="xs">
               <Textarea aria-label="Your help question" placeholder="How do I…?" value={input} onChange={(e) => setInput(e.currentTarget.value)} autosize minRows={2} maxRows={4} maxLength={2000} disabled={busy} style={{ flex: 1 }}
                 onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
-              <ActionIcon aria-label="Send question" size={44} variant="filled" color="lime.4" disabled={busy || !input.trim()} onClick={() => void send()}><IconSend size={20} /></ActionIcon>
+              <ActionIcon aria-label="Send question" size={44} variant="filled" color="ink" disabled={busy || !input.trim()} onClick={() => void send()}><IconSend size={20} /></ActionIcon>
             </Group>
             <Group justify="space-between" align="flex-start" wrap="nowrap">
               <Text size="xs" c="dimmed">Unanswered questions are saved to improve help.</Text>

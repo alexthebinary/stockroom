@@ -4,7 +4,7 @@ import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Loading, PageHeader, Problem, toastErr, toastOk } from "../../components/ui";
+import { Loading, PageHeader, Problem, StatusBadge, toastErr, toastOk } from "../../components/ui";
 import { DataTable } from "../../components/DataTable";
 import { get, patch, post, put } from "../../lib/api";
 import type { Item, Vendor, Warehouse } from "../../lib/types";
@@ -47,7 +47,7 @@ export function Items() {
   return (
     <>
       <title>Stock · ProfitIndex</title>
-      <PageHeader title="Stock" action={
+      <PageHeader title="Stock" subtitle="Items, receipts and adjustments." action={
         <Group gap="xs">
           <Button onClick={() => setAdding(true)}>+ Add item</Button>
           <Button variant="light" onClick={() => setBundleForm("new")}>Create bundle</Button>
@@ -146,7 +146,7 @@ export function Items() {
             { key: "po", label: "Order", width: 130, render: (r) => r.po.number },
             { key: "date", label: "Received", width: 130, render: (r) => new Date(r.receivedAt).toLocaleDateString() },
             { key: "by", label: "By", width: 140, render: (r) => r.receivedBy },
-            { key: "state", label: "Status", width: 130, render: (r) => r.state.replace(/_/g, " ").toLowerCase() },
+            { key: "state", label: "Status", width: 150, render: (r) => <StatusBadge status={r.state} /> },
             { key: "units", label: "Units", width: 90, align: "right", strong: true, render: (r) => r.lines.reduce((n, l) => n + l.qty, 0) },
           ]}
           phone={(r) => {
