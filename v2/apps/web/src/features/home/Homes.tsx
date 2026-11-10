@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Group, SimpleGrid, Stack, Text, Title, UnstyledButton } from "@mantine/core";
+import { Alert, Button, Group, SimpleGrid, Stack, Text, Title } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { IconAlertTriangle, IconBarcode, IconCircleCheck, IconFileInvoice, IconPlus, IconTruckDelivery } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
@@ -121,19 +121,18 @@ function AdminHome() {
   return (
     <Stack gap="lg">
       <Greeting />
-      <UnstyledButton component={Link} to="/reports">
-        <Card withBorder padding="lg">
-          <Group wrap="nowrap">
-            {books.booksSound ? <IconCircleCheck size={32} color="var(--ok-fg)" /> : <IconAlertTriangle size={32} color="var(--warn-fg)" />}
-            <div>
-              <Text fw={600}>{books.booksSound ? "The books are sound" : "The books need a look"}</Text>
-              <Text size="sm" c="dimmed">
-                {books.booksSound ? "Trial balance balances; stock value, inbound and payables all agree with the ledger." : books.problems[0]}
-              </Text>
-            </div>
-          </Group>
-        </Card>
-      </UnstyledButton>
+      <Ruled label="Books status">
+        <RuledRow
+          to="/reports"
+          title={
+            <Group gap="sm" wrap="nowrap">
+              {books.booksSound ? <IconCircleCheck size={24} color="var(--ok-fg)" aria-hidden /> : <IconAlertTriangle size={24} color="var(--warn-fg)" aria-hidden />}
+              <span>{books.booksSound ? "The books are sound" : "The books need a look"}</span>
+            </Group>
+          }
+          meta={books.booksSound ? "Trial balance balances; stock value, inbound and payables all agree with the ledger." : books.problems[0]}
+        />
+      </Ruled>
       <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="lg">
         <Stat label="Open orders" value={(orders.data ?? []).filter((o) => o.lifecycle === "OPEN" && o.receivingStatus !== "RECEIVED").length} />
         <Stat label="Bills to review" value={home.data.accounting.draftBills} />

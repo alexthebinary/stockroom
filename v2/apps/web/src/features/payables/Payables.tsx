@@ -1,4 +1,4 @@
-import { Anchor, Card, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
+import { Anchor, SimpleGrid, Table, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Coach } from "../../components/Coach";
@@ -29,43 +29,38 @@ export function Payables() {
         <Stat label="Vendors" value={vendors.length} />
       </SimpleGrid>
       {vendors.length === 0 ? <Text c="dimmed">Nothing owed.</Text> : null}
-      <Stack>
-        {vendors.map((v) => (
-          <Card key={v.vendor.id} withBorder>
-            <Group justify="space-between" mb="xs">
-              <Text fw={600}>{v.vendor.name}</Text>
-              <Text fw={600}>
-                <Money cents={v.totalCents} />
-              </Text>
-            </Group>
-            <Table.ScrollContainer minWidth={420}>
-              <Table>
-                <Table.Tbody>
-                  {v.bills.map((b) => (
-                    <Table.Tr key={b.id}>
-                      <Table.Td>
-                        <Anchor component={Link} to={`/bills/${b.id}`}>
-                          {b.number}
-                        </Anchor>
-                        {b.vendorInvoiceNumber ? (
-                          <Text span c="dimmed" size="sm">
-                            {" "}
-                            · {b.vendorInvoiceNumber}
-                          </Text>
-                        ) : null}
-                      </Table.Td>
-                      <Table.Td c={b.bucket === "current" ? undefined : "var(--warn-fg)"}>{b.bucket === "current" ? `due ${formatDate(b.dueDate)}` : `${b.bucket} days late`}</Table.Td>
-                      <Table.Td ta="right">
-                        <Money cents={b.openCents} />
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
-          </Card>
-        ))}
-      </Stack>
+      {vendors.length > 0 ? (
+        <Table.ScrollContainer minWidth={560}>
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Vendor / bill</Table.Th>
+                <Table.Th>Vendor invoice</Table.Th>
+                <Table.Th>Due</Table.Th>
+                <Table.Th ta="right">Open</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            {vendors.map((v) => (
+              <Table.Tbody key={v.vendor.id}>
+                <Table.Tr style={{ background: "var(--surface-sunken)" }}>
+                  <Table.Td colSpan={3} fw={600}>{v.vendor.name}</Table.Td>
+                  <Table.Td ta="right" fw={600}><Money cents={v.totalCents} /></Table.Td>
+                </Table.Tr>
+                {v.bills.map((b) => (
+                  <Table.Tr key={b.id}>
+                    <Table.Td pl={24}>
+                      <Anchor component={Link} to={`/bills/${b.id}`}>{b.number}</Anchor>
+                    </Table.Td>
+                    <Table.Td c="dimmed">{b.vendorInvoiceNumber ?? "—"}</Table.Td>
+                    <Table.Td c={b.bucket === "current" ? undefined : "var(--warn-fg)"}>{b.bucket === "current" ? formatDate(b.dueDate) : `${b.bucket} days late`}</Table.Td>
+                    <Table.Td ta="right"><Money cents={b.openCents} /></Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            ))}
+          </Table>
+        </Table.ScrollContainer>
+      ) : null}
     </>
   );
 }
