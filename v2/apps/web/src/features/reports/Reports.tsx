@@ -1,14 +1,14 @@
 import { EVENTS, type EventType } from "@pi/domain";
 import { Alert, Button, Card, Checkbox, Group, SegmentedControl, Select, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { IconAlertTriangle, IconCircleCheck, IconDownload } from "@tabler/icons-react";
-import { Link, useSearchParams } from "react-router-dom";
-import { plural, formatDate, Loading, Money, PageHeader, Problem, usd } from "../../components/ui";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { plural, formatDate, Loading, Money, PageHeader, Problem, toastErr, toastOk, usd } from "../../components/ui";
 import { DataTable } from "../../components/DataTable";
-import { get } from "../../lib/api";
+import { get, post } from "../../lib/api";
 import { downloadCsv, toCsv, type CsvCell } from "../../lib/csv";
-import type { JournalEntry } from "../../lib/types";
+import type { JournalEntry, Warehouse } from "../../lib/types";
 
 type Books = { sound: boolean; problems: string[]; figures: Record<string, number> };
 type Tb = { rows: { id: number; code: string; name: string; isHeader: boolean; parentId: number | null; debitCents: number; creditCents: number }[]; totalDebitCents: number; totalCreditCents: number };
@@ -21,6 +21,17 @@ type ToReceive = {
 };
 type Held = { poId: number; poNumber: string; vendor: { name: string } | null; item: { name: string; sku: string }; qtyHeld: number; estimateCents: number; receivedAt: string; days: number }[];
 type InventoryMovement = { rows: { id: number; itemId: number; transactionDate: string; type: string; transaction: string; transactionUrl: string | null; sku: string; name: string; brand: string | null; category: string | null; inboundQty: number; outboundQty: number; endingBalance: number }[] };
+type ReorderRow = {
+  item: { id: number; sku: string; name: string };
+  onHand: number;
+  onOrder: number;
+  reorderPoint: number;
+  reorderQty: number | null;
+  suggestedQty: number;
+  vendor: { id: number; name: string } | null;
+};
+type ReorderReportData = { rows: ReorderRow[] };
+type ReorderCreated = { orders: { id: number; number: string }[]; skipped: { name: string; reason: string }[] };
 
 /** Each report owns its URL keys; switching tabs and browser navigation preserve filters. */
 function useReportFilters<T extends Record<string, string>>(prefix: string, defaults: T) {
@@ -105,6 +116,7 @@ const REPORT_TABS = {
   journal: { label: "Journal entries", component: Journal },
   held: { label: "Awaiting bill", component: HeldStock },
   toReceive: { label: "To receive", component: ToReceiveReport },
+  reorder: { label: "Reorder", component: ReorderReport },
   stock: { label: "Stock value", component: StockValue },
   bundles: { label: "Bundles", component: BundlesReport },
   movement: { label: "Inventory movement", component: InventoryMovementReport },
@@ -114,7 +126,7 @@ type ReportTab = keyof typeof REPORT_TABS;
 const REPORT_CATEGORIES: { value: string; label: string; tabs: ReportTab[] }[] = [
   { value: "accounting", label: "Accounting", tabs: ["books", "tb", "journal"] },
   { value: "sales", label: "Sales", tabs: [] },
-  { value: "purchases", label: "Purchases", tabs: ["held", "toReceive"] },
+  { value: "purchases", label: "Purchases", tabs: ["held", "toReceive", "reorder"] },
   { value: "inventory", label: "Inventory", tabs: ["stock", "bundles", "movement"] },
 ];
 
@@ -698,6 +710,85 @@ function ToReceiveReport() {
             ),
             aside: <span className={o.days > 14 ? "fig fig-warn" : "fig"}>{o.days} <span className="fig-unit">{o.days === 1 ? "day ago" : "days ago"}</span></span>,
           })}
+        />
+      ) : null}
+    </Stack>
+  );
+}
+
+/** Items at or under their reorder minimum. One draft order per default vendor. */
+function ReorderReport() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const filters = useReportFilters("reorder", { q: "" });
+  const [warehouseId, setWarehouseId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const data = useQuery({ queryKey: ["reorder"], queryFn: () => get<ReorderReportData>("/reports/reorder") });
+  const warehouses = useQuery({ queryKey: ["warehouses"], queryFn: () => get<Warehouse[]>("/warehouses") });
+  const deliverTo = warehouseId ?? (warehouses.data?.[0] ? String(warehouses.data[0].id) : null);
+  if (data.error) return <Problem error={data.error} retry={() => data.refetch()} />;
+  if (!data.data) return <Loading />;
+  const rows = data.data.rows.filter((row) => matches(filters.values.q, row.item.sku, row.item.name, row.vendor?.name));
+  const createOrders = async (selected: ReorderRow[], clear: () => void) => {
+    if (!deliverTo || busy) return;
+    setBusy(true);
+    try {
+      const result = await post<ReorderCreated>("/reports/reorder", { itemIds: selected.map((row) => row.item.id), warehouseId: Number(deliverTo) });
+      const skipped = result.skipped.filter((row) => row.reason === "no vendor").map((row) => row.name);
+      const parts: string[] = [];
+      if (result.orders.length) parts.push(`Created ${plural(result.orders.length, "purchase order")}.`);
+      if (skipped.length === 1) parts.push(`No vendor set for ${skipped[0]}, so that row was skipped.`);
+      else if (skipped.length > 1) parts.push(`No vendor set for ${skipped.join(", ")}, so those rows were skipped.`);
+      if (parts.length) toastOk(parts.join(" "));
+      else toastOk("Nothing to order.");
+      clear();
+      await queryClient.invalidateQueries({ queryKey: ["reorder"] });
+      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+      if (result.orders.length) navigate("/orders");
+    } catch (error) {
+      toastErr(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Stack gap="xs">
+      <Group align="flex-end" wrap="wrap">
+        <TextInput label="Search items" placeholder="Name, SKU or vendor" value={filters.values.q} onChange={(e) => filters.set("q", e.currentTarget.value)} style={filterStyle} />
+        {warehouses.data && warehouses.data.length > 1 ? (
+          <Select label="Deliver to" data={warehouses.data.map((warehouse) => ({ value: String(warehouse.id), label: warehouse.name }))} value={deliverTo} onChange={setWarehouseId} style={filterStyle} />
+        ) : null}
+      </Group>
+      <FilterSummary count={rows.length} noun="item" clear={filters.clear} />
+      {rows.length === 0 ? <Text c="dimmed">{filters.active ? "Nothing matches these filters." : "Nothing is at or under its reorder minimum."}</Text> : null}
+      <Text c="dimmed">On hand plus units still to receive. The suggested quantity is the reorder quantity, or the shortfall if that is larger, at the item's last cost.</Text>
+      {rows.length > 0 ? (
+        <DataTable
+          label="Items to reorder"
+          rows={rows}
+          rowKey={(row) => row.item.id}
+          empty={null}
+          columns={[
+            { key: "item", label: "Item", primary: true, strong: true, render: (row) => row.item.name },
+            { key: "sku", label: "SKU", width: 150, mono: true, render: (row) => row.item.sku },
+            { key: "onHand", label: "On hand", width: 90, align: "right", render: (row) => row.onHand },
+            { key: "onOrder", label: "On order", width: 90, align: "right", render: (row) => row.onOrder },
+            { key: "minimum", label: "Minimum", width: 100, align: "right", render: (row) => row.reorderPoint },
+            { key: "reorderQty", label: "Reorder qty", width: 110, align: "right", render: (row) => row.reorderQty ?? "—" },
+            { key: "suggested", label: "Suggested", width: 110, align: "right", strong: true, render: (row) => row.suggestedQty },
+            { key: "vendor", label: "Vendor", width: 180, render: (row) => row.vendor?.name ?? "—" },
+          ]}
+          phone={(row) => ({
+            title: row.item.name,
+            meta: `${row.item.sku} · on hand ${row.onHand} · on order ${row.onOrder} · suggest ${row.suggestedQty}`,
+            aside: row.vendor?.name ?? "No vendor",
+          })}
+          selectable={{
+            filename: "reorder.csv",
+            actions: (selected, clear) => (
+              <Button size="compact-md" loading={busy} disabled={!deliverTo} onClick={() => createOrders(selected, clear)}>Create purchase orders</Button>
+            ),
+          }}
         />
       ) : null}
     </Stack>
