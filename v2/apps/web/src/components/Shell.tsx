@@ -160,7 +160,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <Box maw={1100} mx="auto" pb={{ base: 96, sm: 32 }}>
+        <Box maw={1280} mx="auto" pb={{ base: 96, sm: 32 }}>
           {children}
         </Box>
       </AppShell.Main>

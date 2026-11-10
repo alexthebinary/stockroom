@@ -9,7 +9,22 @@ import { useProfile } from "../lib/profile";
 
 type Result = { type: string; id: number; title: string; subtitle: string; url: string };
 type Results = Partial<Record<keyof typeof LABELS, Result[]>>;
+/** Things to do, not just records to find. Shown first, filtered by what is typed. */
+const ACTIONS: { title: string; subtitle: string; url: string; words: string }[] = [
+  { title: "Receive a delivery", subtitle: "Scan boxes at the dock", url: "/receive", words: "receive delivery scan dock" },
+  { title: "New purchase order", subtitle: "Order from a vendor", url: "/orders/new", words: "new purchase order buy" },
+  { title: "Stocktake", subtitle: "Count stock and post the differences", url: "/stocktake", words: "stocktake count cycle adjust" },
+  { title: "Print labels", subtitle: "Pick items on Stock, tick them, print", url: "/items", words: "print labels barcode" },
+  { title: "Reorder report", subtitle: "Items at or under their minimum", url: "/reports", words: "reorder low stock minimum replenish" },
+  { title: "Bills to review", subtitle: "Accounting inbox", url: "/bills", words: "bills review post invoice" },
+  { title: "Payables", subtitle: "What we owe, by vendor", url: "/payables", words: "payables pay owe due overdue" },
+  { title: "Reports", subtitle: "Books check, trial balance, stock value", url: "/reports", words: "reports books trial balance journal" },
+  { title: "Stock", subtitle: "Items, receipts, adjustments", url: "/items", words: "stock inventory items" },
+  { title: "Settings", subtitle: "Team, warehouses, accounts", url: "/settings", words: "settings team warehouses accounts" },
+  { title: "How it works", subtitle: "The purchase to stock flow", url: "/guide", words: "guide help how works" },
+];
 const LABELS = {
+  actions: "Go to",
   purchaseOrders: "Purchase orders",
   bills: "Bills",
   vendors: "Vendors",
@@ -36,9 +51,17 @@ export function GlobalSearch() {
     enabled: ready,
     retry: false,
   });
-  const groups = useMemo(() => ready && search.data
-    ? (Object.keys(LABELS) as (keyof typeof LABELS)[]).flatMap((key) => search.data[key]?.length ? [{ key, results: search.data[key]! }] : [])
-    : [], [ready, search.data]);
+  const actions = useMemo(() => {
+    const q = trimmed.toLowerCase();
+    const hits = ACTIONS.filter((a) => !q || a.title.toLowerCase().includes(q) || a.words.includes(q));
+    return hits.slice(0, q ? 4 : 6).map((a, i): Result => ({ type: "action", id: i, title: a.title, subtitle: a.subtitle, url: a.url }));
+  }, [trimmed]);
+  const groups = useMemo(() => {
+    const found = ready && search.data
+      ? (Object.keys(LABELS) as (keyof typeof LABELS)[]).flatMap((key) => search.data[key]?.length ? [{ key, results: search.data[key]! }] : [])
+      : [];
+    return actions.length ? [{ key: "actions" as const, results: actions }, ...found] : found;
+  }, [ready, search.data, actions]);
   const results = useMemo(() => groups.flatMap((group) => group.results), [groups]);
   const busy = trimmed.length >= 2 && (!ready || search.isFetching);
   const open = () => {
@@ -82,9 +105,9 @@ export function GlobalSearch() {
           <Text component="span" size="sm" visibleFrom="sm">Search</Text>
         </Group>
       </Button>
-      <Modal opened={opened} onClose={() => setOpened(false)} title="Search ProfitIndex" size="lg" yOffset="8dvh" padding="md"
+      <Modal opened={opened} onClose={() => setOpened(false)} title="Search or go to" size="lg" yOffset="8dvh" padding="md"
         onEnterTransitionEnd={() => input.current?.focus()}>
-        <TextInput ref={input} data-autofocus placeholder="Search orders, inventory and more…" aria-label="Search records"
+        <TextInput ref={input} data-autofocus placeholder="Search records or jump to an action…" aria-label="Search records"
           leftSection={<IconSearch size={18} />} rightSection={busy ? <Loader size="xs" /> : undefined}
           value={query} onChange={(event) => setQuery(event.currentTarget.value)}
           role="combobox" aria-expanded={results.length > 0} aria-controls={listId} aria-autocomplete="list"
@@ -100,10 +123,10 @@ export function GlobalSearch() {
             }
           }} />
         <Box mt="sm" role="status" aria-live="polite">
-          {trimmed.length < 2 ? <Text size="sm" c="dimmed">Type at least 2 characters to search.</Text>
-            : busy ? <Text size="sm" c="dimmed">Searching…</Text>
+          {trimmed.length < 2 ? <Text size="sm" c="dimmed">Pick an action, or type 2 characters to search records.</Text>
+            : busy && !actions.length ? <Text size="sm" c="dimmed">Searching…</Text>
             : search.isError ? <Text size="sm" c="red">{search.error.message}</Text>
-            : !results.length ? <Text size="sm" c="dimmed">No results for “{trimmed}”</Text> : null}
+            : !results.length && !busy ? <Text size="sm" c="dimmed">No results for “{trimmed}”</Text> : null}
         </Box>
         <Box id={listId} role="listbox" aria-label="Search results" aria-busy={busy} style={{ maxHeight: "55dvh", overflowY: "auto" }}>
           {groups.map((group) => (

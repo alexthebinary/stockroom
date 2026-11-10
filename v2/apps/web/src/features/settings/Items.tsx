@@ -1,4 +1,4 @@
-import { ActionIcon, Alert, Anchor, Autocomplete, Badge, Button, Card, FileButton, Group, Input, Modal, NumberInput, Select, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Autocomplete, Badge, Button, Card, FileButton, Group, Input, Modal, NumberInput, Select, SimpleGrid, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -188,7 +188,7 @@ export function Items() {
       </section>
       </Tabs.Panel>
       </Tabs>
-      <Modal opened={adding || editing != null} onClose={() => { setEditing(null); setAdding(false); }} title={editing ? `Edit ${editing.sku}` : "Add item"}>
+      <Modal opened={adding || editing != null} onClose={() => { setEditing(null); setAdding(false); }} title={editing ? `Edit ${editing.sku}` : "Add item"} size="lg">
         {adding || editing ? (
           <EditItem
             key={editing?.id ?? "new"}
@@ -384,12 +384,13 @@ export function EditItem({ item, facets, onSaved }: { item: Item | null; facets:
   };
   return (
     <Stack>
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
       {!item ? <TextInput label="SKU" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.currentTarget.value })} maxLength={64} required /> : null}
-      <TextInput label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.currentTarget.value })} required />
+      <TextInput label="Name" style={{ gridColumn: "1 / -1" }} value={form.name} onChange={(e) => setForm({ ...form, name: e.currentTarget.value })} required />
       <TextInput type="text" label="Serial number" value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.currentTarget.value })} maxLength={60} />
       <TextInput type="text" label="Model number" value={form.modelNumber} onChange={(e) => setForm({ ...form, modelNumber: e.currentTarget.value })} maxLength={60} />
       <NumberInput label="Weight (lb)" value={form.weightLb} onChange={(weightLb) => setForm({ ...form, weightLb })} min={0} allowNegative={false} step={0.1} />
-      <Input.Wrapper label="Length × Width × Height (in)">
+      <Input.Wrapper label="Length × Width × Height (in)" style={{ gridColumn: "1 / -1" }}>
         <Group grow gap="xs" wrap="nowrap">
           <NumberInput aria-label="Length (in)" placeholder="Length" value={form.lengthIn} onChange={(lengthIn) => setForm({ ...form, lengthIn })} min={0} allowNegative={false} />
           <NumberInput aria-label="Width (in)" placeholder="Width" value={form.widthIn} onChange={(widthIn) => setForm({ ...form, widthIn })} min={0} allowNegative={false} />
@@ -401,7 +402,8 @@ export function EditItem({ item, facets, onSaved }: { item: Item | null; facets:
       <Select label="Default vendor" placeholder="None" clearable searchable data={(vendors.data ?? []).map((vendor) => ({ value: String(vendor.id), label: vendor.name }))} value={form.defaultVendorId} onChange={(defaultVendorId) => setForm({ ...form, defaultVendorId })} />
       <NumberInput label="Reorder minimum" value={form.reorderPoint} onChange={(reorderPoint) => setForm({ ...form, reorderPoint })} min={0} allowDecimal={false} allowNegative={false} />
       <NumberInput label="Reorder quantity" value={form.reorderQty} onChange={(reorderQty) => setForm({ ...form, reorderQty })} min={0} allowDecimal={false} allowNegative={false} />
-      <Button onClick={save} loading={busy} disabled={!form.name.trim() || (!item && !form.sku.trim())}>
+      </SimpleGrid>
+      <Button className="modal-save" onClick={save} loading={busy} disabled={!form.name.trim() || (!item && !form.sku.trim())}>
         Save
       </Button>
     </Stack>

@@ -474,7 +474,9 @@ function PostedBill({ bill }: { bill: FullBill }) {
         subtitle={`${bill.vendor?.name ?? ""} · invoice ${bill.vendorInvoiceNumber ?? "—"} · billed ${formatDate(bill.billDate)} · due ${formatDate(bill.dueDate)}`}
         action={<StatusBadge status={bill.status} />}
       />
-      <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="lg">
+      <div className="detail-grid">
+      <aside className="detail-aside" aria-label="Bill summary and actions">
+      <SimpleGrid cols={2} spacing="md">
         <Stat label="Total" value={usd(bill.totalCents)} />
         <Stat label="Paid" value={usd(bill.paidCents)} />
         <Stat label="Credited" value={usd(bill.creditedCents)} />
@@ -515,6 +517,8 @@ function PostedBill({ bill }: { bill: FullBill }) {
         </Card>
       ) : null}
 
+      </aside>
+      <div className="detail-main">
       <Card withBorder>
         <Title order={3} mb="sm">
           Lines
@@ -657,6 +661,9 @@ function PostedBill({ bill }: { bill: FullBill }) {
           </Stack>
         ))}
       </Card>
+
+      </div>
+      </div>
 
       <PayModal opened={modal === "pay" || modal === "refund"} refund={modal === "refund"} max={Math.abs(open)} onClose={() => setModal(null)} onSave={(body) => act(() => post(`/bills/${bill.id}/${modal === "refund" ? "refunds" : "payments"}`, body), modal === "refund" ? "Refund recorded" : "Payment recorded")} />
       <CreditModal opened={modal === "credit"} bill={bill} onClose={() => setModal(null)} onSave={(body) => act(() => post(`/bills/${bill.id}/credits`, body), "Vendor credit posted")} />
