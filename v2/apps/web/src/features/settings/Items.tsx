@@ -3,6 +3,7 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Loading, PageHeader, Problem, toastErr, toastOk } from "../../components/ui";
 import { Ruled, RuledRow } from "../../components/Ruled";
 import { get, patch, post, put } from "../../lib/api";
@@ -17,6 +18,8 @@ type Facets = { brands: string[]; categories: string[] };
 /** Find an item: what's on the shelf, what's waiting for a bill, and its codes. Filter by brand and category. */
 export function Items() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = ["receipts", "adjustments"].includes(searchParams.get("tab") ?? "") ? searchParams.get("tab") : "inventory";
   const [search, setSearch] = useState("");
   const [brand, setBrand] = useState<string | null>(null);
   const [category, setCategory] = useState<string | null>(null);
@@ -50,7 +53,7 @@ export function Items() {
           <ItemCsvImport onImported={refreshItems} />
         </Group>
       } />
-      <Tabs defaultValue="inventory" keepMounted={false}>
+      <Tabs value={tab} onChange={(v) => setSearchParams(v && v !== "inventory" ? { tab: v } : {}, { replace: true })} keepMounted={false}>
       <Tabs.List mb="md">
         <Tabs.Tab value="inventory">Inventory</Tabs.Tab>
         <Tabs.Tab value="receipts">Warehouse Receipts</Tabs.Tab>
@@ -106,6 +109,7 @@ export function Items() {
             return (
               <RuledRow
                 key={r.id}
+                to={`/receipts/${r.id}`}
                 title={r.number}
                 meta={`${r.po.number} · ${new Date(r.receivedAt).toLocaleDateString()} · ${r.receivedBy}`}
                 aside={<><span className="fig">{units}</span><span className="fig-unit">{units === 1 ? "unit" : "units"} · {r.state.replace(/_/g, " ").toLowerCase()}</span></>}
@@ -123,6 +127,7 @@ export function Items() {
           {(otherTx.data ?? []).map((t) => (
             <RuledRow
               key={t.number}
+              to={`/adjustments/${encodeURIComponent(t.number)}`}
               title={t.number}
               meta={`${t.type} · ${new Date(t.date).toLocaleDateString()} · ${t.actor}`}
               aside={<><span className="fig">{t.qty > 0 ? "+" : ""}{t.qty}</span><span className="fig-unit">{Math.abs(t.qty) === 1 ? "unit" : "units"}</span></>}

@@ -27,7 +27,7 @@ import { type PrinterStage, ReceiptPrinter } from "../../components/kitchen/Rece
 import { TactileButton } from "../../components/kitchen/TactileButton";
 import { useProfile } from "../../lib/profile";
 import type { Setup } from "../../lib/types";
-import { plural, toastErr } from "../../components/ui";
+import { plural, Problem, toastErr } from "../../components/ui";
 import { ApiError, get, patch, post } from "../../lib/api";
 import type { Item, Vendor, Warehouse } from "../../lib/types";
 import { type ScanFeedback, Scanner } from "../scan/Scanner";
@@ -120,7 +120,8 @@ export function ReceiveWizard() {
           Step {Math.min(step + 1, 5)} of 5
         </Badge>
       </Group>
-      <Progress value={(Math.min(step + 1, 5) / 5) * 100} color="lime.4" size="sm" />
+      {warehouses.error ? <Problem error={warehouses.error} retry={() => warehouses.refetch()} /> : null}
+      <Progress aria-label={`Step ${Math.min(step + 1, 5)} of 5`} value={(Math.min(step + 1, 5) / 5) * 100} color="lime.4" size="sm" />
       {step === 0 && warehouses.data && onlyWarehouse == null && (
         <WhereStep
           warehouses={warehouses.data ?? []}
@@ -164,15 +165,16 @@ function WhereStep({ warehouses, value, onPick }: { warehouses: Warehouse[]; val
   const ordersAt = (id: number) => expected.data?.filter((po) => po.warehouseId === id).length;
   return (
     <Stack>
-      <Text size="lg" fw={500}>
+      <Title order={2} size="lg" fw={500}>
         Where is it arriving?
-      </Text>
+      </Title>
       <SimpleGrid cols={{ base: 1, xs: 2 }}>
         {warehouses.map((w) => (
           <UnstyledButton key={w.id} onClick={() => onPick(w.id)}>
             <Card withBorder padding="lg" style={{ minHeight: 76, borderColor: w.id === value ? "var(--ink)" : undefined }}>
               <Text fw={600} size="lg">
                 {w.name}
+                {w.id === value ? <Text span inherit c="dimmed"> · Selected</Text> : null}
               </Text>
               <Text size="sm" c="dimmed">
                 {w.code}
@@ -196,14 +198,15 @@ function WhoStep({ warehouseId, wantedPo, onStart, onBack }: { warehouseId: numb
   const missingWanted = wantedPo != null && expected.data != null && !expected.data.some((po) => po.id === wantedPo);
   return (
     <Stack>
+      {expected.error ? <Problem error={expected.error} retry={() => expected.refetch()} /> : null}
       {missingWanted ? (
         <Alert color="orange" title="That order isn't expected at this warehouse">
           It may be fully received already, or going to another warehouse. Go back to change the warehouse, or pick the supplier below.
         </Alert>
       ) : null}
-      <Text size="lg" fw={500}>
+      <Title order={2} size="lg" fw={500}>
         Who is it from?
-      </Text>
+      </Title>
       <Coach id="receive-who" title="Not sure? That's fine.">
         Pick the order if you see it below, or just the supplier. If you don't know, tap "Not sure" — accounting will sort it out from the paperwork. You never need to know prices.
       </Coach>
@@ -217,7 +220,10 @@ function WhoStep({ warehouseId, wantedPo, onStart, onBack }: { warehouseId: numb
               <Card withBorder padding="md" style={po.id === wantedPo ? { borderColor: "var(--mantine-color-lime-6)", borderWidth: 2 } : undefined}>
                 <Group justify="space-between" wrap="nowrap">
                   <div>
-                    <Text fw={600}>{po.vendor?.name ?? "Vendor not set"}</Text>
+                    <Text fw={600}>
+                      {po.vendor?.name ?? "Vendor not set"}
+                      {po.id === wantedPo ? <Text span inherit c="dimmed"> · Selected</Text> : null}
+                    </Text>
                     <Text size="sm" c="dimmed">
                       {po.number} · {po.lines.map((l) => `${l.outstanding} × ${l.item.name}`).join(", ")}
                     </Text>
@@ -395,6 +401,7 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
   };
 
   const missingSerials = lines.filter((l) => l.item?.trackingMode === "SERIAL" && l.serials.length < l.qty);
+  if (items.error) return <Problem error={items.error} retry={() => items.refetch()} />;
   if (finishing) {
     return (
       <ReceiptPrinter stage="processing">
@@ -430,6 +437,7 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
                     <Text>{l.item.name}</Text>
                     <Text fw={600} c={got === l.outstanding ? "lime.8" : undefined}>
                       {got} / {l.outstanding}
+                      {got === l.outstanding ? " · all in" : ""}
                     </Text>
                   </Group>
                 );
@@ -461,9 +469,9 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
 
       {step === 3 && (
         <>
-          <Text size="lg" fw={500}>
+          <Title order={2} size="lg" fw={500}>
             Does this match what's in front of you?
-          </Text>
+          </Title>
           <LineList lines={lines} onBump={bump} onName={setNaming} />
           {missingSerials.map((l) => (
             <Alert key={l.key} color="orange" icon={<IconAlertTriangle size={18} />}>
@@ -520,12 +528,12 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
                 <Group justify="space-between" wrap="nowrap">
                   <div>
                     <Text fw={600}>{l.item?.name ?? l.description}</Text>
-                    <Text size="sm" c={l.itemId ? "dimmed" : "orange"}>
+                    <Text size="sm" c={l.itemId ? "dimmed" : "var(--warn-fg)"}>
                       {l.itemId ? plural(l.quantity, "unit") : "Not matched to an item — scan these boxes instead"}
                       {l.serials.length ? ` · S/N ${l.serials.join(", ")}` : ""}
                     </Text>
                   </div>
-                  {l.itemId ? <IconCheck color="var(--mantine-color-lime-7)" /> : <IconQuestionMark />}
+                  {l.itemId ? <IconCheck color="var(--ok-fg)" /> : <IconQuestionMark />}
                 </Group>
               </Card>
             ))}
@@ -549,10 +557,10 @@ function LineList({ lines, onBump, onName }: { lines: Line[]; onBump: (l: Line, 
         <Card key={l.key} withBorder padding="sm">
           <Group justify="space-between" wrap="nowrap">
             <div style={{ minWidth: 0 }}>
-              <Text fw={600} truncate>
+              <Text fw={600}>
                 {l.item?.name ?? l.name ?? "Unknown item"}
               </Text>
-              <Text size="sm" c={l.itemId ? "dimmed" : "orange"} truncate>
+              <Text size="sm" c={l.itemId ? "dimmed" : "var(--warn-fg)"}>
                 {l.itemId ? l.item?.sku : `Code ${l.code ?? "—"} · `}
                 {!l.itemId ? (
                   <Text span inherit td="underline" onClick={() => onName(l)} style={{ cursor: "pointer" }}>

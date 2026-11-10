@@ -15,6 +15,7 @@ import { NewOrder, OrderDetail, Orders } from "./features/orders/Orders";
 import { Payables } from "./features/payables/Payables";
 import { ReceiveWizard } from "./features/receive/ReceiveWizard";
 import { Items } from "./features/settings/Items";
+import { AdjustmentDetail, ReceiptDetail } from "./features/stock/Documents";
 import { get } from "./lib/api";
 
 // Screens a clerk's phone rarely or never opens load on demand.
@@ -83,6 +84,8 @@ function Screens({ profile, required, pathname }: { profile: boolean; required: 
         <Route path="/bills/:id" element={<BillPage />} />
         <Route path="/payables" element={<Payables />} />
         <Route path="/items" element={<Items />} />
+        <Route path="/receipts/:id" element={<ReceiptDetail />} />
+        <Route path="/adjustments/:number" element={<AdjustmentDetail />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/guide" element={<Guide />} />

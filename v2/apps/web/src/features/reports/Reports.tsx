@@ -4,7 +4,8 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { IconAlertTriangle, IconCircleCheck, IconDownload } from "@tabler/icons-react";
 import { Link, useSearchParams } from "react-router-dom";
-import { plural, formatDate, Loading, Money, PageHeader, usd } from "../../components/ui";
+import { plural, formatDate, Loading, Money, PageHeader, Problem, usd } from "../../components/ui";
+import { Ruled, RuledRow } from "../../components/Ruled";
 import { get } from "../../lib/api";
 import { downloadCsv, toCsv, type CsvCell } from "../../lib/csv";
 import type { JournalEntry } from "../../lib/types";
@@ -167,6 +168,7 @@ export function Reports() {
 
 function BooksCheck() {
   const books = useQuery({ queryKey: ["books"], queryFn: () => get<Books>("/books/check") });
+  if (books.error) return <Problem error={books.error} retry={() => books.refetch()} />;
   if (!books.data) return <Loading />;
   const f = books.data.figures;
   const checks = [
@@ -181,9 +183,12 @@ function BooksCheck() {
       {checks.map(([label, ok, detail]) => (
         <Card key={label} withBorder padding="sm">
           <Group wrap="nowrap">
-            {ok ? <IconCircleCheck color="var(--mantine-color-lime-7)" /> : <IconAlertTriangle color="var(--mantine-color-orange-7)" />}
+            {ok ? <IconCircleCheck color="var(--ok-fg)" aria-label="Agrees" role="img" /> : <IconAlertTriangle color="var(--warn-fg)" aria-label="Does not agree" role="img" />}
             <div>
               <Text fw={500}>{label}</Text>
+              <Text size="sm" fw={600} c={ok ? "var(--ok-fg)" : "var(--warn-fg)"}>
+                {ok ? "Agrees" : "Does not agree"}
+              </Text>
               <Text size="sm" c="dimmed">
                 {detail}
               </Text>
@@ -206,6 +211,7 @@ function BooksCheck() {
 
 function TrialBalance() {
   const tb = useQuery({ queryKey: ["tb"], queryFn: () => get<Tb>("/reports/trial-balance") });
+  if (tb.error) return <Problem error={tb.error} retry={() => tb.refetch()} />;
   if (!tb.data) return <Loading />;
   const csv = trialBalanceCsv(tb.data.rows, { debit: tb.data.totalDebitCents, credit: tb.data.totalCreditCents });
   return (
@@ -482,6 +488,7 @@ function InventoryMovementReport() {
 function BundlesReport() {
   const filters = useReportFilters("bundles", { q: "", hideZero: "" });
   const v = useQuery({ queryKey: ["bundles-report"], queryFn: () => get<BundleReport>("/reports/bundles") });
+  if (v.error) return <Problem error={v.error} retry={() => v.refetch()} />;
   if (!v.data) return <Loading />;
   const rows = v.data.rows.filter((row) => matches(filters.values.q, row.sku, row.name, ...row.components.flatMap((c) => [c.sku, c.name]))
     && (filters.values.hideZero !== "1" || row.onHand !== 0));
@@ -571,7 +578,7 @@ function StockValue() {
                   <Table.Td ta="right">
                     <Money cents={r.valueCents} />
                   </Table.Td>
-                  <Table.Td ta="right" c={r.varianceCents ? "orange" : undefined}>
+                  <Table.Td ta="right" c={r.varianceCents ? "var(--warn-fg)" : undefined}>
                     <Money cents={r.glCents} />
                   </Table.Td>
                   <Table.Td ta="right">{r.held || ""}</Table.Td>
@@ -600,6 +607,7 @@ function StockValue() {
 function HeldStock() {
   const filters = useReportFilters("held", { q: "" });
   const held = useQuery({ queryKey: ["held"], queryFn: () => get<Held>("/reports/held") });
+  if (held.error) return <Problem error={held.error} retry={() => held.refetch()} />;
   if (!held.data) return <Loading />;
   const rows = held.data.filter((row) => matches(filters.values.q, row.poNumber, row.vendor?.name, row.item.sku, row.item.name));
   return (
@@ -608,23 +616,21 @@ function HeldStock() {
       <FilterSummary count={rows.length} noun="line" clear={filters.clear} />
       {rows.length === 0 ? <Text c="dimmed">{filters.active ? "Nothing matches these filters." : "Nothing is waiting for a bill."}</Text> : null}
       <Text c="dimmed">Received at the dock, counted, not yet sellable or valued. Oldest first.</Text>
-      {rows.map((h, i) => (
-        <Card key={i} withBorder padding="sm" component={Link} to={`/orders/${h.poId}`} style={{ textDecoration: "none", color: "inherit" }}>
-          <Group justify="space-between" wrap="nowrap">
-            <div>
-              <Text fw={600}>
-                {h.qtyHeld} × {h.item.name}
-              </Text>
-              <Text size="sm" c="dimmed">
-                {h.poNumber} · {h.vendor?.name ?? "vendor not set"} · since {formatDate(h.receivedAt)}
-              </Text>
-            </div>
-            <Text c={h.days > 7 ? "orange" : undefined} fw={600}>
-              {plural(h.days, "day")}
-            </Text>
-          </Group>
-        </Card>
-      ))}
+      <Ruled label="Stock awaiting a bill">
+        {rows.map((h, i) => (
+          <RuledRow
+            key={i}
+            to={`/orders/${h.poId}`}
+            title={`${h.qtyHeld} × ${h.item.name}`}
+            meta={`${h.poNumber} · ${h.vendor?.name ?? "vendor not set"} · since ${formatDate(h.receivedAt)}`}
+            aside={
+              <span className={h.days > 7 ? "fig fig-warn" : "fig"}>
+                {h.days} <span className="fig-unit">{h.days === 1 ? "day" : "days"}</span>
+              </span>
+            }
+          />
+        ))}
+      </Ruled>
     </Stack>
   );
 }
@@ -633,6 +639,7 @@ function HeldStock() {
 function ToReceiveReport() {
   const filters = useReportFilters("toReceive", { q: "", warehouse: "" });
   const data = useQuery({ queryKey: ["to-receive"], queryFn: () => get<ToReceive>("/reports/to-receive") });
+  if (data.error) return <Problem error={data.error} retry={() => data.refetch()} />;
   if (!data.data) return <Loading />;
   const warehouses = [...new Map(data.data.orders.flatMap((order) => order.warehouse ? [[String(order.warehouse.id), { value: String(order.warehouse.id), label: `${order.warehouse.name} (${order.warehouse.code})` }] as const] : [])).values()];
   if (filters.values.warehouse && !warehouses.some((warehouse) => warehouse.value === filters.values.warehouse)) {
@@ -651,29 +658,33 @@ function ToReceiveReport() {
       <Text c="dimmed">
         {plural(orders.reduce((sum, order) => sum + order.units, 0), "unit")} on order, about {usd(orders.reduce((sum, order) => sum + order.valueCents, 0))} at order cost. Oldest order first. Tap one to receive it.
       </Text>
-      {orders.map((o) => (
-        <Card key={o.poId} withBorder padding="sm" component={Link} to={`/receive?po=${o.poId}`} style={{ textDecoration: "none", color: "inherit" }}>
-          <Group justify="space-between" wrap="nowrap" align="flex-start">
-            <div>
-              <Text fw={600}>
-                {o.poNumber} · {o.vendor?.name ?? "vendor not set"}
-              </Text>
-              {o.lines.map((l) => (
-                <Text key={l.lineId} size="sm" c="dimmed">
-                  {l.outstanding} × {l.item.name}
-                  {l.received ? ` (${l.received} of ${l.ordered} already in)` : ""}
-                </Text>
-              ))}
-              <Text size="xs" c="dimmed">
-                {o.warehouse?.name ?? ""} · {o.billingStatus === "NOT_BILLED" ? "not billed yet" : o.billingStatus === "BILLED" ? "billed, owed to the vendor" : o.billingStatus.replace("_", " ").toLowerCase()}
-              </Text>
-            </div>
-            <Text fw={600} c={o.days > 14 ? "orange" : undefined} style={{ whiteSpace: "nowrap" }}>
-              {plural(o.days, "day")} ago
-            </Text>
-          </Group>
-        </Card>
-      ))}
+      <Ruled label="Orders to receive">
+        {orders.map((o) => (
+          <RuledRow
+            key={o.poId}
+            to={`/receive?po=${o.poId}`}
+            title={`${o.poNumber} · ${o.vendor?.name ?? "vendor not set"}`}
+            meta={
+              <>
+                {o.lines.map((l) => (
+                  <div key={l.lineId}>
+                    {l.outstanding} × {l.item.name}
+                    {l.received ? ` (${l.received} of ${l.ordered} already in)` : ""}
+                  </div>
+                ))}
+                <div>
+                  {o.warehouse?.name ?? ""} · {o.billingStatus === "NOT_BILLED" ? "not billed yet" : o.billingStatus === "BILLED" ? "billed, owed to the vendor" : o.billingStatus.replace("_", " ").toLowerCase()}
+                </div>
+              </>
+            }
+            aside={
+              <span className={o.days > 14 ? "fig fig-warn" : "fig"}>
+                {o.days} <span className="fig-unit">{o.days === 1 ? "day ago" : "days ago"}</span>
+              </span>
+            }
+          />
+        ))}
+      </Ruled>
     </Stack>
   );
 }

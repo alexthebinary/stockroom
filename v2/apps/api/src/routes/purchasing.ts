@@ -439,6 +439,39 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
     return receipts;
   });
 
+  /** One warehouse receipt, with the order it answers, the vendor, the warehouse and the items counted. */
+  app.get("/api/receipts/:id", async (request) => {
+    const { id } = parse(idParam, request.params);
+    const receipt = await db.warehouseReceipt.findUnique({ where: { id }, include: { lines: true, po: true } });
+    if (!receipt) throw notFound("Warehouse receipt");
+    const [vendor, warehouse, items] = await Promise.all([
+      receipt.po.vendorId ? db.vendor.findUnique({ where: { id: receipt.po.vendorId }, select: { id: true, name: true } }) : null,
+      db.warehouse.findUnique({ where: { id: receipt.warehouseId }, select: { id: true, name: true, code: true } }),
+      db.item.findMany({ where: { id: { in: receipt.lines.map((l) => l.itemId) } }, select: { id: true, sku: true, name: true } }),
+    ]);
+    return { ...receipt, vendor, warehouse, lines: receipt.lines.map((l) => ({ ...l, item: items.find((i) => i.id === l.itemId) ?? null })) };
+  });
+
+  /** One numbered stock adjustment (ADJ-00001, …): its type, who posted it and every item line. */
+  app.get("/api/other-transactions/:number", async (request) => {
+    const { number } = parse(z.object({ number: z.string().regex(/^[A-Za-z0-9-]{1,40}$/) }), request.params);
+    const moves = await db.stockMovement.findMany({ where: { register: "ADJ", docNumber: number, bucket: "ON_HAND" }, orderBy: { id: "asc" } });
+    if (moves.length === 0) throw notFound("Stock adjustment");
+    const [items, warehouses] = await Promise.all([
+      db.item.findMany({ where: { id: { in: [...new Set(moves.map((m) => m.itemId))] } }, select: { id: true, sku: true, name: true } }),
+      db.warehouse.findMany({ where: { id: { in: [...new Set(moves.map((m) => m.warehouseId))] } }, select: { id: true, name: true, code: true } }),
+    ]);
+    const first = moves[0]!;
+    return {
+      number,
+      type: movementType(first),
+      date: first.createdAt.toISOString(),
+      actor: first.actor,
+      qty: moves.reduce((n, m) => n + m.qtyDelta, 0),
+      lines: moves.map((m) => ({ id: m.id, qty: m.qtyDelta, valueCents: m.valueCents, item: items.find((i) => i.id === m.itemId) ?? null, warehouse: warehouses.find((w) => w.id === m.warehouseId) ?? null })),
+    };
+  });
+
   /** Opening stock and adjustments, one row per numbered document (ADJ-00001, …), newest first. */
   app.get("/api/other-transactions", async () => {
     const moves = await db.stockMovement.findMany({ where: { register: "ADJ", bucket: "ON_HAND" }, orderBy: { id: "desc" }, take: 1000 });

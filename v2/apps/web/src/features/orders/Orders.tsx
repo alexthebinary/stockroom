@@ -206,7 +206,7 @@ export function OrderDetail() {
                   </Table.Td>
                   <Table.Td ta="right">{l.qtyOrdered}</Table.Td>
                   <Table.Td ta="right">{l.qtyReceived}</Table.Td>
-                  <Table.Td ta="right" c={l.qtyHeld ? "orange" : undefined}>
+                  <Table.Td ta="right" c={l.qtyHeld ? "var(--warn-fg)" : undefined}>
                     {l.qtyHeld || ""}
                   </Table.Td>
                   <Table.Td ta="right">{l.qtyBilled}</Table.Td>
@@ -246,9 +246,9 @@ export function OrderDetail() {
           {p.receipts.length === 0 ? <Text c="dimmed">Nothing received yet.</Text> : null}
           {p.receipts.map((r) => (
             <Group key={r.id} justify="space-between">
-              <Text>
+              <Anchor component={Link} to={`/receipts/${r.id}`}>
                 {r.number} · {formatDate(r.receivedAt)} · {r.receivedBy}
-              </Text>
+              </Anchor>
               <StatusBadge status={r.state} />
             </Group>
           ))}

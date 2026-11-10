@@ -54,7 +54,7 @@ export function Payables() {
                           </Text>
                         ) : null}
                       </Table.Td>
-                      <Table.Td c={b.bucket === "current" ? undefined : "orange"}>{b.bucket === "current" ? `due ${formatDate(b.dueDate)}` : `${b.bucket} days late`}</Table.Td>
+                      <Table.Td c={b.bucket === "current" ? undefined : "var(--warn-fg)"}>{b.bucket === "current" ? `due ${formatDate(b.dueDate)}` : `${b.bucket} days late`}</Table.Td>
                       <Table.Td ta="right">
                         <Money cents={b.openCents} />
                       </Table.Td>

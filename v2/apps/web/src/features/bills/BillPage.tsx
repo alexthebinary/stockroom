@@ -217,7 +217,7 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
                   <TextInput label="Discount $" value={f.discount} inputMode="decimal" onChange={(e) => setLine(l.id, { discount: e.currentTarget.value })} />
                 </SimpleGrid>
                 {l.poLine && f.qty !== l.poLine.qtyReceived - l.poLine.qtyBilled ? (
-                  <Text size="sm" c="orange" mt={4}>
+                  <Text size="sm" c="var(--warn-fg)" mt={4}>
                     Billing {f.qty}, but {l.poLine.qtyReceived - l.poLine.qtyBilled} arrived unbilled. The rest stays {f.qty > l.poLine.qtyReceived - l.poLine.qtyBilled ? "inbound until it arrives" : "waiting for another bill"}.
                   </Text>
                 ) : null}

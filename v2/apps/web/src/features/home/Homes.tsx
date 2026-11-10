@@ -6,7 +6,7 @@ import { Checklist } from "../../components/Checklist";
 import { TactileButton } from "../../components/kitchen/TactileButton";
 import { Ruled, RuledRow } from "../../components/Ruled";
 import { Coach } from "../../components/Coach";
-import { Loading, Money, Stat, usd } from "../../components/ui";
+import { Loading, Money, Problem, Stat, usd } from "../../components/ui";
 import { get } from "../../lib/api";
 import { useProfile } from "../../lib/profile";
 import type { Bill, Home, PurchaseOrder, Setup } from "../../lib/types";
@@ -49,10 +49,12 @@ function ClerkHome() {
       ) : null}
       <Stack gap="xs">
         <Text fw={600}>Expected deliveries</Text>
-        <Ruled label="Expected deliveries" empty="Nothing on order right now. Surprise deliveries are fine — just scan them.">
+        {expected.error ? <Problem error={expected.error} retry={() => expected.refetch()} /> : null}
+        <Ruled label="Expected deliveries" empty={expected.error ? "" : "Nothing on order right now. Surprise deliveries are fine — just scan them."}>
           {(expected.data ?? []).slice(0, 8).map((po) => (
-            <RuledRow key={po.id} title={po.vendor?.name ?? "Vendor not set"} meta={`${po.number} · ${po.lines.map((l) => `${l.outstanding} × ${l.item.name}`).join(", ")}`} />
+            <RuledRow key={po.id} to={`/receive?po=${po.id}`} title={po.vendor?.name ?? "Vendor not set"} meta={`${po.number} · ${po.lines.map((l) => `${l.outstanding} × ${l.item.name}`).join(", ")}`} />
           ))}
+          {(expected.data?.length ?? 0) > 8 ? <RuledRow key="more" to="/reports" title={`and ${expected.data!.length - 8} more`} /> : null}
         </Ruled>
       </Stack>
       <Checklist
@@ -68,6 +70,7 @@ function ClerkHome() {
 function AccountingHome() {
   const home = useHome();
   const bills = useBills();
+  if (home.error) return <Problem error={home.error} retry={() => home.refetch()} />;
   if (!home.data) return <Loading />;
   const a = home.data.accounting;
   const drafts = (bills.data ?? []).filter((b) => b.status === "DRAFT");
@@ -89,7 +92,7 @@ function AccountingHome() {
         </Button>
       ) : (
         <Group>
-          <IconCircleCheck color="var(--mantine-color-lime-7)" />
+          <IconCircleCheck color="var(--ok-fg)" />
           <Text>No bills waiting for review.</Text>
         </Group>
       )}
@@ -112,6 +115,7 @@ function AdminHome() {
   const orders = useOrders();
   const setup = useQuery({ queryKey: ["setup"], queryFn: () => get<Setup>("/setup") });
   const bills = useBills();
+  if (home.error) return <Problem error={home.error} retry={() => home.refetch()} />;
   if (!home.data) return <Loading />;
   const books = home.data.admin;
   return (
@@ -120,7 +124,7 @@ function AdminHome() {
       <UnstyledButton component={Link} to="/reports">
         <Card withBorder padding="lg">
           <Group wrap="nowrap">
-            {books.booksSound ? <IconCircleCheck size={32} color="var(--mantine-color-lime-7)" /> : <IconAlertTriangle size={32} color="var(--mantine-color-orange-7)" />}
+            {books.booksSound ? <IconCircleCheck size={32} color="var(--ok-fg)" /> : <IconAlertTriangle size={32} color="var(--warn-fg)" />}
             <div>
               <Text fw={600}>{books.booksSound ? "The books are sound" : "The books need a look"}</Text>
               <Text size="sm" c="dimmed">
