@@ -8,4 +8,4 @@ The normal purchase flow is Purchase order → Vendor bill → Warehouse receipt
 
 Receive is the dock workflow. The clerk counts physical goods; accounting reviews Bills and posts their cost. If goods arrive first they remain awaiting bill, not sellable or valued. Posting the draft bill lands the counted units automatically. If the bill is posted first, the stock sits in transit until received.
 
-On phones the bottom tabs show the main tasks for your job. The help assistant can offer Take me there for other screens. How it works explains the document flow. The assistant explains and navigates only; use the app yourself to inspect records or perform actions.
+On phones the bottom tabs show the main tasks for your job. The help assistant can offer Take me there for other screens. About explains the document flow. The assistant explains and navigates only; use the app yourself to inspect records or perform actions.

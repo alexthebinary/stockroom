@@ -15,7 +15,7 @@ export const SCREENS = {
   stocktake: { to: "/stocktake", label: "Stock count" },
   reports: { to: "/reports", label: "Reports" },
   settings: { to: "/settings", label: "Settings" },
-  guide: { to: "/guide", label: "How it works" },
+  guide: { to: "/guide", label: "About" },
   feedback: { to: "/feedback", label: "Feedback" },
   setup: { to: "/setup", label: "Setup" },
 } as const;
@@ -105,7 +105,7 @@ export async function chat(model: HelpModel, input: HelpInput, emit?: (event: He
     // A failed local model still gives the user a useful, saved question.
   }
   emit?.({ type: "reset" });
-  return { reply: `${UNKNOWN} Try How it works, or ask again in a moment.`, unanswered: true, ...(navigate ? { navigate } : {}) };
+  return { reply: `${UNKNOWN} Try About, or ask again in a moment.`, unanswered: true, ...(navigate ? { navigate } : {}) };
 }
 
 /** llama-server's OpenAI-compatible SSE API, using the clarifier's local model configuration. */

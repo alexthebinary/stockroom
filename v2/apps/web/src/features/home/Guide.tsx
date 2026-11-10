@@ -5,7 +5,7 @@ import { PageHeader } from "../../components/ui";
 export function Guide() {
   return (
     <Stack gap="lg">
-      <PageHeader title="How it works" subtitle="Purchase Order → Vendor Bill → Warehouse Receipt, and why stock sometimes waits." />
+      <PageHeader title="About" subtitle="Purchase Order → Vendor Bill → Warehouse Receipt, and why stock sometimes waits." />
       <SimpleGrid cols={{ base: 1, sm: 3 }}>
         {[
           ["1. Purchase order", "Commits to buy. Posts nothing — it only tells the dock what to expect. Its three statuses move on their own: billed, paid, received."],

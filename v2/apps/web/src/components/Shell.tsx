@@ -40,7 +40,7 @@ const SECTIONS: Record<string, Section> = {
   stocktake: { to: "/stocktake", label: "Stock count", icon: IconClipboardList },
   reports: { to: "/reports", label: "Reports", icon: IconChartBar },
   settings: { to: "/settings", label: "Settings", icon: IconSettings },
-  guide: { to: "/guide", label: "How it works", icon: IconBook2 },
+  guide: { to: "/guide", label: "About", icon: IconBook2 },
   feedback: { to: "/feedback", label: "Feedback", icon: IconMessageReport },
 };
 

@@ -21,7 +21,7 @@ const ACTIONS: { title: string; subtitle: string; url: string; words: string }[]
   { title: "Reports", subtitle: "Books check, trial balance, stock value", url: "/reports", words: "reports books trial balance journal" },
   { title: "Stock", subtitle: "Items, receipts, adjustments", url: "/items", words: "stock inventory items" },
   { title: "Settings", subtitle: "Team, warehouses, accounts", url: "/settings", words: "settings team warehouses accounts" },
-  { title: "How it works", subtitle: "The purchase to stock flow", url: "/guide", words: "guide help how works" },
+  { title: "About", subtitle: "How the purchase to stock flow works", url: "/guide", words: "guide help how works" },
 ];
 const LABELS = {
   actions: "Go to",
