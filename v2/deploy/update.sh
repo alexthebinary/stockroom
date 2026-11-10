@@ -36,7 +36,16 @@ if [ -n "$target" ]; then
 else
   git pull --ff-only
 fi
-APP_VERSION=$(git rev-parse --short=7 HEAD) docker compose up -d --build
+# compose renames the old container to <hash>_name before recreating it; a failed recreate leaves that
+# never-started copy behind and the next run dies on the name conflict (and the app stays down). Clear any
+# such leftover first, and once more after a failure, then retry.
+clear_leftovers() { docker ps -a --filter status=created --format '{{.Names}}' | grep -E '^[0-9a-f]{12}_' | xargs -r docker rm >/dev/null 2>&1 || true; }
+clear_leftovers
+if ! APP_VERSION=$(git rev-parse --short=7 HEAD) docker compose up -d --build; then
+  echo "compose up failed; clearing leftover containers and retrying once" >&2
+  clear_leftovers
+  APP_VERSION=$(git rev-parse --short=7 HEAD) docker compose up -d --build
+fi
 docker compose --profile backup build --quiet backup
 docker compose ps
 ./url.sh || true
