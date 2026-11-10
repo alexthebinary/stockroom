@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Deps } from "../app";
 import { audit } from "../audit";
-import { inTx, Prisma } from "../db";
+import { inTx, Prisma, type Db } from "../db";
 import { actorOf, idParam, notFound, parse } from "../http";
 import { transition } from "../transition";
 import { dueDateFor, draftBillFromPo, postInventoryBill, previewBill, recomputeTotals } from "../purchasing/bills";
@@ -325,12 +325,13 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
     const { id } = parse(idParam, request.params);
     const bill = await db.vendorBill.findUnique({ where: { id }, include: { lines: true, allocations: true, po: { include: { lines: true } } } });
     if (!bill) throw notFound("Bill");
-    const [vendor, items, payments, credits, preview] = await Promise.all([
+    const [vendor, items, payments, credits, preview, match] = await Promise.all([
       bill.vendorId ? db.vendor.findUnique({ where: { id: bill.vendorId } }) : null,
       db.item.findMany({ where: { id: { in: bill.lines.map((l) => l.itemId!).filter(Boolean) } } }),
       db.payment.findMany({ where: { billId: id }, orderBy: { id: "asc" } }),
       db.vendorCredit.findMany({ where: { billId: id }, include: { lines: true }, orderBy: { id: "asc" } }),
       bill.status === State.bill.DRAFT ? inTx(db, (tx) => previewBill(tx, id)) : null,
+      orderMatch(db, bill),
     ]);
     return {
       ...bill,
@@ -338,6 +339,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
       payments,
       credits,
       preview,
+      match,
       openCents: bill.status === State.bill.POSTED ? bill.totalCents - bill.paidCents - bill.creditedCents : 0,
       lines: bill.lines.map((l) => ({ ...l, item: items.find((i) => i.id === l.itemId), poLine: bill.po?.lines.find((p) => p.id === l.poLineId) ?? null })),
     };
@@ -487,4 +489,106 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
     const q = parse(z.object({ register: z.enum(["WH_IN", "WH_OUT", "ADJ"]).optional(), itemId: z.coerce.number().int().optional() }), request.query);
     return db.stockMovement.findMany({ where: { ...(q.register ? { register: q.register } : {}), ...(q.itemId ? { itemId: q.itemId } : {}) }, orderBy: { id: "desc" }, take: 500 });
   });
+}
+
+/**
+ * Advisory comparison of an inventory bill with its purchase order.
+ * Read-only. Null for freight bills and bills that have no purchase order.
+ * The same wording is formatted again in MatchPanel.tsx while a draft is being edited.
+ */
+export type MatchTone = "ok" | "warn" | "note";
+export type MatchNote = { text: string; tone: MatchTone };
+export type OrderMatch = {
+  billLineId: number;
+  itemId: number | null;
+  itemName: string | null;
+  qtyOrdered: number;
+  qtyReceived: number;
+  qtyThisBill: number;
+  qtyAllBills: number;
+  orderUnitCostCents: number;
+  billUnitCostCents: number;
+  /** Signed percent when the absolute gap over the order cost is over 1%. Null at 1% or less, and when the order cost is 0. */
+  pricePercent: number | null;
+  statuses: MatchNote[];
+};
+
+type MatchSource = {
+  kind: string;
+  po: { lines: { id: number; qtyOrdered: number; qtyReceived: number; unitCostCents: number }[] } | null;
+  lines: { id: number; poLineId: number | null; itemId: number | null; qty: number; unitCostCents: number }[];
+};
+
+/** Signed percent, or null when the order cost is 0 or the gap is 1% or less. */
+export function priceDriftPercent(orderUnitCostCents: number, billUnitCostCents: number): number | null {
+  if (orderUnitCostCents <= 0) return null;
+  const delta = billUnitCostCents - orderUnitCostCents;
+  if (Math.abs(delta) * 100 <= orderUnitCostCents) return null;
+  return Math.round((delta / orderUnitCostCents) * 10000) / 100;
+}
+
+export function formatSignedPercent(percent: number): string {
+  const sign = percent > 0 ? "+" : "-";
+  const body = (Math.round(Math.abs(percent) * 100) / 100).toFixed(2).replace(/\.?0+$/, "");
+  return `${sign}${body}%`;
+}
+
+/** Status chips for one line. "Matches" only when none of the checks apply. Quantity uses every open bill. */
+export function matchStatus(input: {
+  qtyOrdered: number;
+  qtyReceived: number;
+  qtyAllBills: number;
+  orderUnitCostCents: number;
+  billUnitCostCents: number;
+}): MatchNote[] {
+  const notes: MatchNote[] = [];
+  const percent = priceDriftPercent(input.orderUnitCostCents, input.billUnitCostCents);
+  if (percent != null) notes.push({ text: `Price differs by ${formatSignedPercent(percent)}`, tone: "warn" });
+  else if (input.orderUnitCostCents <= 0 && input.billUnitCostCents !== input.orderUnitCostCents) notes.push({ text: "Price differs", tone: "warn" });
+  if (input.qtyAllBills > input.qtyOrdered) notes.push({ text: "Billing more than ordered", tone: "warn" });
+  if (input.qtyAllBills > input.qtyReceived) notes.push({ text: "Billing more than received", tone: "note" });
+  if (notes.length === 0) notes.push({ text: "Matches", tone: "ok" });
+  return notes;
+}
+
+export async function orderMatch(db: Db, bill: MatchSource): Promise<OrderMatch[] | null> {
+  if (bill.kind !== "INVENTORY" || !bill.po) return null;
+  const poLineIds = [...new Set(bill.lines.flatMap((l) => (l.poLineId == null ? [] : [l.poLineId])))];
+  const [names, billed] = await Promise.all([
+    db.item.findMany({ where: { id: { in: bill.lines.flatMap((l) => (l.itemId == null ? [] : [l.itemId])) } }, select: { id: true, name: true } }),
+    poLineIds.length === 0
+      ? Promise.resolve([])
+      : db.vendorBillLine.findMany({
+          where: { poLineId: { in: poLineIds }, bill: { kind: "INVENTORY", status: { not: State.bill.VOID } } },
+          select: { poLineId: true, qty: true },
+        }),
+  ]);
+  const qtyAll = new Map<number, number>();
+  for (const line of billed) {
+    if (line.poLineId == null) continue;
+    qtyAll.set(line.poLineId, (qtyAll.get(line.poLineId) ?? 0) + line.qty);
+  }
+  const rows: OrderMatch[] = [];
+  for (const line of bill.lines) {
+    const poLine = bill.po.lines.find((p) => p.id === line.poLineId);
+    if (!poLine || line.poLineId == null) continue;
+    const qtyAllBills = qtyAll.get(line.poLineId) ?? line.qty;
+    const compared = {
+      qtyOrdered: poLine.qtyOrdered,
+      qtyReceived: poLine.qtyReceived,
+      qtyAllBills,
+      orderUnitCostCents: poLine.unitCostCents,
+      billUnitCostCents: line.unitCostCents,
+    };
+    rows.push({
+      billLineId: line.id,
+      itemId: line.itemId,
+      itemName: names.find((i) => i.id === line.itemId)?.name ?? null,
+      qtyThisBill: line.qty,
+      pricePercent: priceDriftPercent(poLine.unitCostCents, line.unitCostCents),
+      statuses: matchStatus(compared),
+      ...compared,
+    });
+  }
+  return rows;
 }

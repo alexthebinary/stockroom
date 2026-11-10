@@ -5,7 +5,7 @@ Explain the app and offer screen links. The assistant cannot inspect company rec
 - getting-started.md — first use, choosing a job, Home, Orders and the purchase workflow.
 - items.md — finding items, quantities, editing, adding and CSV imports.
 - receive.md — scanning a delivery, WH-IN warehouse receipts, serials and awaiting bill.
-- bills-payables.md — reviewing and posting bills, freight, payments and overdue balances.
+- bills-payables.md — reviewing and posting bills, matching a bill to its order, freight, payments and overdue balances.
 - vendor-credits.md — returning units, price discounts, vendor refunds and return variance.
 - reports.md — Books check, Trial balance, Journal entries, Awaiting bill, To receive, Reorder and Stock value.
 - settings.md — team, warehouses, vendors, company, chart of accounts and account assignment.
