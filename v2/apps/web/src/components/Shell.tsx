@@ -5,6 +5,7 @@ import {
   IconBuilding,
   IconBox,
   IconCash,
+  IconClipboardList,
   IconChartBar,
   IconFileInvoice,
   IconHome,
@@ -35,6 +36,7 @@ const SECTIONS: Record<string, Section> = {
   bills: { to: "/bills", label: "Bills", icon: IconFileInvoice },
   payables: { to: "/payables", label: "Payables", icon: IconCash },
   items: { to: "/items", label: "Stock", icon: IconBox },
+  stocktake: { to: "/stocktake", label: "Stocktake", icon: IconClipboardList },
   reports: { to: "/reports", label: "Reports", icon: IconChartBar },
   settings: { to: "/settings", label: "Settings", icon: IconSettings },
   guide: { to: "/guide", label: "How it works", icon: IconBook2 },
@@ -43,19 +45,20 @@ const SECTIONS: Record<string, Section> = {
 
 /** The phone's bottom tabs: the three or four things this job does all day. */
 const TABS: Record<Job, (keyof typeof SECTIONS)[]> = {
-  CLERK: ["home", "receive", "items"],
+  CLERK: ["home", "receive", "items", "stocktake"],
   ACCOUNTING: ["home", "bills", "payables", "reports"],
   ADMIN: ["home", "orders", "reports", "settings"],
 };
 
 /** The desktop rail: everything, grouped, the job's own work first. */
 const RAIL: Record<Job, (keyof typeof SECTIONS)[]> = {
-  CLERK: ["home", "receive", "items", "orders", "guide"],
+  CLERK: ["home", "receive", "items", "stocktake", "orders", "guide"],
   ACCOUNTING: ["home", "bills", "payables", "orders", "items", "reports", "receive", "settings", "guide", "feedback"],
-  ADMIN: ["home", "orders", "bills", "payables", "receive", "items", "reports", "settings", "guide", "feedback"],
+  ADMIN: ["home", "orders", "bills", "payables", "receive", "items", "stocktake", "reports", "settings", "guide", "feedback"],
 };
 
 const PURCHASES = ["orders", "bills", "payables", "receive"];
+const STOCK = ["items", "stocktake"];
 
 const isActive = (pathname: string, to: string) => (to === "/" ? pathname === "/" : pathname.startsWith(to));
 
@@ -65,14 +68,18 @@ export function Shell({ children }: { children: ReactNode }) {
   const { colorScheme, setColorScheme } = useMantineColorScheme();
   const job = profile?.job ?? "CLERK";
   const [purchasesOpened, setPurchasesOpened] = useState(true);
+  const [stockOpened, setStockOpened] = useState(true);
   const [companiesOpen, setCompaniesOpen] = useState(false);
   const purchases = PURCHASES.filter((key) => RAIL[job].includes(key));
   const purchasesActive = purchases.some((key) => isActive(pathname, SECTIONS[key]!.to));
 
-  const sectionLink = (key: keyof typeof SECTIONS) => {
+  const sectionLink = (key: keyof typeof SECTIONS, label?: string) => {
     const s = SECTIONS[key]!;
-    return <NavLink key={key} component={RouterNavLink} to={s.to} label={s.label} leftSection={<s.icon size={18} />} active={isActive(pathname, s.to)} style={{ borderRadius: 8 }} />;
+    return <NavLink key={key} component={RouterNavLink} to={s.to} label={label ?? s.label} leftSection={<s.icon size={18} />} active={isActive(pathname, s.to)} style={{ borderRadius: 8 }} />;
   };
+  const stockKeys = STOCK.filter((key) => RAIL[job].includes(key));
+  const stockGrouped = stockKeys.length > 1;
+  const stockActive = stockKeys.some((key) => isActive(pathname, SECTIONS[key]!.to));
 
   return (
     <AppShell header={{ height: 56 }} navbar={{ width: 232, breakpoint: "sm", collapsed: { mobile: true } }} padding="md">
@@ -133,13 +140,18 @@ export function Shell({ children }: { children: ReactNode }) {
 
       <AppShell.Navbar p="xs" className="no-print">
         <Stack gap={2}>
-          {RAIL[job].filter((key) => key === "home").map(sectionLink)}
+          {RAIL[job].filter((key) => key === "home").map((key) => sectionLink(key))}
           {purchases.length > 0 && (
             <NavLink label="Purchases" leftSection={<IconReceipt2 size={18} />} active={purchasesActive} opened={purchasesActive || purchasesOpened} onChange={setPurchasesOpened} style={{ borderRadius: 8 }}>
-              {purchases.map(sectionLink)}
+              {purchases.map((key) => sectionLink(key))}
             </NavLink>
           )}
-          {RAIL[job].filter((key) => key !== "home" && !PURCHASES.includes(key)).map(sectionLink)}
+          {stockGrouped ? (
+            <NavLink label="Stock" leftSection={<IconBox size={18} />} active={stockActive} opened={stockActive || stockOpened} onChange={setStockOpened} style={{ borderRadius: 8 }}>
+              {stockKeys.map((key) => sectionLink(key, key === "items" ? "Inventory" : undefined))}
+            </NavLink>
+          ) : null}
+          {RAIL[job].filter((key) => key !== "home" && !PURCHASES.includes(key) && !(stockGrouped && (key === "items" || key === "stocktake"))).map((key) => sectionLink(key))}
         </Stack>
       </AppShell.Navbar>
 
