@@ -30,7 +30,7 @@ export function GuidedPath({ name, intro, steps }: { name: string; intro: string
           <Text fw={600}>{next.label}</Text>
           <Text size="sm" c="dimmed" maw="62ch">{next.why}</Text>
         </div>
-        <Button component={Link} to={next.to} size="md" rightSection={<IconArrowRight size={16} aria-hidden="true" />}>{next.cta ?? "Start"}</Button>
+        <Button component={Link} to={next.to} size="md" variant="default" rightSection={<IconArrowRight size={16} aria-hidden="true" />}>{next.cta ?? "Start"}</Button>
       </Group>
     </section>
   );

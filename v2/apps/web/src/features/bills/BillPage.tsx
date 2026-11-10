@@ -150,7 +150,7 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
   const setLine = (id: number, patchLine: Partial<(typeof form.lines)[number]>) => setForm({ ...form, lines: form.lines.map((l) => (l.id === id ? { ...l, ...patchLine } : l)) });
 
   return (
-    <Stack gap="lg" pb={120}>
+    <Stack gap="lg">
       <PageHeader
         title={`Review ${bill.number}`}
         subtitle={
@@ -168,6 +168,8 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
         }
         action={<StatusBadge status="DRAFT" />}
       />
+      <div className="detail-grid">
+      <div className="detail-main">
       <Coach id="bill-review" title="What posting does">
         Posting books Dr Inventory / Cr Accounts Payable for the total, with freight spread over the lines (by value unless you choose quantity). Units the dock is holding for this bill become sellable stock at that landed cost, in the same moment.
       </Coach>
@@ -293,21 +295,21 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
         </Button>
       </Group>
 
-      <Card withBorder pos="fixed" bottom={{ base: 64, sm: 16 }} left={{ base: 8, sm: 248 }} right={8} shadow="md" padding="sm" style={{ zIndex: 150 }} className="no-print">
-        <Group justify="space-between" wrap="nowrap">
-          <div>
-            <Text size="xs" c="dimmed" tt="uppercase">
-              Total
-            </Text>
-            <Text fw={700} size="xl">
-              <Money cents={total} />
-            </Text>
-          </div>
-          <HoldToConfirmButton onConfirm={() => run("post")} busy={busy} disabled={!form.vendorId || !form.vendorInvoiceNumber || priced instanceof Error || total <= 0} confirmed="Posting…">
-            Hold to post bill
-          </HoldToConfirmButton>
-        </Group>
-      </Card>
+      </div>
+      <aside className="detail-aside draft-aside no-print" aria-label="Total and posting">
+        <div>
+          <Text size="xs" c="dimmed" tt="uppercase">
+            Total
+          </Text>
+          <Text fw={600} size="xl">
+            <Money cents={total} />
+          </Text>
+        </div>
+        <HoldToConfirmButton onConfirm={() => run("post")} busy={busy} disabled={!form.vendorId || !form.vendorInvoiceNumber || priced instanceof Error || total <= 0} confirmed="Posting…">
+          Hold to post bill
+        </HoldToConfirmButton>
+      </aside>
+      </div>
     </Stack>
   );
 }
@@ -486,7 +488,7 @@ function PostedBill({ bill }: { bill: FullBill }) {
         <Alert color="lime" title={`${plural(toReceive, "unit")} from this bill ${toReceive === 1 ? "hasn't" : "haven't"} arrived yet`}>
           <Group justify="space-between" wrap="nowrap">
             <Text size="sm">When the delivery shows up, receive it against {bill.po?.number ?? "its order"}. Stock goes on hand at the billed cost.</Text>
-            <Button component={Link} to={`/receive?po=${bill.poId}`}>
+            <Button component={Link} to={`/receive?po=${bill.poId}`} variant="default">
               Receive these
             </Button>
           </Group>

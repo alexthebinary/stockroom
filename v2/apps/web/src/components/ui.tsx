@@ -1,7 +1,7 @@
 import { formatUsd } from "@pi/domain";
 import { Alert, Button, Group, Skeleton, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconAlertTriangle, IconCheck, IconCircleDashed, IconClockHour4 } from "@tabler/icons-react";
+import { IconAlertTriangle, IconBan, IconCheck, IconCircleDashed, IconClockHour4 } from "@tabler/icons-react";
 import { type ReactNode, useEffect, useState } from "react";
 
 export const usd = (cents: number | null | undefined) => (cents == null ? "—" : formatUsd(cents));
@@ -73,8 +73,8 @@ export function PageHeader({ title, subtitle, action }: { title: string; subtitl
  * (gray), in flight (blue), done (lime), needs a person (orange).
  */
 /** The four states a status can mean. Every chip shows an icon and words, never colour alone. */
-type Tone = "none" | "progress" | "done" | "attention";
-const TONE_ICON: Record<Tone, typeof IconCheck> = { none: IconCircleDashed, progress: IconClockHour4, done: IconCheck, attention: IconAlertTriangle };
+type Tone = "none" | "progress" | "done" | "attention" | "void";
+const TONE_ICON: Record<Tone, typeof IconCheck> = { void: IconBan, none: IconCircleDashed, progress: IconClockHour4, done: IconCheck, attention: IconAlertTriangle };
 const MEANING: Record<string, { tone: Tone; label: string }> = {
   NOT_BILLED: { tone: "none", label: "Not billed" },
   DRAFT: { tone: "attention", label: "Draft" },
@@ -86,7 +86,7 @@ const MEANING: Record<string, { tone: Tone; label: string }> = {
   RECEIVED: { tone: "done", label: "Received" },
   PENDING_BILL: { tone: "attention", label: "Awaiting bill" },
   POSTED: { tone: "done", label: "Posted" },
-  VOID: { tone: "none", label: "Void" },
+  VOID: { tone: "void", label: "Void" },
   OPEN: { tone: "progress", label: "Open" },
   SUBMITTED: { tone: "done", label: "Done" },
   CANCELED: { tone: "none", label: "Cancelled" },

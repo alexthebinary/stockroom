@@ -222,7 +222,7 @@ a.ruled-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px;
 .data-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .data-table thead th { text-align: left; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted);
   padding: var(--space-3); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); white-space: nowrap; }
-.data-table td { padding: 0 10px; height: 52px; border-bottom: 1px solid var(--line); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.data-table td { padding: 0 var(--space-3); height: 48px; border-bottom: 1px solid var(--line); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .data-table .num { text-align: right; }
 .data-table .strong { font-weight: 600; color: var(--text-strong); }
 .data-table .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
@@ -244,7 +244,7 @@ a.ruled-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px;
 .mantine-Table-table { font-variant-numeric: tabular-nums; }
 .mantine-Table-th { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted);
   padding: var(--space-3); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); white-space: nowrap; }
-.mantine-Table-td { padding: var(--space-4) var(--space-3); color: var(--text); overflow-wrap: break-word; }
+.mantine-Table-td { padding: var(--space-3); height: 48px; color: var(--text); overflow-wrap: break-word; }
 .mantine-Table-tr:hover .mantine-Table-td { background: var(--surface-sunken); }
 
 /* Press feedback: buttons dip slightly under a finger or click. Off for reduced motion. */
@@ -308,7 +308,6 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 .detail-main { display: flex; flex-direction: column; gap: var(--mantine-spacing-lg); min-width: 0; }
 .detail-aside { display: flex; flex-direction: column; gap: var(--mantine-spacing-md); min-width: 0; }
 @media (min-width: 1100px) {
-  .detail-grid { grid-template-columns: minmax(0, 1fr) 320px; }
   .detail-aside { grid-column: 2; grid-row: 1; position: sticky; top: 72px; padding-left: 24px; border-left: 1px solid var(--line); }
   .detail-main { grid-column: 1; grid-row: 1; }
 }
@@ -336,7 +335,22 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 .chip { transition: background-color 150ms var(--ease-out); }
 /* Detail pages: the document and its side panel split in golden proportion. */
 @media (min-width: 1100px) {
-  .detail-grid { grid-template-columns: minmax(0, 1.618fr) minmax(300px, 1fr); }
-  .detail-aside { max-width: 420px; }
+  .detail-grid { grid-template-columns: minmax(0, 1.62fr) minmax(280px, 1fr); }
 }
-.mantine-Table-td:first-child, .mantine-Table-th:first-child { min-width: 9rem; }
+
+/* One header owns the title gap; a Stack's own gap is not added on top of it. */
+.mantine-Stack-root > .page-header { margin-bottom: 0; }
+/* Draft bill: total and the hold-to-post key sit in the side panel; on narrow screens they dock above the tab bar. */
+.draft-aside { gap: var(--space-4); }
+@media (max-width: 1099px) {
+  .draft-aside { position: sticky; bottom: 72px; flex-direction: row; align-items: center; justify-content: space-between; padding: var(--space-3) var(--space-4); background: var(--surface); border: 1px solid var(--line); border-top: 2px solid var(--ink); border-radius: 8px; z-index: 150; }
+}
+.chip[data-tone="void"] { color: var(--text-muted); background: transparent; border-color: var(--line); text-decoration: line-through; }
+/* Off-scale values pulled onto the scale. */
+.stat-value { font-size: var(--text-xl); }
+.data-table .tag, .tag { font-size: var(--text-xs); }
+.data-table .mono { font-size: var(--text-xs); }
+.tabbar a, .tabbar button { font-size: var(--text-xs); }
+
+/* Sidebar: only the current page is marked, with the lime tick; groups just open and close. */
+.mantine-AppShell-navbar .mantine-NavLink-root[data-active="true"] { box-shadow: inset 2px 0 0 var(--signal); }

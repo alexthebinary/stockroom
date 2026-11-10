@@ -146,12 +146,12 @@ export function Shell({ children }: { children: ReactNode }) {
         <Stack gap={2}>
           {RAIL[job].filter((key) => key === "home").map((key) => sectionLink(key))}
           {purchases.length > 0 && (
-            <NavLink label="Purchases" leftSection={<IconReceipt2 size={18} />} active={purchasesActive} opened={purchasesActive || purchasesOpened} onChange={setPurchasesOpened} style={{ borderRadius: 8 }}>
+            <NavLink label="Purchases" leftSection={<IconReceipt2 size={18} />} opened={purchasesActive || purchasesOpened} onChange={setPurchasesOpened} style={{ borderRadius: 8 }}>
               {purchases.map((key) => sectionLink(key))}
             </NavLink>
           )}
           {stockGrouped ? (
-            <NavLink label="Stock" leftSection={<IconBox size={18} />} active={stockActive} opened={stockActive || stockOpened} onChange={setStockOpened} style={{ borderRadius: 8 }}>
+            <NavLink label="Stock" leftSection={<IconBox size={18} />} opened={stockActive || stockOpened} onChange={setStockOpened} style={{ borderRadius: 8 }}>
               {stockKeys.map((key) => sectionLink(key, key === "items" ? "Inventory" : undefined))}
             </NavLink>
           ) : null}
