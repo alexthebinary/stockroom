@@ -22,6 +22,10 @@ const variantColorResolver: VariantColorsResolver = (input) => {
   if (input.variant === "filled" && parsed.isThemeColor && parsed.color === "ink" && parsed.shade === undefined) {
     return { ...colors, color: "var(--surface)", hoverColor: "var(--surface)" };
   }
+  // Secondary buttons: a quiet sunken chip with a hairline, not a second dark pill.
+  if (input.variant === "light" && parsed.isThemeColor && parsed.color === "ink") {
+    return { ...colors, background: "var(--surface-sunken)", hover: "var(--line)", color: "var(--text-strong)", hoverColor: "var(--text-strong)", border: "1px solid var(--line)" };
+  }
   return colors;
 };
 

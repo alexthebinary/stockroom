@@ -362,3 +362,6 @@ body:has([role="dialog"]) .fb-tab { display: none; }
 .back-link:hover { color: var(--text-strong); text-decoration: underline; }
 .mantine-Badge-root, .mantine-Badge-label { font-size: var(--text-xs); }
 .mantine-Table-td:last-child .chip, .mantine-Table-td .chip { white-space: nowrap; }
+
+/* Reports: one tab list, groups divided by a hairline. */
+.tab-sep { align-self: center; width: 1px; height: 20px; margin: 0 var(--space-2); background: var(--line); flex: none; }

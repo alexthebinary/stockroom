@@ -1,6 +1,6 @@
 # Reports
 
-Reports groups tabs by Accounting, Sales, Purchases and Inventory. Sales has no reports here yet; do not promise a sales dashboard.
+Reports has one row of tabs, grouped Accounting, Purchases and Inventory. There are no sales reports yet; do not promise a sales dashboard.
 
 Accounting contains Books check, Trial balance and Journal entries. Books check compares total debits with credits, inventory on hand against the stock cost pools item by item, inventory in transit against billed units not yet landed, and Accounts Payable against open vendor bills. Read its reported problems rather than assuming the books balance. Trial balance lists account balances and debit/credit totals. Journal entries lets you inspect the financial entries and their lines.
 

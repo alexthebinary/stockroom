@@ -1,5 +1,5 @@
 import { EVENTS, type EventType } from "@pi/domain";
-import { Alert, Button, Card, Checkbox, Group, SegmentedControl, Select, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Card, Checkbox, Group, Select, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { IconAlertTriangle, IconCircleCheck, IconDownload } from "@tabler/icons-react";
@@ -56,10 +56,10 @@ function matches(query: string, ...fields: (string | null | undefined)[]) {
   return fields.some((field) => field?.toLocaleLowerCase().includes(needle));
 }
 
-function FilterSummary({ count, noun, clear }: { count: number; noun: string; clear: () => void }) {
+function FilterSummary({ count, noun, clear, active }: { count: number; noun: string; clear: () => void; active: boolean }) {
   return <Group justify="space-between" wrap="wrap">
     <Text size="sm" c="dimmed" role="status">{plural(count, noun, noun === "entry" ? "entries" : `${noun}s`)} shown</Text>
-    <Button variant="subtle" size="xs" onClick={clear}>Clear filters</Button>
+    {active ? <Button variant="subtle" size="xs" onClick={clear}>Clear filters</Button> : null}
   </Group>;
 }
 
@@ -133,9 +133,7 @@ const REPORT_CATEGORIES: { value: string; label: string; tabs: ReportTab[] }[] =
 export function Reports() {
   const [params, setParams] = useSearchParams();
   const requestedTab = params.get("tab");
-  const category = REPORT_CATEGORIES.find((c) => c.value === params.get("cat"))
-    ?? REPORT_CATEGORIES.find((c) => c.tabs.some((tab) => tab === requestedTab))
-    ?? REPORT_CATEGORIES[0]!;
+  const category = REPORT_CATEGORIES.find((c) => c.tabs.some((tab) => tab === requestedTab)) ?? REPORT_CATEGORIES[0]!;
   const tab = category.tabs.find((value) => value === requestedTab) ?? category.tabs[0] ?? null;
 
   const selectReport = (cat: string, selectedTab: string | null) => {
@@ -151,29 +149,18 @@ export function Reports() {
   return (
     <>
       <PageHeader title="Reports" />
-      <SegmentedControl
-        mb="md"
-        aria-label="Report category"
-        value={category.value}
-        data={REPORT_CATEGORIES.map(({ value, label }) => ({ value, label }))}
-        onChange={(value) => {
-          const next = REPORT_CATEGORIES.find((c) => c.value === value)!;
-          selectReport(next.value, next.tabs[0] ?? null);
-        }}
-      />
-      {category.value === "sales" ? (
-        <Text c="dimmed">Sales reports arrive with sales orders.</Text>
-      ) : (
-        <Tabs value={tab} onChange={(value) => selectReport(category.value, value)}>
-          <Tabs.List mb="md">
-            {category.tabs.map((value) => <Tabs.Tab key={value} value={value}>{REPORT_TABS[value].label}</Tabs.Tab>)}
-          </Tabs.List>
-          {category.tabs.map((value) => {
-            const Report = REPORT_TABS[value].component;
-            return <Tabs.Panel key={value} value={value}><Report /></Tabs.Panel>;
-          })}
-        </Tabs>
-      )}
+      <Tabs value={tab} onChange={(value) => { const c = REPORT_CATEGORIES.find((g) => g.tabs.some((t) => t === value)); if (c) selectReport(c.value, value); }}>
+        <Tabs.List mb="md" aria-label="Reports">
+          {REPORT_CATEGORIES.filter((g) => g.tabs.length > 0).flatMap((g, gi) => [
+            gi > 0 ? <span key={`sep-${g.value}`} className="tab-sep" aria-hidden="true" /> : null,
+            ...g.tabs.map((value) => <Tabs.Tab key={value} value={value}>{REPORT_TABS[value].label}</Tabs.Tab>),
+          ])}
+        </Tabs.List>
+        {REPORT_CATEGORIES.flatMap((g) => g.tabs).map((value) => {
+          const Report = REPORT_TABS[value].component;
+          return <Tabs.Panel key={value} value={value}><Report /></Tabs.Panel>;
+        })}
+      </Tabs>
     </>
   );
 }
@@ -326,7 +313,7 @@ function Journal() {
         <TextInput type="date" label="From (UTC)" value={from} max={to || undefined} onChange={(e) => filters.set("from", e.currentTarget.value)} style={filterStyle} />
         <TextInput type="date" label="To (UTC)" value={to} min={from || undefined} onChange={(e) => filters.set("to", e.currentTarget.value)} style={filterStyle} />
       </Group>
-      <FilterSummary count={entries.length} noun="entry" clear={filters.clear} />
+      <FilterSummary count={entries.length} noun="entry" clear={filters.clear} active={filters.active} />
       <ExportCsvButton filename="journal-entries.csv" {...journalCsv(entries)} />
       {!validRange ? (
         <Text c="dimmed">End date must be on or after start date.</Text>
@@ -444,7 +431,7 @@ function InventoryMovementReport() {
         <Select label="Brand" placeholder="All brands" data={options("brand")} value={filters.values.brand || null} onChange={(value) => filters.set("brand", value ?? "")} clearable searchable style={filterStyle} />
         <Select label="Category" placeholder="All categories" data={options("category")} value={filters.values.category || null} onChange={(value) => filters.set("category", value ?? "")} clearable searchable style={filterStyle} />
       </Group>
-      <FilterSummary count={rows.length} noun="movement" clear={filters.clear} />
+      <FilterSummary count={rows.length} noun="movement" clear={filters.clear} active={filters.active} />
       <ExportCsvButton filename="inventory-movement.csv" {...movementCsv(rows)} />
       <Text size="sm" c="dimmed">On-hand stock across all warehouses, oldest first. Dates use UTC; ending balance is per item after each movement.</Text>
       {!validRange ? (
@@ -510,7 +497,7 @@ function BundlesReport() {
         <TextInput label="Search bundles" placeholder="SKU or name" value={filters.values.q} onChange={(e) => filters.set("q", e.currentTarget.value)} style={filterStyle} />
         <Checkbox label="Hide zero stock" checked={filters.values.hideZero === "1"} onChange={(e) => filters.set("hideZero", e.currentTarget.checked ? "1" : "")} mb="xs" />
       </Group>
-      <FilterSummary count={rows.length} noun="bundle" clear={filters.clear} />
+      <FilterSummary count={rows.length} noun="bundle" clear={filters.clear} active={filters.active} />
       <ExportCsvButton filename="bundles.csv" {...bundlesCsv(rows)} />
       {rows.length === 0 ? <Text c="dimmed">{filters.active ? "Nothing matches these filters." : "No bundles yet."}</Text> : (
         <Table.ScrollContainer minWidth={620}>
@@ -564,7 +551,7 @@ function StockValue() {
         <TextInput label="Search items" placeholder="SKU or name" value={filters.values.q} onChange={(e) => filters.set("q", e.currentTarget.value)} style={filterStyle} />
         <Checkbox label="Hide zero stock" checked={filters.values.hideZero === "1"} onChange={(e) => filters.set("hideZero", e.currentTarget.checked ? "1" : "")} mb="xs" />
       </Group>
-      <FilterSummary count={rows.length} noun="item" clear={filters.clear} />
+      <FilterSummary count={rows.length} noun="item" clear={filters.clear} active={filters.active} />
       <ExportCsvButton filename="stock-value.csv" {...stockValueCsv(rows)} />
       {rows.length === 0 ? <Text c="dimmed">{filters.active ? "Nothing matches these filters." : "No stock items yet."}</Text> : (
         <Table.ScrollContainer minWidth={620}>
@@ -625,7 +612,7 @@ function HeldStock() {
   return (
     <Stack gap="xs">
       <TextInput label="Search awaiting bill" placeholder="PO number, vendor or item" value={filters.values.q} onChange={(e) => filters.set("q", e.currentTarget.value)} />
-      <FilterSummary count={rows.length} noun="line" clear={filters.clear} />
+      <FilterSummary count={rows.length} noun="line" clear={filters.clear} active={filters.active} />
       {rows.length === 0 ? <Text c="dimmed">{filters.active ? "Nothing matches these filters." : "Nothing is waiting for a bill."}</Text> : null}
       <Text c="dimmed">Received at the dock, counted, not yet sellable or valued. Oldest first.</Text>
       {rows.length > 0 ? (
@@ -673,7 +660,7 @@ function ToReceiveReport() {
         <TextInput label="Search orders" placeholder="PO number, vendor or item" value={filters.values.q} onChange={(e) => filters.set("q", e.currentTarget.value)} style={filterStyle} />
         <Select label="Warehouse" placeholder="All warehouses" data={warehouses} value={filters.values.warehouse || null} onChange={(value) => filters.set("warehouse", value ?? "")} clearable searchable style={filterStyle} />
       </Group>
-      <FilterSummary count={orders.length} noun="order" clear={filters.clear} />
+      <FilterSummary count={orders.length} noun="order" clear={filters.clear} active={filters.active} />
       {orders.length === 0 ? <Text c="dimmed">{filters.active ? "Nothing matches these filters." : "Everything ordered has arrived."}</Text> : null}
       <Text c="dimmed">
         {plural(orders.reduce((sum, order) => sum + order.units, 0), "unit")} on order, about {usd(orders.reduce((sum, order) => sum + order.valueCents, 0))} at order cost. Oldest order first. Tap one to receive it.
@@ -759,7 +746,7 @@ function ReorderReport() {
           <Select label="Deliver to" data={warehouses.data.map((warehouse) => ({ value: String(warehouse.id), label: warehouse.name }))} value={deliverTo} onChange={setWarehouseId} style={filterStyle} />
         ) : null}
       </Group>
-      <FilterSummary count={rows.length} noun="item" clear={filters.clear} />
+      <FilterSummary count={rows.length} noun="item" clear={filters.clear} active={filters.active} />
       {rows.length === 0 ? <Text c="dimmed">{filters.active ? "Nothing matches these filters." : "Nothing is at or under its reorder minimum."}</Text> : null}
       <Text c="dimmed">On hand plus units still to receive. The suggested quantity is the reorder quantity, or the shortfall if that is larger, at the item's last cost.</Text>
       {rows.length > 0 ? (
