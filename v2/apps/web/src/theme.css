@@ -243,3 +243,32 @@ a.ruled-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px;
   padding: 10px 10px; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); white-space: nowrap; }
 .mantine-Table-td { padding: 14px 10px; color: var(--text); overflow-wrap: anywhere; }
 .mantine-Table-tr:hover .mantine-Table-td { background: var(--surface-sunken); }
+
+/* Press feedback: buttons dip slightly under a finger or click. Off for reduced motion. */
+.mantine-Button-root, .mantine-ActionIcon-root { transition: transform 150ms var(--ease-out), background-color 150ms var(--ease-out); }
+.mantine-Button-root:active:not(:disabled):not([data-disabled]), .mantine-ActionIcon-root:active:not(:disabled):not([data-disabled]) { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) { .mantine-Button-root, .mantine-ActionIcon-root { transition: none; } .mantine-Button-root:active, .mantine-ActionIcon-root:active { transform: none; } }
+
+/* Cards, popovers and drawers sit on the plate colour, not Mantine's default white / dark-6. */
+.mantine-Paper-root, .mantine-Card-root { background-color: var(--surface); }
+
+/* Wide controls never push the page sideways; wide tables show an edge shadow while more is off-screen. */
+.mantine-SegmentedControl-root { max-width: 100%; overflow-x: auto; }
+[class*="TableScrollContainer"] .mantine-ScrollArea-viewport {
+  background:
+    linear-gradient(to right, var(--surface), var(--surface)) 0 0 / 40px 100% no-repeat local,
+    linear-gradient(to left, var(--surface), var(--surface)) 100% 0 / 40px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.22), transparent) 0 0 / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.22), transparent) 100% 0 / 14px 100% no-repeat scroll;
+}
+
+/* Touch screens: every control is at least 44px. */
+@media (pointer: coarse) {
+  :root { --input-height-sm: 44px; --input-height-md: 44px; --input-height-lg: 48px; }
+  .mantine-Button-root:not([data-size^="compact"]) { min-height: 44px; }
+  .mantine-Button-root[data-size^="compact"] { min-height: 36px; }
+  .mantine-Tabs-tab, .mantine-SegmentedControl-label { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+  .mantine-Input-input { min-height: 44px; }
+  .mantine-Anchor-root { display: inline-flex; align-items: center; min-height: 44px; }
+  .tabbar a, .mantine-NavLink-root { min-height: 44px; }
+}

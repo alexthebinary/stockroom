@@ -2,7 +2,7 @@ import { formatUsd } from "@pi/domain";
 import { Alert, Badge, Button, Center, Group, Loader, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle } from "@tabler/icons-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 export const usd = (cents: number | null | undefined) => (cents == null ? "—" : formatUsd(cents));
 
@@ -17,13 +17,31 @@ export function Money({ cents, strong }: { cents: number | null | undefined; str
   );
 }
 
+/** A whole number that counts up once when it first appears. Still on reduced motion, and on later changes. */
+function CountUp({ to }: { to: number }) {
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    if (!Number.isInteger(to) || to <= 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setShown(to); return; }
+    const started = performance.now();
+    let frame = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - started) / 450);
+      setShown(Math.round(to * (1 - (1 - t) ** 3)));
+      if (t < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [to]);
+  return <>{shown}</>;
+}
+
 /** A measured figure, not a card: label above, value below, one rule. */
 export function Stat({ label, value, signal, hint }: { label: string; value: ReactNode; signal?: boolean; hint?: ReactNode }) {
   return (
     <div className="stat">
       <div className="stat-label">{label}</div>
       <div className="stat-value" data-signal={signal ? "true" : undefined}>
-        {value}
+        {typeof value === "number" ? <CountUp to={value} /> : value}
       </div>
       {hint ? (
         <Text size="sm" c="dimmed">

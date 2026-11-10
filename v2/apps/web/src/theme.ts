@@ -47,6 +47,6 @@ export const theme = createTheme({
 /** Disabled controls in the warm neutrals, not Mantine's default blue-grays. */
 export const cssVariablesResolver: CSSVariablesResolver = () => ({
   variables: {},
-  light: { "--mantine-color-disabled": "#ecede6", "--mantine-color-disabled-color": "#9a9d90", "--mantine-color-disabled-border": "#dcded6" },
-  dark: { "--mantine-color-disabled": "#22241f", "--mantine-color-disabled-color": "#6f7366", "--mantine-color-disabled-border": "#2a2c27" },
+  light: { "--mantine-color-dimmed": "var(--text-muted)", "--mantine-color-disabled": "#ecede6", "--mantine-color-disabled-color": "#9a9d90", "--mantine-color-disabled-border": "#dcded6" },
+  dark: { "--mantine-color-dimmed": "var(--text-muted)", "--mantine-color-disabled": "#22241f", "--mantine-color-disabled-color": "#6f7366", "--mantine-color-disabled-border": "#2a2c27" },
 });
