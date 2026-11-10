@@ -235,3 +235,11 @@ a.ruled-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px;
 .stock-table .tag { margin-left: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted);
   border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; vertical-align: 1px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ── Every Mantine table (order lines, bill lines, receipts, reports) reads like the Stock table. ── */
+.mantine-Card-root:has(.mantine-Table-table) { border: 0; background: transparent; padding: 0; box-shadow: none; }
+.mantine-Table-table { font-variant-numeric: tabular-nums; }
+.mantine-Table-th { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted);
+  padding: 10px 10px; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); white-space: nowrap; }
+.mantine-Table-td { padding: 14px 10px; color: var(--text); overflow-wrap: anywhere; }
+.mantine-Table-tr:hover .mantine-Table-td { background: var(--surface-sunken); }

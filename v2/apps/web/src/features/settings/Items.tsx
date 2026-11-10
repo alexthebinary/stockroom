@@ -71,15 +71,13 @@ export function Items() {
       {items.error ? <Problem error={items.error} retry={() => items.refetch()} /> : wide ? (
       <table className="stock-table">
         <caption className="visually-hidden">Inventory</caption>
-        <colgroup><col /><col style={{ width: 190 }} /><col style={{ width: 110 }} /><col style={{ width: 160 }} /><col style={{ width: 96 }} /><col style={{ width: 124 }} /><col style={{ width: 84 }} /><col style={{ width: 84 }} /></colgroup>
+        <colgroup><col /><col style={{ width: 170 }} /><col style={{ width: 190 }} /><col style={{ width: 150 }} /><col style={{ width: 80 }} /><col style={{ width: 76 }} /></colgroup>
         <thead>
           <tr>
             <th scope="col">Item</th>
             <th scope="col">SKU</th>
-            <th scope="col">Brand</th>
-            <th scope="col">Category</th>
+            <th scope="col">Brand · Category</th>
             <th scope="col" className="num">On hand</th>
-            <th scope="col" className="num">Awaiting bill</th>
             <th scope="col" className="num">Price</th>
             <th scope="col"><span className="visually-hidden">Actions</span></th>
           </tr>
@@ -97,10 +95,11 @@ export function Items() {
                   {i.isBundle ? <span className="tag">Bundle</span> : null}
                 </td>
                 <td className="mono" title={i.sku}>{i.sku}</td>
-                <td title={i.brand ?? ""}>{i.brand ?? "—"}</td>
-                <td title={i.category ?? ""}>{i.category ?? "—"}</td>
-                <td className="num strong">{count}{i.isBundle ? <span className="unit"> avail.</span> : null}</td>
-                <td className={`num${!i.isBundle && v?.held ? " warn" : ""}`}>{!i.isBundle && v?.held ? v.held : "—"}</td>
+                <td title={[i.brand, i.category].filter(Boolean).join(" · ")}>{[i.brand, i.category].filter(Boolean).join(" · ") || "—"}</td>
+                <td className="num strong">
+                  {!i.isBundle && v?.held ? <span className="unit warn" title="Counted at the dock, awaiting a bill">{v.held} awaiting bill · </span> : null}
+                  {count}{i.isBundle ? <span className="unit"> avail.</span> : null}
+                </td>
                 <td className="num">{i.priceCents != null ? `$${(i.priceCents / 100).toFixed(2)}` : "—"}</td>
                 <td className="act">
                   {i.isBundle ? <Button size="compact-sm" variant="light" onClick={(e) => { e.stopPropagation(); setShipping(i); }} aria-label={`Ship ${i.name}`}>Ship</Button> : null}
@@ -109,7 +108,7 @@ export function Items() {
             );
           })}
         </tbody>
-        {items.data && items.data.length === 0 ? <tfoot><tr><td colSpan={8} className="ruled-empty">{`No items match${brand || category || debounced ? " these filters" : " yet"}.`}</td></tr></tfoot> : null}
+        {items.data && items.data.length === 0 ? <tfoot><tr><td colSpan={6} className="ruled-empty">{`No items match${brand || category || debounced ? " these filters" : " yet"}.`}</td></tr></tfoot> : null}
       </table>
       ) : (
       <Ruled label="Inventory" empty={items.data ? `No items match${brand || category || debounced ? " these filters" : " yet"}.` : <Loading />}>
