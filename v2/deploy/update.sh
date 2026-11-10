@@ -43,6 +43,7 @@ clear_leftovers() { docker ps -a --filter status=created --format '{{.Names}}' |
 clear_leftovers
 if ! APP_VERSION=$(git rev-parse --short=7 HEAD) docker compose up -d --build; then
   echo "compose up failed; clearing leftover containers and retrying once" >&2
+  sleep 8   # let Docker finish removing the old container before the name is reused
   clear_leftovers
   APP_VERSION=$(git rev-parse --short=7 HEAD) docker compose up -d --build
 fi
