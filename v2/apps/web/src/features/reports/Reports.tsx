@@ -504,7 +504,8 @@ function BundlesReport() {
           <Table>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Item</Table.Th>
+                <Table.Th>Bundle Name</Table.Th>
+                <Table.Th>Bundle SKU</Table.Th>
                 <Table.Th ta="right">Qty per bundle</Table.Th>
                 <Table.Th ta="right">On hand</Table.Th>
                 <Table.Th ta="right">Average</Table.Th>
@@ -514,7 +515,8 @@ function BundlesReport() {
             <Table.Tbody>
               {rows.flatMap((r) => [
                 <Table.Tr key={r.itemId} fw={700}>
-                  <Table.Td>{r.sku} · {r.name}</Table.Td>
+                  <Table.Td>{r.name}</Table.Td>
+                  <Table.Td>{r.sku}</Table.Td>
                   <Table.Td />
                   <Table.Td ta="right">{r.onHand}</Table.Td>
                   <Table.Td ta="right">{usd(Math.round(r.averageCents))}</Table.Td>
@@ -522,7 +524,8 @@ function BundlesReport() {
                 </Table.Tr>,
                 ...r.components.map((c) => (
                   <Table.Tr key={`${r.itemId}-${c.itemId}`} c="dimmed">
-                    <Table.Td pl="xl">{c.sku} · {c.name}</Table.Td>
+                    <Table.Td pl="xl">{c.name}</Table.Td>
+                    <Table.Td>{c.sku}</Table.Td>
                     <Table.Td ta="right">{c.qtyPerBundle}</Table.Td>
                     <Table.Td ta="right">{c.onHand}</Table.Td>
                     <Table.Td ta="right">{usd(Math.round(c.averageCents))}</Table.Td>
