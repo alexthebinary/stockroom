@@ -16,7 +16,8 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "setup" });
     setProfile(p);
   };
-  useEffect(() => setUnauthorizedHandler(() => choose(null)), []);
+  // Braces matter: returning the handler made it the effect's cleanup, which signed the person out in dev (StrictMode).
+  useEffect(() => { setUnauthorizedHandler(() => choose(null)); }, []);
   return <ProfileContext.Provider value={{ profile, choose }}>{children}</ProfileContext.Provider>;
 }
 

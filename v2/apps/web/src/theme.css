@@ -381,3 +381,17 @@ body:has([role="dialog"]) .fb-tab { display: none; }
 .view-chip button { all: unset; cursor: pointer; padding: 6px 0; }
 .view-chip[data-active="true"] { border-color: var(--ink); background: var(--ink); color: var(--surface); }
 .view-chip[data-active="true"] .mantine-ActionIcon-root { color: var(--surface); }
+
+/* ── Forms (2026-11-11): labels above, errors under the field, one line of an order per row. ── */
+.form-line { display: grid; grid-template-columns: minmax(0, 1fr) 96px 128px 44px; gap: var(--space-3); align-items: start; }
+.form-line-remove { align-self: start; }
+/* The remove key lines up with the input, not with its label. */
+.form-line[data-labelled="true"] .form-line-remove { margin-top: 25px; }
+@media (max-width: 767px) {
+  .form-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px; padding-bottom: var(--space-4); border-bottom: 1px solid var(--line); }
+  .form-line > :first-child { grid-column: 1 / -1; }
+}
+.mantine-InputWrapper-error { font-size: var(--text-sm); color: var(--warn-fg); }
+.mantine-InputWrapper-description { font-size: var(--text-sm); color: var(--text-muted); }
+.mantine-Input-input[data-error] { border-color: var(--warn-fg); color: var(--text-strong); }
+.mantine-InputWrapper-required { color: var(--warn-fg); }

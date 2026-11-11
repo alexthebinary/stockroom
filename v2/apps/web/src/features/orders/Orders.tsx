@@ -1,4 +1,4 @@
-import { ActionIcon, Anchor, Button, Card, Collapse, Group, NumberInput, Select, SimpleGrid, Stack, Table, Text, Textarea, TextInput, Title } from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Button, Card, Collapse, Group, NumberInput, Select, SimpleGrid, Stack, Table, Text, Textarea, TextInput, Title } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { IconAdjustmentsHorizontal, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMediaQuery } from "@mantine/hooks";
@@ -6,7 +6,8 @@ import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { DataTable } from "../../components/DataTable";
 import { SavedViews } from "../../components/SavedViews";
-import { formatDate, Loading, Money, PageHeader, ReceivingBadge, StatusBadge, toastErr, toastOk, usd } from "../../components/ui";
+import { formatDate, Loading, Money, PageHeader, Problem, ReceivingBadge, StatusBadge, toastErr, toastOk, usd } from "../../components/ui";
+import { useBlurErrors } from "../../components/form";
 import { get, post } from "../../lib/api";
 import { filterOrders, orderFilterKeys, orderFilterOptions, readOrderFilters, type OrderFilterKey } from "../../lib/orderFilters";
 import type { Item, PurchaseOrder, Vendor, Warehouse } from "../../lib/types";
@@ -134,8 +135,18 @@ export function NewOrder() {
   const [warehouseId, setWarehouseId] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState([{ itemId: null as string | null, qty: 1, cost: 0 }]);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState("");
+  const form = useBlurErrors();
+  // Phones stack each line, so every line carries its own labels; a wide screen labels the first row only.
+  const stacked = useMediaQuery("(max-width: 767px)") ?? false;
   const total = lines.reduce((s, l) => s + l.qty * Math.round(l.cost * 100), 0);
+  const valid = Boolean(vendorId) && lines.every((l) => l.itemId);
+  const loadError = vendors.error ?? warehouses.error ?? items.error;
   const save = async () => {
+    if (busy || !form.submit(valid)) return;
+    setBusy(true);
+    setFailed("");
     try {
       const po = await post<PurchaseOrder>("/purchase-orders", {
         vendorId: Number(vendorId),
@@ -147,43 +158,67 @@ export function NewOrder() {
       await queryClient.invalidateQueries();
       navigate(`/orders/${po.id}`);
     } catch (error) {
+      setFailed(error instanceof Error ? error.message : String(error));
       toastErr(error);
+    } finally {
+      setBusy(false);
     }
   };
   const pickItem = (i: number, value: string | null) => {
     const item = items.data?.find((x) => String(x.id) === value);
     setLines(lines.map((l, j) => (j === i ? { ...l, itemId: value, cost: item ? item.lastCostCents / 100 : l.cost } : l)));
   };
+  const label = (i: number, text: string) => (stacked || i === 0 ? { label: text } : { "aria-label": `${text}, line ${i + 1}` });
   return (
-    <Stack gap="lg">
+    <form noValidate onSubmit={(e) => { e.preventDefault(); void save(); }}>
+    <Stack gap="lg" maw={880}>
       <PageHeader back={{ to: "/orders", label: "Orders" }} title="New purchase order" />
+      {loadError ? <Problem error={loadError} retry={() => { void vendors.refetch(); void warehouses.refetch(); void items.refetch(); }} /> : null}
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
-        <Select label="Vendor" data={(vendors.data ?? []).map((v) => ({ value: String(v.id), label: v.name }))} value={vendorId} onChange={setVendorId} searchable />
-        <Select label="Deliver to" data={(warehouses.data ?? []).map((w) => ({ value: String(w.id), label: w.name }))} value={warehouseId ?? (warehouses.data?.[0] ? String(warehouses.data[0].id) : null)} onChange={setWarehouseId} />
+        <Select
+          label="Vendor" withAsterisk placeholder={vendors.isLoading ? "Loading vendors…" : "Choose a vendor"} disabled={vendors.isLoading}
+          data={(vendors.data ?? []).map((v) => ({ value: String(v.id), label: v.name }))} value={vendorId} onChange={setVendorId} searchable
+          nothingFoundMessage="No vendor by that name. Add one in Settings, Warehouses & vendors."
+          onBlur={form.blur("vendor")} error={form.show("vendor", vendorId ? null : "Choose the vendor this order goes to.")}
+        />
+        <Select label="Deliver to" disabled={warehouses.isLoading} data={(warehouses.data ?? []).map((w) => ({ value: String(w.id), label: w.name }))} value={warehouseId ?? (warehouses.data?.[0] ? String(warehouses.data[0].id) : null)} onChange={setWarehouseId} allowDeselect={false} />
       </SimpleGrid>
-      {lines.map((line, i) => (
-        <Group key={i} align="flex-end" wrap="nowrap">
-          <Select label={i === 0 ? "Item" : undefined} data={(items.data ?? []).filter((it) => !it.isBundle).map((it) => ({ value: String(it.id), label: `${it.sku} · ${it.name}` }))} value={line.itemId} onChange={(v) => pickItem(i, v)} searchable style={{ flex: 2 }} />
-          <NumberInput label={i === 0 ? "Qty" : undefined} value={line.qty} min={1} onChange={(v) => setLines(lines.map((l, j) => (j === i ? { ...l, qty: Number(v) || 1 } : l)))} w={80} />
-          <NumberInput label={i === 0 ? "Unit $" : undefined} value={line.cost} min={0} decimalScale={2} onChange={(v) => setLines(lines.map((l, j) => (j === i ? { ...l, cost: Number(v) || 0 } : l)))} w={110} />
-          <ActionIcon variant="subtle" color="red" size="lg" onClick={() => setLines(lines.filter((_, j) => j !== i))} disabled={lines.length === 1} aria-label="Remove line">
-            <IconTrash size={18} />
-          </ActionIcon>
+      <Stack gap="sm" role="group" aria-label="Order lines">
+        {lines.map((line, i) => (
+          <div key={i} className="form-line" data-labelled={stacked || i === 0 ? "true" : undefined}>
+            <Select
+              {...label(i, "Item")} withAsterisk={stacked || i === 0} placeholder={items.isLoading ? "Loading items…" : "Search by SKU or name"} disabled={items.isLoading}
+              data={(items.data ?? []).filter((it) => !it.isBundle).map((it) => ({ value: String(it.id), label: `${it.sku} · ${it.name}` }))} value={line.itemId} onChange={(v) => pickItem(i, v)} searchable
+              nothingFoundMessage="No item matches. Add it in Stock first."
+              onBlur={form.blur(`item-${i}`)} error={form.show(`item-${i}`, line.itemId ? null : lines.length > 1 ? "Choose an item, or remove this line." : "Choose the item to order.")}
+            />
+            <NumberInput {...label(i, "Qty")} value={line.qty} min={1} allowDecimal={false} hideControls inputMode="numeric" onChange={(v) => setLines(lines.map((l, j) => (j === i ? { ...l, qty: Number(v) || 1 } : l)))} />
+            <NumberInput {...label(i, "Unit $")} value={line.cost} min={0} decimalScale={2} hideControls inputMode="decimal" onChange={(v) => setLines(lines.map((l, j) => (j === i ? { ...l, cost: Number(v) || 0 } : l)))} />
+            <ActionIcon className="form-line-remove" variant="subtle" color="ink" size={44} onClick={() => setLines(lines.filter((_, j) => j !== i))} disabled={lines.length === 1} aria-label={lines.length === 1 ? "Remove line (an order needs at least one)" : `Remove line ${i + 1}`}>
+              <IconTrash size={18} aria-hidden="true" />
+            </ActionIcon>
+          </div>
+        ))}
+        <Group>
+          <Button variant="light" onClick={() => setLines([...lines, { itemId: null, qty: 1, cost: 0 }])}>
+            Add line
+          </Button>
         </Group>
-      ))}
-      <Group>
-        <Button variant="light" onClick={() => setLines([...lines, { itemId: null, qty: 1, cost: 0 }])}>
-          Add line
-        </Button>
-      </Group>
-      <Textarea label="Notes" value={notes} onChange={(e) => setNotes(e.currentTarget.value)} autosize />
+      </Stack>
+      <Textarea label="Notes" description="Optional. Shown on the order." value={notes} onChange={(e) => setNotes(e.currentTarget.value)} autosize minRows={2} />
+      {failed ? (
+        <Alert role="alert" color="orange" title="The order was not created" styles={{ root: { background: "var(--warn-bg)", border: "1px solid transparent" }, title: { color: "var(--warn-fg)" } }}>
+          {failed} Nothing was saved; fix it and press Create order again.
+        </Alert>
+      ) : null}
       <Group justify="space-between">
-        <Text fw={600}>Estimated {usd(total)}</Text>
-        <Button size="md" onClick={save} disabled={!vendorId || lines.some((l) => !l.itemId)}>
+        <Text fw={600} aria-live="polite">Estimated {usd(total)}</Text>
+        <Button size="md" type="submit" loading={busy}>
           Create order
         </Button>
       </Group>
     </Stack>
+    </form>
   );
 }
 
