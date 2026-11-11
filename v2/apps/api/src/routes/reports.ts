@@ -103,6 +103,8 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
           itemId: item.id,
           sku: item.sku,
           name: item.name,
+          brand: item.brand,
+          category: item.category,
           onHand: balance?._sum.onHand ?? 0,
           held: balance?._sum.held ?? 0,
           valueCents: pool?.valueCents ?? 0,

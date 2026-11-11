@@ -12,7 +12,7 @@ import type { JournalEntry, Warehouse } from "../../lib/types";
 
 type Books = { sound: boolean; problems: string[]; figures: Record<string, number> };
 type Tb = { rows: { id: number; code: string; name: string; isHeader: boolean; parentId: number | null; debitCents: number; creditCents: number }[]; totalDebitCents: number; totalCreditCents: number };
-type Valuation = { rows: { itemId: number; sku: string; name: string; onHand: number; held: number; valueCents: number; averageCents: number; glCents: number; varianceCents: number }[]; totalValueCents: number; totalGlCents: number };
+type Valuation = { rows: { itemId: number; sku: string; name: string; brand?: string | null; category?: string | null; onHand: number; held: number; valueCents: number; averageCents: number; glCents: number; varianceCents: number }[]; totalValueCents: number; totalGlCents: number };
 type BundleReport = { rows: { itemId: number; sku: string; name: string; onHand: number; averageCents: number; valueCents: number; components: { itemId: number; sku: string; name: string; qtyPerBundle: number; onHand: number; averageCents: number }[] }[] };
 type ToReceive = {
   orders: { poId: number; poNumber: string; billingStatus: string; vendor: { name: string } | null; warehouse: { id: number; code: string; name: string } | null; days: number; units: number; valueCents: number; lines: { lineId: number; item: { name: string; sku: string }; ordered: number; received: number; outstanding: number; billed: boolean }[] }[];
@@ -559,6 +559,7 @@ function StockValue() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Item</Table.Th>
+                <Table.Th>Brand · Category</Table.Th>
                 <Table.Th ta="right">On hand</Table.Th>
                 <Table.Th ta="right">Average</Table.Th>
                 <Table.Th ta="right">Value</Table.Th>
@@ -572,6 +573,7 @@ function StockValue() {
                   <Table.Td>
                     {r.sku} · {r.name}
                   </Table.Td>
+                  <Table.Td>{[r.brand, r.category].filter(Boolean).join(" · ") || "—"}</Table.Td>
                   <Table.Td ta="right">{r.onHand}</Table.Td>
                   <Table.Td ta="right">{usd(Math.round(r.averageCents))}</Table.Td>
                   <Table.Td ta="right">
@@ -585,6 +587,7 @@ function StockValue() {
               ))}
               <Table.Tr fw={700}>
                 <Table.Td>Total</Table.Td>
+                <Table.Td />
                 <Table.Td />
                 <Table.Td />
                 <Table.Td ta="right">
