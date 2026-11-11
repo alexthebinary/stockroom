@@ -57,7 +57,7 @@ describe("feedback #29: Export to CSV file on Reports", () => {
   it("builds a CSV of the rows shown, escaping quotes and commas", () => {
     const { header, rows } = stockValueCsv(valuation.rows);
     expect(toCsv(header, rows)).toBe(
-      'Item SKU,Item name,On hand,Average,Value,Ledger,Awaiting bill\r\nSKU-1,"Widget, ""large""",3,15.17,45.50,45.50,\r\n',
+      'Item SKU,Item name,Brand,Category,On hand,Average,Value,Ledger,Awaiting bill\r\nSKU-1,"Widget, ""large""",,,3,15.17,45.50,45.50,\r\n',
     );
   });
 

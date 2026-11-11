@@ -104,8 +104,8 @@ export const bundlesCsv = (rows: BundleReport["rows"]) => ({
 });
 
 export const stockValueCsv = (rows: Valuation["rows"]) => ({
-  header: ["Item SKU", "Item name", "On hand", "Average", "Value", "Ledger", "Awaiting bill"],
-  rows: rows.map((r): CsvCell[] => [r.sku, r.name, r.onHand, cents(Math.round(r.averageCents)), cents(r.valueCents), cents(r.glCents), r.held || ""]),
+  header: ["Item SKU", "Item name", "Brand", "Category", "On hand", "Average", "Value", "Ledger", "Awaiting bill"],
+  rows: rows.map((r): CsvCell[] => [r.sku, r.name, r.brand ?? "", r.category ?? "", r.onHand, cents(Math.round(r.averageCents)), cents(r.valueCents), cents(r.glCents), r.held || ""]),
 });
 
 const filterStyle = { flex: "1 1 180px", minWidth: 0 };
