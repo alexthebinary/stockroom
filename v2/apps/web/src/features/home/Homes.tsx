@@ -1,12 +1,13 @@
-import { Alert, Button, Group, SimpleGrid, Stack, Text, Title } from "@mantine/core";
+import { Button, Group, SimpleGrid, Stack, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { IconAlertTriangle, IconBarcode, IconCircleCheck, IconFileInvoice, IconPlus, IconTruckDelivery } from "@tabler/icons-react";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { GuidedPath } from "./GuidedPath";
 import { AskHelp } from "./AskHelp";
 import { TactileButton } from "../../components/kitchen/TactileButton";
 import { Ruled, RuledRow } from "../../components/Ruled";
-import { Loading, Money, PageHeader, Problem, Stat, usd } from "../../components/ui";
+import { Loading, Money, PageHeader, plural, Problem, Stat, usd } from "../../components/ui";
 import { get } from "../../lib/api";
 import { useProfile } from "../../lib/profile";
 import type { Bill, Home, PurchaseOrder, Setup } from "../../lib/types";
@@ -17,10 +18,10 @@ const useOrders = () => useQuery({ queryKey: ["orders", "ALL"], queryFn: () => g
 const useBills = () => useQuery({ queryKey: ["bills"], queryFn: () => get<Bill[]>("/bills"), refetchInterval: 30_000 });
 
 const SUBTITLE = { CLERK: "Receive deliveries and count stock.", ACCOUNTING: "Review bills and keep payables current.", ADMIN: "Where the business stands today." } as const;
-function Greeting() {
+function Greeting({ action }: { action?: ReactNode }) {
   const { profile } = useProfile();
   const hour = new Date().getHours();
-  return <PageHeader title={`Good ${hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening"}, ${profile?.name.split(" ")[0] ?? ""}`} subtitle={SUBTITLE[profile?.job ?? "CLERK"]} />;
+  return <PageHeader title={`Good ${hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening"}, ${profile?.name.split(" ")[0] ?? ""}`} subtitle={SUBTITLE[profile?.job ?? "CLERK"]} action={action} />;
 }
 
 export function HomePage() {
@@ -121,46 +122,74 @@ function AdminHome() {
   if (home.error) return <Problem error={home.error} retry={() => home.refetch()} />;
   if (!home.data) return <Loading />;
   const books = home.data.admin;
+  const acct = home.data.accounting;
+  const openOrders = (orders.data ?? []).filter((o) => o.lifecycle === "OPEN" && o.receivingStatus !== "RECEIVED").length;
+  // What needs a person comes first, worst first: broken books, late money, then work waiting.
+  const attention = [
+    !books.booksSound ? <RuledRow key="b" to="/reports" title={<Flag>The books need a look</Flag>} meta={books.problems[0]} /> : null,
+    acct.overdueCents > 0 ? <RuledRow key="o" to="/payables" title={<Flag>Payables are overdue</Flag>} meta="Open Payables to see which bills and pay them" aside={<span className="fig fig-warn"><Money cents={acct.overdueCents} /></span>} /> : null,
+    acct.draftBills > 0 ? <RuledRow key="d" to="/bills" title={`${plural(acct.draftBills, "bill")} to review`} meta="Drafts from the dock are waiting for accounting" /> : null,
+    acct.heldUnits > 0 ? <RuledRow key="h" to="/reports" title={`${plural(acct.heldUnits, "unit")} awaiting a bill`} meta="Counted at the dock, not yet sellable" /> : null,
+    (reorder.data?.length ?? 0) > 0 ? <RuledRow key="r" to="/reports" title={`${plural(reorder.data!.length, "item")} at or under the reorder minimum`} meta="Open Reports, Purchases, Reorder" /> : null,
+  ];
   return (
-    <Stack gap="lg">
-      <Greeting />
-      <Ruled label="Books status">
-        <RuledRow
-          to="/reports"
-          title={
-            <Group gap="sm" wrap="nowrap">
-              {books.booksSound ? <IconCircleCheck size={24} color="var(--ok-fg)" aria-hidden /> : <IconAlertTriangle size={24} color="var(--warn-fg)" aria-hidden />}
-              <span>{books.booksSound ? "The books are sound" : "The books need a look"}</span>
-            </Group>
-          }
-          meta={books.booksSound ? "Trial balance balances; stock value, inbound and payables all agree with the ledger." : books.problems[0]}
-        />
-      </Ruled>
-      <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="lg">
-        <Stat label="Open orders" value={(orders.data ?? []).filter((o) => o.lifecycle === "OPEN" && o.receivingStatus !== "RECEIVED").length} />
-        <Stat label="Bills to review" value={home.data.accounting.draftBills} />
-        <Stat label="We owe" value={<Money cents={home.data.accounting.payableCents} />} />
-      </SimpleGrid>
-      <Ruled label="Needs attention" empty="Nothing needs you right now.">
-        {[
-          home.data.accounting.draftBills > 0 ? <RuledRow key="d" to="/bills" title={`${home.data.accounting.draftBills} bill${home.data.accounting.draftBills === 1 ? "" : "s"} to review`} meta="Drafts from the dock are waiting for accounting" /> : null,
-          home.data.accounting.heldUnits > 0 ? <RuledRow key="h" to="/reports" title={`${home.data.accounting.heldUnits} unit${home.data.accounting.heldUnits === 1 ? "" : "s"} awaiting a bill`} meta="Counted at the dock, not yet sellable" /> : null,
-          home.data.accounting.overdueCents > 0 ? <RuledRow key="o" to="/payables" title="Payables are overdue" aside={<Money cents={home.data.accounting.overdueCents} />} /> : null,
-          (reorder.data?.length ?? 0) > 0 ? <RuledRow key="r" to="/reports" title={`${reorder.data!.length} item${reorder.data!.length === 1 ? "" : "s"} at or under the reorder minimum`} meta="Open Reports, Purchases, Reorder" /> : null,
-        ]}
-      </Ruled>
-      <Group>
-        <Button component={Link} to="/orders/new" leftSection={<IconPlus size={18} />}>
-          New purchase order
-        </Button>
-      </Group>
+    <Stack gap="xl">
+      <Greeting action={<Button component={Link} to="/orders/new" leftSection={<IconPlus size={18} aria-hidden="true" />}>New purchase order</Button>} />
+      <div className="home-grid">
+        <div className="home-main">
+          <section aria-labelledby="home-attention">
+            <h2 className="section-label" id="home-attention">Needs attention</h2>
+            <Ruled label="Needs attention" empty="Nothing needs you right now.">{attention}</Ruled>
+          </section>
+          <section aria-labelledby="home-money">
+            <h2 className="section-label" id="home-money">Money</h2>
+            <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="lg" verticalSpacing="lg">
+              <Stat label="We owe" value={<Money cents={acct.payableCents} />} />
+              <Stat label="Overdue" value={<Money cents={acct.overdueCents} />} tone={acct.overdueCents > 0 ? "warn" : undefined} />
+              <Stat label="Due in 7 days" value={<Money cents={acct.dueThisWeekCents} />} />
+            </SimpleGrid>
+          </section>
+          <section aria-labelledby="home-work">
+            <h2 className="section-label" id="home-work">Work in hand</h2>
+            <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="lg" verticalSpacing="lg">
+              <Stat label="Open orders" value={openOrders} />
+              <Stat label="Bills to review" value={acct.draftBills} />
+              <Stat label="Units awaiting a bill" value={acct.heldUnits} />
+            </SimpleGrid>
+          </section>
+        </div>
+        <aside className="home-aside" aria-label="Books and help">
+          {books.booksSound ? (
+            <section aria-labelledby="home-books">
+              <h2 className="section-label" id="home-books">Books</h2>
+              <Link to="/reports" className="books-ok">
+                <IconCircleCheck size={20} color="var(--ok-fg)" aria-hidden="true" />
+                <span>
+                  <b>The books are sound</b>
+                  <span>Trial balance balances; stock value, inbound and payables agree with the ledger.</span>
+                </span>
+              </Link>
+            </section>
+          ) : null}
+          <AskHelp />
+        </aside>
+      </div>
       <GuidedPath name={name} intro="You set the business up and watch it run. Four steps take you from an empty company to a posted bill." steps={[
         { label: "Finish setup", why: "Company details, people, warehouses, vendors and items.", to: "/setup", done: setup.data?.company.setupCompletedAt != null, cta: "Continue setup" },
         { label: "Place a purchase order", why: "An order commits to buy and posts no money. The dock can also create one by scanning a surprise delivery.", to: "/orders/new", done: (orders.data ?? []).some((o) => o.source === "MANUAL"), cta: "New purchase order" },
         { label: "See a delivery received", why: "On a phone, open Receive, scan the boxes and finish.", to: "/receive", done: (orders.data ?? []).some((o) => o.receivingStatus !== "NOT_RECEIVED"), cta: "Open Receive" },
         { label: "See a bill posted", why: "Accounting posts the draft bill and the units land in stock at landed cost.", to: "/bills", done: (bills.data ?? []).some((b) => b.status === "POSTED"), cta: "Open Bills" },
       ]} />
-      <AskHelp />
     </Stack>
+  );
+}
+
+/** A row title that is a warning: the icon says so without relying on colour. */
+function Flag({ children }: { children: ReactNode }) {
+  return (
+    <Group gap="xs" wrap="nowrap">
+      <IconAlertTriangle size={20} color="var(--warn-fg)" aria-hidden="true" />
+      <span>{children}</span>
+    </Group>
   );
 }

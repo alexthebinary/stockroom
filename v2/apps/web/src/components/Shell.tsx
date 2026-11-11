@@ -84,10 +84,12 @@ export function Shell({ children }: { children: ReactNode }) {
   const stockActive = stockKeys.some((key) => isActive(pathname, SECTIONS[key]!.to));
 
   return (
+    <>
+    <a href="#main" className="skip-link">Skip to content</a>
     <AppShell header={{ height: 56 }} navbar={{ width: 232, breakpoint: "sm", collapsed: { mobile: true } }} padding="md">
       <AppShell.Header className="no-print">
         <Group h="100%" px="md" justify="space-between" wrap="nowrap">
-          <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>
+          <Link to="/" className="brand-link" aria-label="ProfitIndex, home">
             <Group gap={8} wrap="nowrap">
               <img src="/icon.svg" width={28} height={28} alt="" style={{ borderRadius: 7 }} />
               <Text fw={700} size="lg">
@@ -142,7 +144,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <CompaniesModal opened={companiesOpen} onClose={() => setCompaniesOpen(false)} />
       </AppShell.Header>
 
-      <AppShell.Navbar p="xs" className="no-print">
+      <AppShell.Navbar p="xs" className="no-print" aria-label="Sections">
         <Stack gap={2}>
           {RAIL[job].filter((key) => key === "home").map((key) => sectionLink(key))}
           {purchases.length > 0 && (
@@ -159,8 +161,8 @@ export function Shell({ children }: { children: ReactNode }) {
         </Stack>
       </AppShell.Navbar>
 
-      <AppShell.Main>
-        <Box maw={1280} mx="auto" pb={{ base: 96, sm: 32 }} key={pathname} className="route-fade">
+      <AppShell.Main id="main" tabIndex={-1}>
+        <Box maw={1280} mx="auto" pb={{ base: 136, sm: 32 }} key={pathname} className="route-fade">
           {children}
         </Box>
       </AppShell.Main>
@@ -191,5 +193,6 @@ export function Shell({ children }: { children: ReactNode }) {
         ) : null}
       </Box>
     </AppShell>
+    </>
   );
 }

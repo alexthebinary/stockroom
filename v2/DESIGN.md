@@ -81,3 +81,30 @@ Operate-mode guidance and craft floor: build fully, inspect once in a batch
   all off for `prefers-reduced-motion`.
 - Touch screens (`pointer: coarse`): buttons, tabs, inputs, links and nav are >= 44 px.
 - There is no test sheet page any more.
+
+## Scales and the four-pass audit (2026-11-11)
+
+Measured at 390, 768 and 1440 px on every route, before and after (harness: headless Chromium, read-only).
+
+- **Spacing:** 4 / 8 / 12 / 16 / 24 / 32 / 48 (`--space-1..7`). **Type:** 12 / 14 / 16 / 20 / 25 / 31 (`--text-xs..2xl`);
+  nothing else renders (13 px and 12.8 px strays removed).
+- **Five colours, the rest are tints of them:** plate (`--surface`), ink (`--ink`, `--text-strong`), muted ink
+  (`--text-muted`, `--text`), signal lime (`--signal`, `--ok-*`), warning orange (`--warn-*`). Sunken, line and border
+  are plate darkened; `-bg` values are the hue at low alpha. Red appears only on the hold-to-void key. No gradients in
+  page content (the one exception is the scroll-edge shadow on a wide table).
+- **Home (admin)** reads top to bottom by urgency: what needs a person (broken books and late money first, with the
+  amount), then money figures (owe, overdue, due in 7 days), then work in hand. Reassurance ("the books are sound") and
+  the help field sit in a side column from 1100 px. One ink rule per section; figures inside a section sit on hairlines.
+  The page's primary action is in the header.
+- **Forms** (`components/form.ts`, `useBlurErrors`): labels above inputs; a field is checked when it is left, never per
+  keystroke, and all fields on submit, with focus moved to the first problem. Messages say what to do ("Choose the
+  vendor this order goes to."). Submit is not disabled for an incomplete form; it shows `loading` while saving and an
+  inline alert that says nothing was saved if the request fails. Number fields have no stepper buttons.
+- **Responsive:** under 900 px every Mantine table stacks into cards, one record per block, first column as the title,
+  each other value beside its column name (`lib/domPolish.ts` writes `data-label`; rules in `theme.css`). That is the
+  same switch point as `DataTable`. Under 900 px, or on any touch screen, every control is at least 44 px; with a mouse,
+  at least 24 px. No page scrolls sideways at any of the three widths.
+- **Accessibility (WCAG 2.2 AA):** skip link, a named browser tab per page, 2 px ink focus ring on every control
+  including text fields, named icon buttons, labelled landmarks, and a global reduced-motion rule (the busy spinner
+  still turns). Contrast: no text pair under 4.5:1 in light or dark.
+- A calendar day (due date, bill date) is stored as midnight UTC and shown as that day, not the evening before.

@@ -37,9 +37,9 @@ function CountUp({ to }: { to: number }) {
 }
 
 /** A measured figure, not a card: label above, value below, one rule. */
-export function Stat({ label, value, signal, hint }: { label: string; value: ReactNode; signal?: boolean; hint?: ReactNode }) {
+export function Stat({ label, value, signal, hint, tone }: { label: string; value: ReactNode; signal?: boolean; hint?: ReactNode; tone?: "warn" }) {
   return (
-    <div className="stat">
+    <div className="stat" data-tone={tone}>
       <div className="stat-label">{label}</div>
       <div className="stat-value" data-signal={signal ? "true" : undefined}>
         {typeof value === "number" ? <CountUp to={value} /> : value}
@@ -150,7 +150,12 @@ export function Problem({ error, retry }: { error: unknown; retry?: () => void }
 export const toastOk = (message: string) => notifications.show({ message, color: "lime.4", autoClose: 3000 });
 export const toastErr = (error: unknown) => notifications.show({ title: "Not saved", message: error instanceof Error ? error.message : String(error), color: "orange", autoClose: 7000 });
 
+/**
+ * A calendar day (a due date, a bill date) is stored as midnight UTC: it is shown as that day everywhere,
+ * not shifted to the evening before in US time zones. A real moment (created, posted) shows in local time.
+ */
+const isCalendarDay = (iso: string | Date) => (typeof iso === "string" ? /T00:00:00(\.000)?Z$/.test(iso) || /^\d{4}-\d{2}-\d{2}$/.test(iso) : false);
 export const formatDate = (iso: string | Date | null | undefined) =>
-  iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+  iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", ...(isCalendarDay(iso) ? { timeZone: "UTC" } : {}) }) : "—";
 
 export const toInputDate = (iso: string | Date) => new Date(iso).toISOString().slice(0, 10);

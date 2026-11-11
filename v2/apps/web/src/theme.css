@@ -265,8 +265,8 @@ a.ruled-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px;
     radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.22), transparent) 100% 0 / 14px 100% no-repeat scroll;
 }
 
-/* Touch screens: every control is at least 44px. */
-@media (pointer: coarse) {
+/* Touch screens and narrow windows: every control is at least 44px. */
+@media (pointer: coarse), (max-width: 899px) {
   :root { --input-height-sm: 44px; --input-height-md: 44px; --input-height-lg: 48px; }
   .mantine-Button-root:not([data-size^="compact"]) { min-height: 44px; }
   .mantine-Button-root[data-size^="compact"] { min-height: 44px; }
@@ -387,7 +387,7 @@ body:has([role="dialog"]) .fb-tab { display: none; }
 .form-line-remove { align-self: start; }
 /* The remove key lines up with the input, not with its label. */
 .form-line[data-labelled="true"] .form-line-remove { margin-top: 25px; }
-@media (max-width: 767px) {
+@media (max-width: 899px) {
   .form-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px; padding-bottom: var(--space-4); border-bottom: 1px solid var(--line); }
   .form-line > :first-child { grid-column: 1 / -1; }
 }
@@ -395,3 +395,72 @@ body:has([role="dialog"]) .fb-tab { display: none; }
 .mantine-InputWrapper-description { font-size: var(--text-sm); color: var(--text-muted); }
 .mantine-Input-input[data-error] { border-color: var(--warn-fg); color: var(--text-strong); }
 .mantine-InputWrapper-required { color: var(--warn-fg); }
+
+/* ── Home dashboard (2026-11-11): what needs a person first, figures second, reassurance and help aside. ── */
+.section-label { margin: 0 0 var(--space-2); font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.home-grid { display: grid; gap: var(--space-6); align-items: start; }
+.home-main, .home-aside { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
+/* One ink rule per section (the list's); the figures under it sit on hairlines. */
+.home-grid .stat { border-top-color: var(--line); }
+.stat[data-tone="warn"] .stat-value { color: var(--warn-fg); }
+.books-ok { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) 0; border-top: 1px solid var(--ink); color: inherit; text-decoration: none; }
+.books-ok > svg { flex: none; margin-top: 2px; }
+.books-ok b { display: block; font-weight: 600; color: var(--text-strong); }
+.books-ok span > span { display: block; font-size: var(--text-sm); color: var(--text-muted); }
+.books-ok:hover b { text-decoration: underline; text-underline-offset: 3px; }
+/* Phones show figures two across; an odd first figure takes the full row instead of leaving a hole. */
+@media (max-width: 575px) { .mantine-SimpleGrid-root > .stat:first-child:nth-last-child(odd) { grid-column: 1 / -1; } }
+@media (min-width: 1100px) {
+  .home-grid { grid-template-columns: minmax(0, 1.62fr) minmax(280px, 1fr); }
+  .home-aside { padding-left: var(--space-5); border-left: 1px solid var(--line); }
+}
+
+/* ── Tables become cards under 768px: one record per block, each value beside its column name.
+   Cell labels come from lib/domPolish.ts. The switch is at 900px, the same point where DataTable swaps
+   to ruled rows, so a tablet beside the sidebar never scrolls a table sideways. Wide screens are untouched. ── */
+@media (max-width: 899px) {
+  [class*="TableScrollContainer"] .mantine-ScrollArea-viewport { background: none; }
+  [class*="TableScrollContainer"] * { min-width: 0 !important; }
+  .mantine-Table-table, .mantine-Table-tbody, .mantine-Table-tfoot, .mantine-Table-tr { display: block; width: 100%; }
+  .mantine-Table-thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .mantine-Table-tr { padding: var(--space-3) 0; border-bottom: 1px solid var(--line); }
+  .mantine-Table-tbody:first-of-type > .mantine-Table-tr:first-child, .mantine-Table-thead + .mantine-Table-tbody > .mantine-Table-tr:first-child { border-top: 1px solid var(--ink); }
+  .mantine-Table-td { display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); height: auto; min-height: 32px; padding: var(--space-1) var(--space-2) !important; border: 0; text-align: right; }
+  .mantine-Table-td[data-label]::before { content: attr(data-label); flex: none; max-width: 45%; text-align: left; font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+  .mantine-Table-td:not([data-label]) { justify-content: flex-start; text-align: left; font-weight: 600; color: var(--text-strong); }
+  /* The first column names the record: it is the card's title, not a labelled value. */
+  .mantine-Table-td[data-label]:first-child { justify-content: flex-start; text-align: left; padding-left: var(--space-2) !important; font-weight: 600; color: var(--text-strong); }
+  .mantine-Table-td[data-label]:first-child::before { content: none; }
+  .mantine-Table-td:empty { display: none; }
+  .mantine-Table-tr:hover .mantine-Table-td { background: transparent; }
+  .mantine-Table-td .mantine-InputWrapper-root { flex: 1 1 auto; max-width: 60%; }
+}
+
+/* ── Accessibility pass (WCAG 2.2 AA, 2026-11-11). ── */
+/* 2.4.1 Bypass blocks: first Tab stop on every page. */
+.skip-link { position: fixed; left: var(--space-3); top: var(--space-3); z-index: 2000; padding: var(--space-3) var(--space-4); border-radius: 8px; background: var(--ink); color: var(--surface); font-weight: 600; text-decoration: none; transform: translateY(-200%); }
+.skip-link:focus-visible { transform: none; outline: 2px solid var(--signal); outline-offset: 2px; }
+#main:focus { outline: none; }
+/* 2.4.7 / 2.4.11 Focus visible: text fields get the same 2px ink ring as buttons, not only a 1px border tint. */
+.mantine-Input-input:focus-visible, .mantine-Input-input:focus-within, .mantine-PillsInput-input:focus-within { outline: 2px solid var(--ink); outline-offset: 1px; }
+.mantine-Checkbox-input:focus-visible, .mantine-Radio-radio:focus-visible, .mantine-Switch-input:focus-visible + .mantine-Switch-track { outline: 2px solid var(--ink); outline-offset: 2px; }
+.brand-link { display: inline-flex; align-items: center; min-height: 44px; color: inherit; text-decoration: none; border-radius: 8px; }
+/* 2.5.8 Target size: links that stand alone in a table cell or a header are at least 24px tall with a mouse. */
+.mantine-Table-td .mantine-Anchor-root, .page-header .mantine-Anchor-root { display: inline-block; padding-block: 2px; }
+@media (pointer: coarse), (max-width: 899px) {
+  .back-link { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; }
+  .mantine-ActionIcon-root { min-width: 44px; min-height: 44px; }
+  .view-chip button { min-height: 44px; padding: 0; }
+  .mantine-Table-td .mantine-Anchor-root, .page-header .mantine-Anchor-root { display: inline-flex; padding-block: 0; }
+}
+@media (min-width: 641px) and (max-width: 899px), (min-width: 641px) and (pointer: coarse) { .fb-tab { min-width: 44px; } }
+/* 2.3.3 / reduced motion: nothing slides, fades or counts for anyone who asked for stillness; the busy spinner keeps turning. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  .mantine-Loader-root, .mantine-Loader-root::before, .mantine-Loader-root::after { animation-duration: 1s !important; animation-iteration-count: infinite !important; }
+}
+/* Type scale: 13px strays pulled onto 12 / 14. */
+button.fb-tab, .test-company-pill { font-size: var(--text-xs); }
+.mantine-Avatar-placeholder { font-size: var(--text-sm); }
+.row-link { display: inline-block; padding-block: 2px; }
+.printer-screen { font-size: var(--text-sm); }

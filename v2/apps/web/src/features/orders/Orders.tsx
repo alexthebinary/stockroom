@@ -139,7 +139,7 @@ export function NewOrder() {
   const [failed, setFailed] = useState("");
   const form = useBlurErrors();
   // Phones stack each line, so every line carries its own labels; a wide screen labels the first row only.
-  const stacked = useMediaQuery("(max-width: 767px)") ?? false;
+  const stacked = useMediaQuery("(max-width: 899px)") ?? false;
   const total = lines.reduce((s, l) => s + l.qty * Math.round(l.cost * 100), 0);
   const valid = Boolean(vendorId) && lines.every((l) => l.itemId);
   const loadError = vendors.error ?? warehouses.error ?? items.error;

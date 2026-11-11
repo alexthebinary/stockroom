@@ -11,10 +11,12 @@ import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { watchCompanyChanges } from "./lib/api";
 import { watchProblems } from "./lib/diagnostics";
+import { watchDom } from "./lib/domPolish";
 import { ProfileProvider } from "./lib/profile";
 import { cssVariablesResolver, theme } from "./theme";
 
 watchProblems();
+watchDom();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: (count, error) => count < 1 && !/not found|forbidden|unauthori/i.test(error instanceof Error ? error.message : ""), staleTime: 5_000, refetchOnWindowFocus: true } },

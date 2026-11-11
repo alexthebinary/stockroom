@@ -145,7 +145,7 @@ export function DataTable<T>({ rows, rowKey, columns: allColumns, label, to, onO
         <tr>
           {selectable ? (
             <th scope="col" className="sel">
-              <Checkbox aria-label={`Select all ${label.toLowerCase()}`} checked={allOn} indeterminate={selected.length > 0 && !allOn} onChange={() => setPicked(allOn ? new Set() : new Set(rows.map(rowKey)))} />
+              <Checkbox size="md" aria-label={`Select all ${label.toLowerCase()}`} checked={allOn} indeterminate={selected.length > 0 && !allOn} onChange={() => setPicked(allOn ? new Set() : new Set(rows.map(rowKey)))} />
             </th>
           ) : null}
           {columns.map((c) => (
@@ -160,7 +160,7 @@ export function DataTable<T>({ rows, rowKey, columns: allColumns, label, to, onO
           <tr key={rowKey(row)} className={clickable ? "data-row" : undefined} data-selected={picked.has(rowKey(row)) ? "true" : undefined} onMouseEnter={prefetch ? () => prefetch(row) : undefined} onFocus={prefetch ? () => prefetch(row) : undefined} onClick={clickable ? () => open(row) : undefined}>
             {selectable ? (
               <td className="sel" onClick={(e) => e.stopPropagation()}>
-                <Checkbox aria-label={`Select ${rowName(row)}`} checked={picked.has(rowKey(row))} onChange={() => toggle(rowKey(row))} />
+                <Checkbox size="md" aria-label={`Select ${rowName(row)}`} checked={picked.has(rowKey(row))} onChange={() => toggle(rowKey(row))} />
               </td>
             ) : null}
             {columns.map((c) => {
