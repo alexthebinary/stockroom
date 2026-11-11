@@ -4,6 +4,7 @@ import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useBlurErrors } from "../../components/form";
 import { Loading, PageHeader, Problem, StatusBadge, toastErr, toastOk } from "../../components/ui";
 import { DataTable } from "../../components/DataTable";
 import { SavedViews } from "../../components/SavedViews";
@@ -64,7 +65,7 @@ export function Items() {
       </Tabs.List>
       <Tabs.Panel value="inventory" className="tab-fade">
       <Stack gap="xs" mb="md">
-        <TextInput placeholder="Search name, SKU, brand or barcode" value={search} onChange={(e) => setSearch(e.currentTarget.value)} size="md" />
+        <TextInput aria-label="Search stock" placeholder="Search name, SKU, brand or barcode" value={search} onChange={(e) => setSearch(e.currentTarget.value)} size="md" />
         <SavedViews
           storageKey="stock"
           current={Object.fromEntries([["search", search], ["brand", brand ?? ""], ["category", category ?? ""]].filter(([, v]) => v))}
@@ -286,6 +287,8 @@ function NewTransaction({ kind, onPosted }: { kind: TxKind; onPosted: (docNumber
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState("");
+  const form = useBlurErrors();
   const choices = (items.data ?? []).filter((i) => !i.isBundle && i.trackingMode !== "SERIAL");
   const wid = warehouseId ?? (warehouses.data?.length === 1 ? String(warehouses.data[0]!.id) : null);
   const n = wholeOrNull(qty) ?? 0;
@@ -293,10 +296,14 @@ function NewTransaction({ kind, onPosted }: { kind: TxKind; onPosted: (docNumber
   const cost = unitCost === "" ? null : Math.round(Number(unitCost) * 100);
   const unit = kind === "LOSS" ? (avg ?? 0) : (cost ?? avg ?? 0);
   const needsCost = kind === "OPENING";
-  const ready = Boolean(itemId && wid && n > 0 && (!needsCost || cost != null) && (kind === "OPENING" || notes.trim().length >= 3));
+  const dateOk = kind !== "OPENING" || !Number.isNaN(new Date(`${date}T12:00:00`).getTime());
+  const notesOk = kind === "OPENING" || notes.trim().length >= 3;
+  const costOk = !needsCost || (cost != null && !Number.isNaN(cost));
+  const valid = Boolean(itemId && wid && n > 0 && costOk && notesOk && dateOk);
   const post_ = async () => {
-    if (!ready || busy) return;
+    if (busy || !form.submit(valid)) return;
     setBusy(true);
+    setFailed("");
     try {
       const base = { itemId: Number(itemId), warehouseId: Number(wid) };
       const result = kind === "OPENING"
@@ -304,29 +311,76 @@ function NewTransaction({ kind, onPosted }: { kind: TxKind; onPosted: (docNumber
         : await post<{ docNumber: string }>("/adjustments", { ...base, qty: kind === "LOSS" ? -n : n, unitCostCents: kind === "GAIN" && cost != null ? cost : undefined, reason: notes.trim() });
       await onPosted(result.docNumber);
     } catch (error) {
+      setFailed(error instanceof Error ? error.message : String(error));
       toastErr(error);
     } finally {
       setBusy(false);
     }
   };
   return (
+    <form noValidate onSubmit={(e) => { e.preventDefault(); void post_(); }}>
     <Stack>
       <Text size="sm" c="dimmed">{TX_KINDS[kind].entry}. Posting is final; fix a mistake with a reversing adjustment.</Text>
-      <Select label="Item" searchable data={choices.map((i) => ({ value: String(i.id), label: `${i.name} (${i.sku})` }))} value={itemId} onChange={setItemId} />
-      <Select label="Warehouse" data={(warehouses.data ?? []).map((w) => ({ value: String(w.id), label: `${w.name} (${w.code})` }))} value={wid} onChange={setWarehouseId} />
+      <Select
+        label="Item" withAsterisk searchable
+        placeholder={items.isLoading ? "Loading…" : "Choose an item"}
+        disabled={items.isLoading}
+        data={choices.map((i) => ({ value: String(i.id), label: `${i.name} (${i.sku})` }))}
+        value={itemId} onChange={setItemId}
+        onBlur={form.blur("item")}
+        error={form.show("item", itemId ? null : "Choose the item.")}
+      />
+      <Select
+        label="Warehouse" withAsterisk
+        placeholder={warehouses.isLoading ? "Loading…" : "Choose a warehouse"}
+        disabled={warehouses.isLoading}
+        data={(warehouses.data ?? []).map((w) => ({ value: String(w.id), label: `${w.name} (${w.code})` }))}
+        value={wid} onChange={setWarehouseId}
+        onBlur={form.blur("warehouse")}
+        error={form.show("warehouse", wid ? null : "Choose the warehouse.")}
+      />
       <Group grow align="flex-start">
-        <NumberInput label="Quantity" value={qty} onChange={setQty} min={1} allowDecimal={false} allowNegative={false} />
+        <NumberInput
+          label="Quantity" withAsterisk value={qty} onChange={setQty} min={1} allowDecimal={false} allowNegative={false}
+          hideControls inputMode="numeric"
+          onBlur={form.blur("qty")}
+          error={form.show("qty", n > 0 ? null : "Enter a quantity of at least 1.")}
+        />
         {kind === "LOSS" ? (
-          <NumberInput label="Unit cost" value={avg != null ? avg / 100 : ""} readOnly prefix="$" decimalScale={2} description="Leaves at average cost" />
+          <NumberInput label="Unit cost" value={avg != null ? avg / 100 : ""} readOnly prefix="$" decimalScale={2} hideControls inputMode="decimal" description="Leaves at average cost" />
         ) : (
-          <NumberInput label="Unit cost" value={unitCost} onChange={setUnitCost} min={0} prefix="$" decimalScale={2} allowNegative={false} description={needsCost ? undefined : "Blank = average cost"} />
+          <NumberInput
+            label="Unit cost" withAsterisk={needsCost} value={unitCost} onChange={setUnitCost} min={0} prefix="$" decimalScale={2} allowNegative={false}
+            hideControls inputMode="decimal"
+            description={needsCost ? undefined : "Blank = average cost"}
+            onBlur={form.blur("cost")}
+            error={form.show("cost", !needsCost || costOk ? null : "Enter the unit cost.")}
+          />
         )}
       </Group>
       <Text size="sm">Amount: <b>${((unit * n) / 100).toFixed(2)}</b></Text>
-      {kind === "OPENING" ? <TextInput label="Transaction date" type="date" value={date} onChange={(e) => setDate(e.currentTarget.value)} /> : null}
-      <TextInput label={kind === "OPENING" ? "Notes" : "Notes (why)"} value={notes} onChange={(e) => setNotes(e.currentTarget.value)} maxLength={300} />
-      <Button onClick={post_} loading={busy} disabled={!ready}>Post</Button>
+      {kind === "OPENING" ? (
+        <TextInput
+          label="Transaction date" withAsterisk type="date" value={date} onChange={(e) => setDate(e.currentTarget.value)}
+          onBlur={form.blur("date")}
+          error={form.show("date", dateOk ? null : "Enter the transaction date.")}
+        />
+      ) : null}
+      <TextInput
+        label={kind === "OPENING" ? "Notes" : "Notes (why)"}
+        withAsterisk={kind !== "OPENING"}
+        value={notes} onChange={(e) => setNotes(e.currentTarget.value)} maxLength={300}
+        onBlur={form.blur("notes")}
+        error={form.show("notes", notesOk ? null : "Type why this adjustment happened, at least 3 characters.")}
+      />
+      {failed ? (
+        <Alert role="alert" color="orange" title="This was not posted" styles={{ root: { background: "var(--warn-bg)", border: "1px solid transparent" }, title: { color: "var(--warn-fg)" } }}>
+          {failed} Nothing was saved; fix it and press Post again.
+        </Alert>
+      ) : null}
+      <Button type="submit" loading={busy}>Post</Button>
     </Stack>
+    </form>
   );
 }
 
@@ -340,6 +394,8 @@ function BundleForm({ bundle, seed, onSaved }: { bundle: Item | null; seed?: Row
   const [price, setPrice] = useState<number | string>(bundle?.priceCents != null ? bundle.priceCents / 100 : "");
   const [rows, setRows] = useState<Row[]>(bundle?.components?.length ? bundle.components.map((c) => ({ itemId: String(c.id), qty: c.qty })) : seed?.length ? seed : [{ itemId: "", qty: 1 }]);
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState("");
+  const errors = useBlurErrors();
   const valuation = useQuery({ queryKey: ["valuation"], queryFn: () => get<Valuation>("/reports/valuation") });
   const choices = (all.data ?? []).filter((i) => !i.isBundle && i.trackingMode !== "SERIAL");
   const byId = (id: string) => choices.find((i) => String(i.id) === id);
@@ -348,8 +404,11 @@ function BundleForm({ bundle, seed, onSaved }: { bundle: Item | null; seed?: Row
   const canMake = filled.length ? Math.min(...filled.map((r) => Math.floor(onHand(r.itemId) / Number(r.qty)))) : 0;
   const hint = filled.reduce((s, r) => s + (byId(r.itemId)?.lastCostCents ?? 0) * Number(r.qty), 0);
   const setRow = (index: number, change: Partial<Row>) => setRows(rows.map((r, i) => (i === index ? { ...r, ...change } : r)));
+  const valid = Boolean(name.trim()) && (bundle != null || Boolean(sku.trim())) && filled.length > 0;
   const save = async () => {
+    if (busy || !errors.submit(valid)) return;
     setBusy(true);
+    setFailed("");
     try {
       const components = filled.map((r) => ({ itemId: Number(r.itemId), qty: Number(r.qty) }));
       const priceCents = price === "" ? null : Math.round(Number(price) * 100);
@@ -357,43 +416,69 @@ function BundleForm({ bundle, seed, onSaved }: { bundle: Item | null; seed?: Row
       else await post("/bundles", { sku: sku.trim(), name, priceCents, components });
       await onSaved();
     } catch (error) {
+      setFailed(error instanceof Error ? error.message : String(error));
       toastErr(error);
     } finally {
       setBusy(false);
     }
   };
   return (
+    <form noValidate onSubmit={(e) => { e.preventDefault(); void save(); }}>
     <Stack>
-      {!bundle ? <TextInput label="SKU" value={sku} onChange={(e) => setSku(e.currentTarget.value)} maxLength={64} required /> : null}
-      <TextInput label="Name" value={name} onChange={(e) => setName(e.currentTarget.value)} required />
-      <NumberInput label="Price ($, optional)" value={price} onChange={setPrice} min={0} decimalScale={2} allowNegative={false} description={hint > 0 ? `Components last cost add up to $${(hint / 100).toFixed(2)} (a hint only)` : undefined} />
-      <Input.Wrapper label="Recipe">
+      {!bundle ? (
+        <TextInput
+          label="SKU" withAsterisk value={sku} onChange={(e) => setSku(e.currentTarget.value)} maxLength={64}
+          onBlur={errors.blur("sku")}
+          error={errors.show("sku", sku.trim() ? null : "Type a SKU for this bundle.")}
+        />
+      ) : null}
+      <TextInput
+        label="Name" withAsterisk value={name} onChange={(e) => setName(e.currentTarget.value)}
+        onBlur={errors.blur("name")}
+        error={errors.show("name", name.trim() ? null : "Type the bundle's name.")}
+      />
+      <NumberInput label="Price ($, optional)" value={price} onChange={setPrice} min={0} decimalScale={2} allowNegative={false} hideControls inputMode="decimal" description={hint > 0 ? `Components last cost add up to $${(hint / 100).toFixed(2)} (a hint only)` : undefined} />
+      <Input.Wrapper label="Recipe" withAsterisk>
         <Stack gap="xs">
           {rows.map((row, index) => (
             <Group key={index} gap="xs" wrap="nowrap" align="flex-end">
               <Select
                 aria-label={`Component ${index + 1}`}
-                placeholder="Search an item"
+                placeholder={all.isLoading ? "Loading…" : "Search an item"}
+                disabled={all.isLoading}
                 searchable
                 style={{ flex: 1 }}
                 data={choices.map((i) => ({ value: String(i.id), label: `${i.name} · ${i.sku}`, disabled: rows.some((r, j) => j !== index && r.itemId === String(i.id)) }))}
                 value={row.itemId || null}
                 onChange={(value) => setRow(index, { itemId: value ?? "" })}
+                onBlur={errors.blur(`item-${index}`)}
+                error={errors.show(`item-${index}`, filled.length > 0 || row.itemId ? null : rows.length > 1 ? "Choose an item, or remove this line." : "Choose an item for this bundle.")}
               />
-              <NumberInput aria-label={`Quantity ${index + 1}`} w={80} min={1} allowDecimal={false} allowNegative={false} value={row.qty} onChange={(qty) => setRow(index, { qty })} />
-              <ActionIcon variant="subtle" color="gray" aria-label={`Remove component ${index + 1}`} disabled={rows.length === 1} onClick={() => setRows(rows.filter((_, i) => i !== index))}>
-                <IconTrash size={18} />
+              <NumberInput
+                aria-label={`Quantity ${index + 1}`} w={80} min={1} allowDecimal={false} allowNegative={false} hideControls inputMode="numeric"
+                value={row.qty} onChange={(qty) => setRow(index, { qty })}
+                onBlur={errors.blur(`qty-${index}`)}
+                error={errors.show(`qty-${index}`, filled.length > 0 || !row.itemId || Number(row.qty) > 0 ? null : "Enter a quantity of at least 1.")}
+              />
+              <ActionIcon variant="subtle" color="gray" aria-label={rows.length === 1 ? "Remove component (a bundle needs at least one)" : `Remove component ${index + 1}`} disabled={rows.length === 1} onClick={() => setRows(rows.filter((_, i) => i !== index))}>
+                <IconTrash size={18} aria-hidden="true" />
               </ActionIcon>
             </Group>
           ))}
           <Group>
-            <Button size="xs" variant="subtle" onClick={() => setRows([...rows, { itemId: "", qty: 1 }])}>+ Add component</Button>
+            <Button size="xs" variant="subtle" type="button" onClick={() => setRows([...rows, { itemId: "", qty: 1 }])}>+ Add component</Button>
           </Group>
         </Stack>
       </Input.Wrapper>
       <Text size="sm" fw={600}>Can make {canMake}</Text>
-      <Button onClick={save} loading={busy} disabled={!name.trim() || (!bundle && !sku.trim()) || filled.length === 0}>Save</Button>
+      {failed ? (
+        <Alert role="alert" color="orange" title="The bundle was not saved" styles={{ root: { background: "var(--warn-bg)", border: "1px solid transparent" }, title: { color: "var(--warn-fg)" } }}>
+          {failed} Nothing was saved; fix it and press Save again.
+        </Alert>
+      ) : null}
+      <Button type="submit" loading={busy}>Save</Button>
     </Stack>
+    </form>
   );
 }
 
@@ -403,27 +488,58 @@ function ShipBundle({ bundle, onShipped }: { bundle: Item; onShipped: (docNumber
   const [qty, setQty] = useState<number | string>(1);
   const [reference, setReference] = useState("");
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState("");
+  const form = useBlurErrors();
   const wid = warehouseId ?? (warehouses.data?.length === 1 ? String(warehouses.data[0]!.id) : null);
   const available = wid ? (bundle.availableByWarehouse?.[wid] ?? 0) : null;
+  const qtyOk = Number(qty) >= 1;
+  const referenceOk = reference.trim().length >= 3;
+  const valid = Boolean(wid) && qtyOk && referenceOk;
   const ship = async () => {
-    if (!wid || busy) return;
+    if (busy || !form.submit(valid)) return;
     setBusy(true);
+    setFailed("");
     try {
       const result = await post<{ docNumber: string }>(`/bundles/${bundle.id}/ship`, { warehouseId: Number(wid), qty: Number(qty), reference: reference.trim() });
       await onShipped(result.docNumber);
     } catch (error) {
+      setFailed(error instanceof Error ? error.message : String(error));
       toastErr(error);
     } finally {
       setBusy(false);
     }
   };
   return (
+    <form noValidate onSubmit={(e) => { e.preventDefault(); void ship(); }}>
     <Stack>
-      <Select label="Warehouse" data={(warehouses.data ?? []).map((w) => ({ value: String(w.id), label: `${w.name} (${w.code})` }))} value={wid} onChange={setWarehouseId} />
-      <NumberInput label="How many" value={qty} onChange={setQty} min={1} allowDecimal={false} allowNegative={false} description={available != null ? `Can make ${available} here` : undefined} />
-      <TextInput label="Reference" placeholder="e.g. order number" value={reference} onChange={(e) => setReference(e.currentTarget.value)} maxLength={300} />
-      <Button onClick={ship} loading={busy} disabled={!wid || Number(qty) < 1 || reference.trim().length < 3}>Ship</Button>
+      <Select
+        label="Warehouse" withAsterisk
+        placeholder={warehouses.isLoading ? "Loading…" : "Choose a warehouse"}
+        disabled={warehouses.isLoading}
+        data={(warehouses.data ?? []).map((w) => ({ value: String(w.id), label: `${w.name} (${w.code})` }))}
+        value={wid} onChange={setWarehouseId}
+        onBlur={form.blur("warehouse")}
+        error={form.show("warehouse", wid ? null : "Choose the warehouse to ship from.")}
+      />
+      <NumberInput
+        label="How many" withAsterisk value={qty} onChange={setQty} min={1} allowDecimal={false} allowNegative={false} hideControls inputMode="numeric"
+        description={available != null ? `Can make ${available} here` : undefined}
+        onBlur={form.blur("qty")}
+        error={form.show("qty", qtyOk ? null : "Enter how many to ship, at least 1.")}
+      />
+      <TextInput
+        label="Reference" withAsterisk placeholder="e.g. order number" value={reference} onChange={(e) => setReference(e.currentTarget.value)} maxLength={300}
+        onBlur={form.blur("reference")}
+        error={form.show("reference", referenceOk ? null : "Type a reference of at least 3 characters.")}
+      />
+      {failed ? (
+        <Alert role="alert" color="orange" title="The shipment was not recorded" styles={{ root: { background: "var(--warn-bg)", border: "1px solid transparent" }, title: { color: "var(--warn-fg)" } }}>
+          {failed} Nothing was saved; fix it and press Ship again.
+        </Alert>
+      ) : null}
+      <Button type="submit" loading={busy}>Ship</Button>
     </Stack>
+    </form>
   );
 }
 
@@ -451,8 +567,13 @@ export function EditItem({ item, facets, onSaved }: { item: Item | null; facets:
     reorderQty: (item?.reorderQty ?? "") as number | string,
   });
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState("");
+  const errors = useBlurErrors();
+  const valid = Boolean(form.name.trim()) && (item != null || Boolean(form.sku.trim()));
   const save = async () => {
+    if (busy || !errors.submit(valid)) return;
     setBusy(true);
+    setFailed("");
     try {
       const body = {
         name: form.name,
@@ -472,36 +593,62 @@ export function EditItem({ item, facets, onSaved }: { item: Item | null; facets:
       else await post("/items", { ...body, sku: form.sku.trim() });
       await onSaved();
     } catch (error) {
+      setFailed(error instanceof Error ? error.message : String(error));
       toastErr(error);
     } finally {
       setBusy(false);
     }
   };
   return (
+    <form noValidate onSubmit={(e) => { e.preventDefault(); void save(); }}>
     <Stack>
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-      {!item ? <TextInput label="SKU" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.currentTarget.value })} maxLength={64} required /> : null}
-      <TextInput label="Name" style={{ gridColumn: "1 / -1" }} value={form.name} onChange={(e) => setForm({ ...form, name: e.currentTarget.value })} required />
+      {!item ? (
+        <TextInput
+          label="SKU" withAsterisk value={form.sku} onChange={(e) => setForm({ ...form, sku: e.currentTarget.value })} maxLength={64}
+          onBlur={errors.blur("sku")}
+          error={errors.show("sku", form.sku.trim() ? null : "Type a SKU for this item.")}
+        />
+      ) : null}
+      <TextInput
+        label="Name" withAsterisk style={{ gridColumn: "1 / -1" }} value={form.name} onChange={(e) => setForm({ ...form, name: e.currentTarget.value })}
+        onBlur={errors.blur("name")}
+        error={errors.show("name", form.name.trim() ? null : "Type the item's name.")}
+      />
       <TextInput type="text" label="Serial number" value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.currentTarget.value })} maxLength={60} />
       <TextInput type="text" label="Model number" value={form.modelNumber} onChange={(e) => setForm({ ...form, modelNumber: e.currentTarget.value })} maxLength={60} />
-      <NumberInput label="Weight (lb)" value={form.weightLb} onChange={(weightLb) => setForm({ ...form, weightLb })} min={0} allowNegative={false} step={0.1} />
+      <NumberInput label="Weight (lb)" value={form.weightLb} onChange={(weightLb) => setForm({ ...form, weightLb })} min={0} allowNegative={false} step={0.1} hideControls inputMode="decimal" />
       <Input.Wrapper label="Length × Width × Height (in)" style={{ gridColumn: "1 / -1" }}>
         <Group grow gap="xs" wrap="nowrap">
-          <NumberInput aria-label="Length (in)" placeholder="Length" value={form.lengthIn} onChange={(lengthIn) => setForm({ ...form, lengthIn })} min={0} allowNegative={false} />
-          <NumberInput aria-label="Width (in)" placeholder="Width" value={form.widthIn} onChange={(widthIn) => setForm({ ...form, widthIn })} min={0} allowNegative={false} />
-          <NumberInput aria-label="Height (in)" placeholder="Height" value={form.heightIn} onChange={(heightIn) => setForm({ ...form, heightIn })} min={0} allowNegative={false} />
+          <NumberInput aria-label="Length (in)" placeholder="Length" value={form.lengthIn} onChange={(lengthIn) => setForm({ ...form, lengthIn })} min={0} allowNegative={false} hideControls inputMode="decimal" />
+          <NumberInput aria-label="Width (in)" placeholder="Width" value={form.widthIn} onChange={(widthIn) => setForm({ ...form, widthIn })} min={0} allowNegative={false} hideControls inputMode="decimal" />
+          <NumberInput aria-label="Height (in)" placeholder="Height" value={form.heightIn} onChange={(heightIn) => setForm({ ...form, heightIn })} min={0} allowNegative={false} hideControls inputMode="decimal" />
         </Group>
       </Input.Wrapper>
       <Autocomplete label="Brand" placeholder="e.g. XAG" data={facets?.brands ?? []} value={form.brand} onChange={(brand) => setForm({ ...form, brand })} maxLength={60} />
       <Autocomplete label="Category" placeholder="e.g. Chargers" data={facets?.categories ?? []} value={form.category} onChange={(category) => setForm({ ...form, category })} maxLength={60} />
-      <Select label="Default vendor" placeholder="None" clearable searchable data={(vendors.data ?? []).map((vendor) => ({ value: String(vendor.id), label: vendor.name }))} value={form.defaultVendorId} onChange={(defaultVendorId) => setForm({ ...form, defaultVendorId })} />
-      <NumberInput label="Reorder minimum" value={form.reorderPoint} onChange={(reorderPoint) => setForm({ ...form, reorderPoint })} min={0} allowDecimal={false} allowNegative={false} />
-      <NumberInput label="Reorder quantity" value={form.reorderQty} onChange={(reorderQty) => setForm({ ...form, reorderQty })} min={0} allowDecimal={false} allowNegative={false} />
+      <Select
+        label="Default vendor"
+        placeholder={vendors.isLoading ? "Loading…" : "None"}
+        disabled={vendors.isLoading}
+        clearable searchable
+        data={(vendors.data ?? []).map((vendor) => ({ value: String(vendor.id), label: vendor.name }))}
+        value={form.defaultVendorId}
+        onChange={(defaultVendorId) => setForm({ ...form, defaultVendorId })}
+      />
+      <NumberInput label="Reorder minimum" value={form.reorderPoint} onChange={(reorderPoint) => setForm({ ...form, reorderPoint })} min={0} allowDecimal={false} allowNegative={false} hideControls inputMode="numeric" />
+      <NumberInput label="Reorder quantity" value={form.reorderQty} onChange={(reorderQty) => setForm({ ...form, reorderQty })} min={0} allowDecimal={false} allowNegative={false} hideControls inputMode="numeric" />
       </SimpleGrid>
-      <Button className="modal-save" onClick={save} loading={busy} disabled={!form.name.trim() || (!item && !form.sku.trim())}>
+      {failed ? (
+        <Alert role="alert" color="orange" title="The item was not saved" styles={{ root: { background: "var(--warn-bg)", border: "1px solid transparent" }, title: { color: "var(--warn-fg)" } }}>
+          {failed} Nothing was saved; fix it and press Save again.
+        </Alert>
+      ) : null}
+      <Button className="modal-save" type="submit" loading={busy}>
         Save
       </Button>
     </Stack>
+    </form>
   );
 }
 
