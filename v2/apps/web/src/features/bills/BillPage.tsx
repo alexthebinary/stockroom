@@ -27,6 +27,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { Coach } from "../../components/Coach";
 import { HoldToConfirmButton } from "../../components/kitchen/HoldToConfirmButton";
 import { plural, formatDate, Loading, Money, PageHeader, Problem, Stat, StatusBadge, toInputDate, toastErr, toastOk, usd } from "../../components/ui";
+import { useBlurErrors } from "../../components/form";
 import { del, get, patch, post } from "../../lib/api";
 import type { Bill, PurchaseOrder, Vendor } from "../../lib/types";
 import { MatchPanel, type OrderMatch } from "./MatchPanel";
@@ -416,37 +417,71 @@ export function NewFreightBill() {
   const [amount, setAmount] = useState("");
   // Opened from a bill, the order is already known; from the Bills desk, pick it here.
   const [targets, setTargets] = useState<string[]>(params.get("po") ? [params.get("po")!] : []);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState("");
+  const form = useBlurErrors();
   const inbound = kind === "FREIGHT_IN";
+  const amountCents = cents(amount);
+  const valid = Boolean(vendorId) && amountCents > 0 && (!inbound || targets.length > 0);
   const create = async () => {
+    if (busy || !form.submit(valid)) return;
+    setBusy(true);
+    setFailed("");
     try {
       const bill = await post<Bill>("/freight-bills", { kind, vendorId: Number(vendorId), amountCents: cents(amount), targetPoIds: inbound ? targets.map(Number) : [] });
       navigate(`/bills/${bill.id}`);
     } catch (error) {
+      setFailed(error instanceof Error ? error.message : String(error));
       toastErr(error);
+    } finally {
+      setBusy(false);
     }
   };
   return (
+    <form noValidate onSubmit={(e) => { e.preventDefault(); void create(); }}>
     <Stack maw={520}>
       <PageHeader title="Freight bill" subtitle="A carrier's invoice for shipping." />
       <SegmentedControl value={kind} onChange={setKind} data={[{ value: "FREIGHT_IN", label: "Bringing stock in" }, { value: "FREIGHT_OUT", label: "Shipping to customers" }]} />
-      <Select label="Carrier" data={(carriers.data ?? []).map((v) => ({ value: String(v.id), label: v.name }))} value={vendorId} onChange={setVendorId} description="Carriers are vendors of the carrier kind (Settings → Vendors)." />
-      <TextInput label="Amount $" value={amount} onChange={(e) => setAmount(e.currentTarget.value)} inputMode="decimal" />
+      <Select
+        label="Carrier" withAsterisk
+        placeholder={carriers.isLoading ? "Loading…" : "Choose a carrier"}
+        disabled={carriers.isLoading}
+        data={(carriers.data ?? []).map((v) => ({ value: String(v.id), label: v.name }))}
+        value={vendorId} onChange={setVendorId} searchable
+        description="Carriers are vendors of the carrier kind (Settings → Vendors)."
+        onBlur={form.blur("carrier")}
+        error={form.show("carrier", vendorId ? null : "Choose the carrier that sent this invoice.")}
+      />
+      <TextInput
+        label="Amount $" withAsterisk value={amount} onChange={(e) => setAmount(e.currentTarget.value)} inputMode="decimal"
+        onBlur={form.blur("amount")}
+        error={form.show("amount", amountCents > 0 ? null : "Enter an amount above $0.00.")}
+      />
       {inbound ? (
         <MultiSelect
-          label="Orders this freight brought in"
+          label="Orders this freight brought in" withAsterisk
           description="Its cost is spread over these orders' items as landed cost."
-          placeholder={targets.length ? undefined : "Pick one or more purchase orders"}
+          placeholder={orders.isLoading ? "Loading…" : targets.length ? undefined : "Pick one or more purchase orders"}
+          disabled={orders.isLoading}
           data={(orders.data ?? []).filter((o) => o.lifecycle !== "CANCELED").map((o) => ({ value: String(o.id), label: `${o.number} · ${o.vendor?.name ?? "vendor not set"}` }))}
           value={targets}
           onChange={setTargets}
           searchable
           nothingFoundMessage="No purchase orders yet: receive a delivery first."
+          onBlur={form.blur("orders")}
+          error={form.show("orders", targets.length > 0 ? null : "Choose the orders this freight brought in.")}
         />
       ) : null}
-      <Button onClick={create} disabled={!vendorId || cents(amount) <= 0 || (inbound && targets.length === 0)}>
+      {failed ? (
+        <Alert role="alert" color="orange" title="The freight bill was not created" styles={{ root: { background: "var(--warn-bg)", border: "1px solid transparent" }, title: { color: "var(--warn-fg)" } }}>
+          {failed} Nothing was saved; fix it and press Continue again.
+        </Alert>
+      ) : null}
+      <Button type="submit" loading={busy}>
         Continue
       </Button>
     </Stack>
+    </form>
   );
 }
 
@@ -465,8 +500,10 @@ function PostedBill({ bill }: { bill: FullBill }) {
       toastOk(message);
       setModal(null);
       refresh();
+      return null;
     } catch (error) {
       toastErr(error);
+      return error;
     }
   };
   return (
@@ -674,78 +711,156 @@ function PostedBill({ bill }: { bill: FullBill }) {
   );
 }
 
-function PayModal({ opened, refund, max, onClose, onSave }: { opened: boolean; refund: boolean; max: number; onClose: () => void; onSave: (body: unknown) => Promise<void> }) {
+function PayModal({ opened, refund, max, onClose, onSave }: { opened: boolean; refund: boolean; max: number; onClose: () => void; onSave: (body: unknown) => Promise<unknown> }) {
   const [amount, setAmount] = useState(dollars(max));
   const [method, setMethod] = useState<string | null>("ACH");
   const [paidAt, setPaidAt] = useState(toInputDate(new Date()));
   const [actionId, setActionId] = useState(() => crypto.randomUUID());
   const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState("");
+  const errors = useBlurErrors();
   const submitting = useRef(false);
-  useEffect(() => { if (opened) setActionId(crypto.randomUUID()); }, [opened]);
+  const amountCents = cents(amount);
+  const amountOk = amountCents > 0 && amountCents <= max;
+  const valid = amountOk && Boolean(method) && Boolean(paidAt);
+  useEffect(() => {
+    if (!opened) return;
+    setActionId(crypto.randomUUID());
+    setFailed("");
+    errors.reset();
+  }, [opened]);
   useEffect(() => setAmount(dollars(max)), [max, opened]);
   const save = async () => {
-    if (submitting.current) return;
+    if (submitting.current || !errors.submit(valid)) return;
     submitting.current = true;
     setPending(true);
-    try { await onSave({ actionId, amountCents: cents(amount), method, paidAt }); }
-    finally { submitting.current = false; setPending(false); }
+    setFailed("");
+    try {
+      const error = await onSave({ actionId, amountCents: cents(amount), method, paidAt });
+      if (error) setFailed(error instanceof Error ? error.message : String(error));
+    } finally {
+      submitting.current = false;
+      setPending(false);
+    }
   };
+  const amountError = refund
+    ? `Enter an amount above $0.00, up to the ${usd(max)} the vendor owes.`
+    : `Enter an amount above $0.00, up to the ${usd(max)} still owed.`;
   return (
     <Modal opened={opened} onClose={() => { if (!submitting.current) onClose(); }} title={refund ? "Vendor refund received" : "Pay this bill"}>
+      <form noValidate onSubmit={(e) => { e.preventDefault(); void save(); }}>
       <Stack>
-        <TextInput label="Amount $" disabled={pending} value={amount} onChange={(e) => setAmount(e.currentTarget.value)} inputMode="decimal" description={`Up to ${usd(max)}`} />
-        <Select label="Method" disabled={pending} data={["ACH", "WIRE", "CHECK", "CARD", "BANK", "CASH"]} value={method} onChange={setMethod} />
-        <TextInput type="date" label="Date" disabled={pending} value={paidAt} onChange={(e) => setPaidAt(e.currentTarget.value)} />
-        <Button onClick={save} loading={pending} disabled={pending || cents(amount) <= 0}>
+        <TextInput
+          label="Amount $" withAsterisk disabled={pending} value={amount} onChange={(e) => setAmount(e.currentTarget.value)} inputMode="decimal"
+          description={`Up to ${usd(max)}`}
+          onBlur={errors.blur("amount")}
+          error={errors.show("amount", amountOk ? null : amountError)}
+        />
+        <Select
+          label="Method" withAsterisk disabled={pending} allowDeselect={false}
+          data={["ACH", "WIRE", "CHECK", "CARD", "BANK", "CASH"]} value={method} onChange={setMethod}
+          onBlur={errors.blur("method")}
+          error={errors.show("method", method ? null : refund ? "Choose how the refund arrived." : "Choose how this was paid.")}
+        />
+        <TextInput
+          type="date" label="Date" withAsterisk disabled={pending} value={paidAt} onChange={(e) => setPaidAt(e.currentTarget.value)}
+          onBlur={errors.blur("date")}
+          error={errors.show("date", paidAt ? null : refund ? "Enter the date this refund arrived." : "Enter the date this was paid.")}
+        />
+        {failed ? (
+          <Alert role="alert" color="orange" title={refund ? "The refund was not recorded" : "The payment was not recorded"} styles={{ root: { background: "var(--warn-bg)", border: "1px solid transparent" }, title: { color: "var(--warn-fg)" } }}>
+            {failed} Nothing was saved; fix it and press {refund ? "Record refund" : "Record payment"} again.
+          </Alert>
+        ) : null}
+        <Button type="submit" loading={pending}>
           {refund ? "Record refund" : "Record payment"}
         </Button>
       </Stack>
+      </form>
     </Modal>
   );
 }
 
-function CreditModal({ opened, bill, onClose, onSave }: { opened: boolean; bill: FullBill; onClose: () => void; onSave: (body: unknown) => void }) {
+function CreditModal({ opened, bill, onClose, onSave }: { opened: boolean; bill: FullBill; onClose: () => void; onSave: (body: unknown) => Promise<unknown> }) {
   const [kind, setKind] = useState("RETURN");
   const [lineId, setLineId] = useState<string | null>(bill.lines[0] ? String(bill.lines[0].id) : null);
   const [qty, setQty] = useState(1);
   const [amount, setAmount] = useState("");
   const [received, setReceived] = useState(true);
   const [serials, setSerials] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState("");
+  const errors = useBlurErrors();
+  const submitting = useRef(false);
   const line = bill.lines.find((l) => String(l.id) === lineId);
   const suggested = line && line.qty ? Math.round((line.landedCents * qty) / line.qty) : 0;
+  const amountOk = kind !== "PRICE_ALLOWANCE" || cents(amount) > 0;
+  const valid = Boolean(lineId) && amountOk;
+  useEffect(() => {
+    if (!opened) return;
+    setFailed("");
+    errors.reset();
+  }, [opened]);
+  const save = async () => {
+    if (submitting.current || !errors.submit(valid)) return;
+    submitting.current = true;
+    setBusy(true);
+    setFailed("");
+    try {
+      const error = await onSave({
+        kind,
+        lines: [
+          {
+            billLineId: Number(lineId),
+            qty: kind === "RETURN" ? qty : 0,
+            amountCents: amount ? cents(amount) : kind === "RETURN" ? undefined : 0,
+            received,
+            serials: serials ? serials.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
+          },
+        ],
+      });
+      if (error) setFailed(error instanceof Error ? error.message : String(error));
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  };
   return (
-    <Modal opened={opened} onClose={onClose} title="Vendor credit">
+    <Modal opened={opened} onClose={() => { if (!submitting.current) onClose(); }} title="Vendor credit">
+      <form noValidate onSubmit={(e) => { e.preventDefault(); void save(); }}>
       <Stack>
         <SegmentedControl value={kind} onChange={setKind} data={[{ value: "RETURN", label: "Return units" }, { value: "PRICE_ALLOWANCE", label: "Price discount" }]} />
-        <Select label="Line" data={bill.lines.map((l) => ({ value: String(l.id), label: `${l.item?.name} · ${l.qty} @ ${usd(l.unitCostCents)}` }))} value={lineId} onChange={setLineId} />
+        <Select
+          label="Line" withAsterisk disabled={busy}
+          data={bill.lines.map((l) => ({ value: String(l.id), label: `${l.item?.name} · ${l.qty} @ ${usd(l.unitCostCents)}` }))}
+          value={lineId} onChange={setLineId}
+          onBlur={errors.blur("line")}
+          error={errors.show("line", lineId ? null : "Choose the line this credit applies to.")}
+        />
         {kind === "RETURN" ? (
           <>
-            <NumberInput label="Units" value={qty} onChange={(v) => setQty(Number(v) || 1)} min={1} />
-            <Switch checked={received} onChange={(e) => setReceived(e.currentTarget.checked)} label={received ? "Units we have, going back to the vendor" : "Billed units that never arrived"} />
-            {received && line?.item?.trackingMode === "SERIAL" ? <TextInput label="Serials going back" description="Comma-separated" value={serials} onChange={(e) => setSerials(e.currentTarget.value)} /> : null}
+            <NumberInput label="Units" withAsterisk disabled={busy} value={qty} onChange={(v) => setQty(Number(v) || 1)} min={1} hideControls inputMode="numeric" />
+            <Switch checked={received} disabled={busy} onChange={(e) => setReceived(e.currentTarget.checked)} label={received ? "Units we have, going back to the vendor" : "Billed units that never arrived"} />
+            {received && line?.item?.trackingMode === "SERIAL" ? <TextInput label="Serials going back" description="Comma-separated" disabled={busy} value={serials} onChange={(e) => setSerials(e.currentTarget.value)} /> : null}
           </>
         ) : null}
-        <TextInput label="Credit amount $" value={amount} placeholder={kind === "RETURN" ? dollars(suggested) : ""} onChange={(e) => setAmount(e.currentTarget.value)} description={kind === "RETURN" ? "Blank = what those units cost on this bill" : "How much the vendor took off"} />
-        <Button
-          onClick={() =>
-            onSave({
-              kind,
-              lines: [
-                {
-                  billLineId: Number(lineId),
-                  qty: kind === "RETURN" ? qty : 0,
-                  amountCents: amount ? cents(amount) : kind === "RETURN" ? undefined : 0,
-                  received,
-                  serials: serials ? serials.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
-                },
-              ],
-            })
-          }
-          disabled={!lineId || (kind === "PRICE_ALLOWANCE" && cents(amount) <= 0)}
-        >
+        <TextInput
+          label="Credit amount $" withAsterisk={kind === "PRICE_ALLOWANCE"} disabled={busy}
+          value={amount} placeholder={kind === "RETURN" ? dollars(suggested) : ""} onChange={(e) => setAmount(e.currentTarget.value)} inputMode="decimal"
+          description={kind === "RETURN" ? "Blank = what those units cost on this bill" : "How much the vendor took off"}
+          onBlur={errors.blur("amount")}
+          error={errors.show("amount", amountOk ? null : "Enter the discount, above $0.00.")}
+        />
+        {failed ? (
+          <Alert role="alert" color="orange" title="The credit was not posted" styles={{ root: { background: "var(--warn-bg)", border: "1px solid transparent" }, title: { color: "var(--warn-fg)" } }}>
+            {failed} Nothing was saved; fix it and press Post credit again.
+          </Alert>
+        ) : null}
+        <Button type="submit" loading={busy}>
           Post credit
         </Button>
       </Stack>
+      </form>
     </Modal>
   );
 }

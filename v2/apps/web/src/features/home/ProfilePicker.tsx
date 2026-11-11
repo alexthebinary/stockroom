@@ -1,7 +1,8 @@
-import { Button, TextInput } from "@mantine/core";
+import { Alert, Button, TextInput } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { IconBuildingWarehouse, IconCalculator, IconChevronLeft, IconPlus, IconSettings } from "@tabler/icons-react";
 import { type FormEvent, useState } from "react";
+import { useBlurErrors } from "../../components/form";
 import { Avatar, Chips } from "../../components/onboarding/Onboarding";
 import { toastErr } from "../../components/ui";
 import { get, type Job, post, type Profile } from "../../lib/api";
@@ -29,15 +30,20 @@ export function ProfilePicker() {
   const [name, setName] = useState("");
   const [job, setJob] = useState<Job>("CLERK");
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState("");
+  const form = useBlurErrors();
   const list = profiles.data ?? [];
   const add = async (event: FormEvent) => {
     event.preventDefault();
+    if (busy || !form.submit(Boolean(name.trim()))) return;
     setBusy(true);
+    setFailed("");
     try {
       const created = await post<Profile>("/profiles", { name: name.trim(), job });
       await queryClient.invalidateQueries({ queryKey: ["profiles"] });
       choose(created);
     } catch (error) {
+      setFailed(error instanceof Error ? error.message : String(error));
       toastErr(error);
     } finally {
       setBusy(false);
@@ -47,23 +53,32 @@ export function ProfilePicker() {
   if (adding || (profiles.isSuccess && list.length === 0)) {
     return (
       <div className="ob-picker">
-        <form className="ob-picker-inner" style={{ maxWidth: 420, textAlign: "left", alignItems: "stretch" }} onSubmit={add}>
+        <form className="ob-picker-inner" style={{ maxWidth: 420, textAlign: "left", alignItems: "stretch" }} noValidate onSubmit={add}>
           {list.length ? (
-            <button type="button" className="ob-back" onClick={() => setAdding(false)} aria-label="Back" style={{ marginBottom: 12 }}>
-              <IconChevronLeft size={24} />
+            <button type="button" className="ob-back" onClick={() => setAdding(false)} aria-label="Back to who's working" style={{ marginBottom: 12 }}>
+              <IconChevronLeft size={24} aria-hidden="true" />
             </button>
           ) : null}
           <h1 className="ob-title">Add yourself</h1>
           <p className="ob-lede">Your name goes on everything you do. No password needed.</p>
           <div className="ob-fields">
-            <TextInput label="Your name" size="lg" value={name} onChange={(e) => setName(e.currentTarget.value)} autoFocus data-autofocus />
+            <TextInput
+              label="Your name" withAsterisk size="lg" value={name} onChange={(e) => setName(e.currentTarget.value)} autoFocus data-autofocus
+              onBlur={form.blur("name")}
+              error={form.show("name", name.trim() ? null : "Type your name.")}
+            />
             <div>
               <div className="ob-section-label">What do you do here?</div>
               <Chips label="What do you do here?" value={job} onChange={setJob} options={ROLE_OPTIONS} />
               <div className="ob-hint">{JOB_HINT[job]}</div>
             </div>
           </div>
-          <Button type="submit" className="ob-cta" size="lg" fullWidth mt={32} disabled={!name.trim()} loading={busy}>
+          {failed ? (
+            <Alert role="alert" color="orange" title="You were not added" mt="md" styles={{ root: { background: "var(--warn-bg)", border: "1px solid transparent" }, title: { color: "var(--warn-fg)" } }}>
+              {failed} Nothing was saved; fix it and press Continue again.
+            </Alert>
+          ) : null}
+          <Button type="submit" className="ob-cta" size="lg" fullWidth mt={32} loading={busy}>
             Continue
           </Button>
         </form>
