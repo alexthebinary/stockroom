@@ -1,4 +1,4 @@
-import { ActionIcon, Alert, Anchor, Autocomplete, Badge, Button, Card, FileButton, Group, Input, Modal, NumberInput, Select, SimpleGrid, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Autocomplete, Badge, Button, Card, FileButton, Group, Input, Menu, Modal, NumberInput, Select, SimpleGrid, Stack, Table, Tabs, Text, TextInput } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -29,6 +29,7 @@ export function Items() {
   const [bundleForm, setBundleForm] = useState<Item | "new" | null>(null);
   const [bundleSeed, setBundleSeed] = useState<Row[] | null>(null);
   const [shipping, setShipping] = useState<Item | null>(null);
+  const [newTx, setNewTx] = useState<TxKind | null>(null);
   const [debounced] = useDebouncedValue(search, 250);
   const facets = useQuery({ queryKey: ["item-facets"], queryFn: () => get<Facets>("/items/facets") });
   const query = new URLSearchParams();
@@ -175,6 +176,14 @@ export function Items() {
         {otherTx.error ? <Problem error={otherTx.error} retry={() => otherTx.refetch()} /> : (
         <DataTable
           id="stock-adjustments"
+          toolbar={
+            <Menu position="bottom-end" width={260}>
+              <Menu.Target><Button size="compact-md">New transaction</Button></Menu.Target>
+              <Menu.Dropdown>
+                {(Object.keys(TX_KINDS) as TxKind[]).map((k) => <Menu.Item key={k} onClick={() => setNewTx(k)}>{TX_KINDS[k].label}</Menu.Item>)}
+              </Menu.Dropdown>
+            </Menu>
+          }
           label="Stock adjustments"
           rows={otherTx.data ?? []}
           rowKey={(t) => t.number}
@@ -228,6 +237,19 @@ export function Items() {
           />
         ) : null}
       </Modal>
+      <Modal opened={newTx != null} onClose={() => setNewTx(null)} title={newTx ? TX_KINDS[newTx].label : ""} size="lg">
+        {newTx ? (
+          <NewTransaction
+            key={newTx}
+            kind={newTx}
+            onPosted={async (docNumber) => {
+              setNewTx(null);
+              toastOk(`Posted ${docNumber}`);
+              await Promise.all([refreshItems(), queryClient.invalidateQueries({ queryKey: ["valuation"] }), queryClient.invalidateQueries({ queryKey: ["other-transactions"] })]);
+            }}
+          />
+        ) : null}
+      </Modal>
       <Modal opened={shipping != null} onClose={() => setShipping(null)} title={shipping ? `Ship ${shipping.name}` : "Ship bundle"}>
         {shipping ? (
           <ShipBundle
@@ -242,6 +264,69 @@ export function Items() {
         ) : null}
       </Modal>
     </>
+  );
+}
+
+const TX_KINDS = {
+  OPENING: { label: "Opening stock", entry: "Dr Inventory asset · Cr Opening balance equity" },
+  GAIN: { label: "Inventory adjustment gain", entry: "Dr Inventory asset · Cr Inventory adjustment gain" },
+  LOSS: { label: "Inventory adjustment loss", entry: "Dr Inventory adjustment loss · Cr Inventory asset" },
+} as const;
+type TxKind = keyof typeof TX_KINDS;
+
+/** Opening stock, or a found (gain) / lost (loss) adjustment: one item line, posted to stock and the journal together. */
+function NewTransaction({ kind, onPosted }: { kind: TxKind; onPosted: (docNumber: string) => Promise<void> }) {
+  const items = useQuery({ queryKey: ["items"], queryFn: () => get<Item[]>("/items") });
+  const warehouses = useQuery({ queryKey: ["warehouses"], queryFn: () => get<Warehouse[]>("/warehouses") });
+  const valuation = useQuery({ queryKey: ["valuation"], queryFn: () => get<Valuation>("/reports/valuation") });
+  const [itemId, setItemId] = useState<string | null>(null);
+  const [warehouseId, setWarehouseId] = useState<string | null>(null);
+  const [qty, setQty] = useState<number | string>(1);
+  const [unitCost, setUnitCost] = useState<number | string>("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const choices = (items.data ?? []).filter((i) => !i.isBundle && i.trackingMode !== "SERIAL");
+  const wid = warehouseId ?? (warehouses.data?.length === 1 ? String(warehouses.data[0]!.id) : null);
+  const n = wholeOrNull(qty) ?? 0;
+  const avg = valuation.data?.rows.find((r) => String(r.itemId) === itemId)?.averageCents;
+  const cost = unitCost === "" ? null : Math.round(Number(unitCost) * 100);
+  const unit = kind === "LOSS" ? (avg ?? 0) : (cost ?? avg ?? 0);
+  const needsCost = kind === "OPENING";
+  const ready = Boolean(itemId && wid && n > 0 && (!needsCost || cost != null) && (kind === "OPENING" || notes.trim().length >= 3));
+  const post_ = async () => {
+    if (!ready || busy) return;
+    setBusy(true);
+    try {
+      const base = { itemId: Number(itemId), warehouseId: Number(wid) };
+      const result = kind === "OPENING"
+        ? await post<{ docNumber: string }>("/setup/opening-stock", { date: new Date(`${date}T12:00:00`).toISOString(), notes: notes.trim() || undefined, lines: [{ ...base, qty: n, unitCostCents: cost! }] })
+        : await post<{ docNumber: string }>("/adjustments", { ...base, qty: kind === "LOSS" ? -n : n, unitCostCents: kind === "GAIN" && cost != null ? cost : undefined, reason: notes.trim() });
+      await onPosted(result.docNumber);
+    } catch (error) {
+      toastErr(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Stack>
+      <Text size="sm" c="dimmed">{TX_KINDS[kind].entry}. Posting is final; fix a mistake with a reversing adjustment.</Text>
+      <Select label="Item" searchable data={choices.map((i) => ({ value: String(i.id), label: `${i.name} (${i.sku})` }))} value={itemId} onChange={setItemId} />
+      <Select label="Warehouse" data={(warehouses.data ?? []).map((w) => ({ value: String(w.id), label: `${w.name} (${w.code})` }))} value={wid} onChange={setWarehouseId} />
+      <Group grow align="flex-start">
+        <NumberInput label="Quantity" value={qty} onChange={setQty} min={1} allowDecimal={false} allowNegative={false} />
+        {kind === "LOSS" ? (
+          <NumberInput label="Unit cost" value={avg != null ? avg / 100 : ""} readOnly prefix="$" decimalScale={2} description="Leaves at average cost" />
+        ) : (
+          <NumberInput label="Unit cost" value={unitCost} onChange={setUnitCost} min={0} prefix="$" decimalScale={2} allowNegative={false} description={needsCost ? undefined : "Blank = average cost"} />
+        )}
+      </Group>
+      <Text size="sm">Amount: <b>${((unit * n) / 100).toFixed(2)}</b></Text>
+      {kind === "OPENING" ? <TextInput label="Transaction date" type="date" value={date} onChange={(e) => setDate(e.currentTarget.value)} /> : null}
+      <TextInput label={kind === "OPENING" ? "Notes" : "Notes (why)"} value={notes} onChange={(e) => setNotes(e.currentTarget.value)} maxLength={300} />
+      <Button onClick={post_} loading={busy} disabled={!ready}>Post</Button>
+    </Stack>
   );
 }
 

@@ -25,6 +25,7 @@ const companyBody = z.object({
 
 const openingBody = z.object({
   date: z.coerce.date().optional(),
+  notes: z.string().trim().max(300).optional(),
   lines: z
     .array(
       z.object({
@@ -125,7 +126,7 @@ export function registerSetup(app: FastifyInstance, { db }: Deps) {
         sourceType: "OPENING",
         sourceId: 0,
         actor,
-        memo: `Opening stock ${docNumber}`,
+        memo: `Opening stock ${docNumber}${body.notes ? `: ${body.notes}` : ""}`,
         lines: [...entryLines, { role: "openingEquity", amountCents: total }],
       });
       await audit(tx, actor, "opening.posted", "Company", 1, { docNumber, total });

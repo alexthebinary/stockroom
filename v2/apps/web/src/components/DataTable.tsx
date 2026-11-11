@@ -62,10 +62,12 @@ type Props<T> = {
   id?: string;
   /** Called when a row is hovered or focused, to warm the page it opens. */
   prefetch?: (row: T) => void;
+  /** Buttons shown just left of Columns. */
+  toolbar?: ReactNode;
 };
 
 /** One list pattern for every document and item list: a one-line-per-row table on wide screens, ruled rows on phones. */
-export function DataTable<T>({ rows, rowKey, columns: allColumns, label, to, onOpen, empty, phone, selectable, id, prefetch }: Props<T>) {
+export function DataTable<T>({ rows, rowKey, columns: allColumns, label, to, onOpen, empty, phone, selectable, id, prefetch, toolbar }: Props<T>) {
   const wide = useMediaQuery("(min-width: 900px)") ?? true;
   const navigate = useNavigate();
   const [hidden, setHidden] = useLocalStore<string[]>(`pi.cols.${id ?? "_"}`, []);
@@ -100,8 +102,10 @@ export function DataTable<T>({ rows, rowKey, columns: allColumns, label, to, onO
   const clickable = Boolean(to || onOpen);
   return (
     <>
-    {id && optional.length > 1 ? (
-      <Group justify="flex-end" mb="xs" className="no-print">
+    {toolbar || (id && optional.length > 1) ? (
+      <Group justify="flex-end" mb="xs" className="no-print" gap="xs">
+        {toolbar}
+        {id && optional.length > 1 ? (
         <Menu position="bottom-end" closeOnItemClick={false} width={220}>
           <Menu.Target>
             <Button variant="subtle" size="compact-md" leftSection={<IconColumns3 size={16} aria-hidden="true" />}>Columns{hidden.length ? ` (${optional.length - hidden.length} of ${optional.length})` : ""}</Button>
@@ -116,6 +120,7 @@ export function DataTable<T>({ rows, rowKey, columns: allColumns, label, to, onO
             {hidden.length ? <Menu.Item onClick={() => setHidden([])}>Show all</Menu.Item> : null}
           </Menu.Dropdown>
         </Menu>
+        ) : null}
       </Group>
     ) : null}
     {selectable && selected.length > 0 ? (
