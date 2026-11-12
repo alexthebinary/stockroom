@@ -17,6 +17,11 @@ type ReceiptRow = { id: number; number: string; state: string; receivedAt: strin
 type OtherTx = { number: string; type: string; date: string; qty: number; lines: number; actor: string };
 type Facets = { brands: string[]; categories: string[] };
 
+/** One CSV line of the Stock page's "Export CSV". */
+export function stockCsvRow(i: Item, v?: Valuation["rows"][number]) {
+  return { SKU: i.sku, Name: i.name, Bundle: i.isBundle ? "Yes" : "No", Brand: i.brand, Category: i.category, "On hand": i.isBundle ? (i.available ?? 0) : (v?.onHand ?? 0), "Awaiting bill": v?.held ?? 0, "Price": i.priceCents != null ? (i.priceCents / 100).toFixed(2) : "" };
+}
+
 /** Find an item: what's on the shelf, what's waiting for a bill, and its codes. Filter by brand and category. */
 export function Items() {
   const queryClient = useQueryClient();
@@ -86,10 +91,7 @@ export function Items() {
         onOpen={(i) => (i.isBundle ? setBundleForm(i) : setEditing(i))}
         selectable={{
           filename: "stock-selected.csv",
-          csv: (i) => {
-            const v = valuation.data?.rows.find((r) => r.itemId === i.id);
-            return { SKU: i.sku, Name: i.name, Brand: i.brand, Category: i.category, "On hand": i.isBundle ? (i.available ?? 0) : (v?.onHand ?? 0), "Awaiting bill": v?.held ?? 0, "Price": i.priceCents != null ? (i.priceCents / 100).toFixed(2) : "" };
-          },
+          csv: (i) => stockCsvRow(i, valuation.data?.rows.find((r) => r.itemId === i.id)),
           actions: (picked, clear) => {
             const parts = picked.filter((i) => !i.isBundle && i.trackingMode !== "SERIAL");
             return (
