@@ -226,7 +226,7 @@ export function OrderDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const po = useQuery({ queryKey: ["order", id], queryFn: () => get<PurchaseOrder & { bills: { id: number; number: string; status: string; kind: string; totalCents: number }[]; receipts: { id: number; number: string; state: string; receivedAt: string; receivedBy: string }[]; warehouse: Warehouse }>(`/purchase-orders/${id}`) });
+  const po = useQuery({ queryKey: ["order", id], queryFn: () => get<PurchaseOrder & { bills: { id: number; number: string; status: string; kind: string; totalCents: number }[]; receipts: { id: number; number: string; state: string; receivedAt: string; receivedBy: string }[]; freightBills?: { id: number; number: string; status: string; totalCents: number; vendorName: string | null; shareCents: number | null }[]; warehouse: Warehouse }>(`/purchase-orders/${id}`) });
   if (!po.data) return <Loading />;
   const p = po.data;
   const draftBill = async () => {
@@ -316,6 +316,30 @@ export function OrderDetail() {
               <StatusBadge status={r.state} />
             </Group>
           ))}
+        </Card>
+        <Card withBorder className="section">
+          <Title order={3} mb="xs">
+            Freight-in bills
+          </Title>
+          {(p.freightBills ?? []).length === 0 ? <Text c="dimmed">No freight bill covers this order yet.</Text> : null}
+          {(p.freightBills ?? []).map((b) => (
+            <Group key={b.id} justify="space-between">
+              <Anchor component={Link} to={`/bills/${b.id}`}>
+                {b.number}
+                {b.vendorName ? ` · ${b.vendorName}` : ""}
+              </Anchor>
+              <Group gap="xs">
+                <Text size="sm">
+                  <Money cents={b.totalCents} />
+                  {b.shareCents != null && b.shareCents !== b.totalCents ? ` (${usd(b.shareCents)} to this order)` : ""}
+                </Text>
+                <StatusBadge status={b.status} />
+              </Group>
+            </Group>
+          ))}
+          <Button mt="sm" variant="light" component={Link} to={`/bills/freight/new?po=${p.id}`}>
+            Add a freight bill
+          </Button>
         </Card>
       </SimpleGrid>
     </Stack>

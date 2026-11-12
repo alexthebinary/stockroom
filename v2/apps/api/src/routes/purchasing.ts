@@ -89,12 +89,24 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
     const { id } = parse(idParam, request.params);
     const po = await db.purchaseOrder.findUnique({ where: { id }, include: { lines: true, bills: { include: { lines: true } }, receipts: { include: { lines: true } } } });
     if (!po) throw notFound("Purchase order");
-    const [vendor, items, warehouse] = await Promise.all([
+    const [vendor, items, warehouse, freight] = await Promise.all([
       po.vendorId ? db.vendor.findUnique({ where: { id: po.vendorId } }) : null,
       db.item.findMany({ where: { id: { in: po.lines.map((l) => l.itemId) } } }),
       db.warehouse.findUnique({ where: { id: po.warehouseId } }),
+      db.vendorBill.findMany({ where: { kind: "FREIGHT_IN", status: { not: State.bill.VOID }, targetPoIds: { has: id } }, include: { allocations: true }, orderBy: { id: "asc" } }),
     ]);
-    return { ...po, vendor, warehouse, lines: po.lines.map((l) => ({ ...l, item: items.find((i) => i.id === l.itemId) })) };
+    // Freight-in bills spread over this order; shareCents is this order's part once the bill is posted.
+    const lineIds = new Set(po.lines.map((l) => l.id));
+    const carriers = await db.vendor.findMany({ where: { id: { in: freight.map((b) => b.vendorId!).filter(Boolean) } } });
+    const freightBills = freight.map((b) => ({
+      id: b.id,
+      number: b.number,
+      status: b.status,
+      totalCents: b.totalCents,
+      vendorName: carriers.find((v) => v.id === b.vendorId)?.name ?? null,
+      shareCents: b.status === State.bill.POSTED ? b.allocations.filter((a) => lineIds.has(a.poLineId)).reduce((s, a) => s + a.amountCents, 0) : null,
+    }));
+    return { ...po, vendor, warehouse, freightBills, lines: po.lines.map((l) => ({ ...l, item: items.find((i) => i.id === l.itemId) })) };
   });
 
   app.post("/api/purchase-orders", async (request) => {

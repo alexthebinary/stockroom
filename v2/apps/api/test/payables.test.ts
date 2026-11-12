@@ -323,3 +323,20 @@ describe("the general journal", () => {
     expect(ok(await c.accountant.get("/api/journal?take=1&skip=1")).body[0].event).toBe("BILL_POSTED");
   });
 });
+
+describe("freight-in links (feedback #48, #49)", () => {
+  it("shows a freight bill on its order and the order and vendor bill on the freight bill", async () => {
+    const c = await sampleCompany();
+    const a = await billedPo(c, 1, 0, "INV-A");
+    const b = await billedPo(c, 3, 0, "INV-B");
+    const freight = await freightBill(c, [a.po.id, b.po.id], 10000);
+    const detail = ok(await c.accountant.get(`/api/bills/${freight.id}`)).body;
+    expect(detail.allocatedTo.orders.map((o: { number: string }) => o.number)).toEqual([a.po.number, b.po.number]);
+    expect(detail.allocatedTo.bills.map((x: { number: string }) => x.number)).toEqual([a.bill.number, b.bill.number]);
+    const order = ok(await c.admin.get(`/api/purchase-orders/${a.po.id}`)).body;
+    expect(order.freightBills).toEqual([expect.objectContaining({ number: freight.number, status: "POSTED", totalCents: 10000, shareCents: 2500 })]);
+    expect(ok(await c.accountant.get(`/api/bills/${a.bill.id}`)).body.allocatedTo).toBeNull();
+    ok(await c.accountant.post(`/api/bills/${freight.id}/void`));
+    expect(ok(await c.admin.get(`/api/purchase-orders/${a.po.id}`)).body.freightBills).toEqual([]);
+  });
+});
