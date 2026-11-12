@@ -13,6 +13,7 @@ const DAY = 86_400_000;
 /** The business document behind an on-hand movement, named as on the journal. */
 export function movementType(m: { register: string; counterType: string; qtyDelta: number }) {
   if (m.counterType === "OPENING") return "Opening stock";
+  if (m.counterType === "RECLASS") return m.qtyDelta < 0 ? "Inventory reclassification – out" : "Inventory reclassification – in";
   if (m.counterType === "VENDOR_CREDIT") return "Purchase return";
   if (m.counterType === "BILL" || m.counterType === "PO") return m.qtyDelta < 0 ? "Receipt reversal" : "Warehouse receipt";
   if (m.register === "WH_OUT") return "Bundle shipped";

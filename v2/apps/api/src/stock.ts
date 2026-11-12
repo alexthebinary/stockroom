@@ -16,7 +16,7 @@ export type StockCtx = { tx: Tx; actor: string };
 
 type Register = "WH_IN" | "WH_OUT" | "ADJ";
 type Bucket = "ON_HAND" | "HELD";
-export type Counter = { type: "BILL" | "PO" | "VENDOR_CREDIT" | "OPENING" | "ADJUSTMENT"; id: number };
+export type Counter = { type: "BILL" | "PO" | "VENDOR_CREDIT" | "OPENING" | "ADJUSTMENT" | "RECLASS"; id: number };
 
 async function ensureRows(tx: Tx, itemId: number, warehouseId: number) {
   await tx.$executeRaw`INSERT INTO "StockBalance" ("itemId", "warehouseId") VALUES (${itemId}, ${warehouseId}) ON CONFLICT DO NOTHING`;

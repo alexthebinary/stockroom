@@ -268,15 +268,16 @@ export function Items() {
   );
 }
 
-const TX_KINDS = {
+export const TX_KINDS = {
   OPENING: { label: "Opening stock", entry: "Dr Inventory asset · Cr Opening balance equity" },
   GAIN: { label: "Inventory adjustment gain", entry: "Dr Inventory asset · Cr Inventory adjustment gain" },
   LOSS: { label: "Inventory adjustment loss", entry: "Dr Inventory adjustment loss · Cr Inventory asset" },
+  RECLASS: { label: "Inventory Reclassification", entry: "Moves quantity and cost to a new item; the inventory asset total does not change" },
 } as const;
 type TxKind = keyof typeof TX_KINDS;
 
 /** Opening stock, or a found (gain) / lost (loss) adjustment: one item line, posted to stock and the journal together. */
-function NewTransaction({ kind, onPosted }: { kind: TxKind; onPosted: (docNumber: string) => Promise<void> }) {
+export function NewTransaction({ kind, onPosted }: { kind: TxKind; onPosted: (docNumber: string) => Promise<void> }) {
   const items = useQuery({ queryKey: ["items"], queryFn: () => get<Item[]>("/items") });
   const warehouses = useQuery({ queryKey: ["warehouses"], queryFn: () => get<Warehouse[]>("/warehouses") });
   const valuation = useQuery({ queryKey: ["valuation"], queryFn: () => get<Valuation>("/reports/valuation") });
@@ -286,6 +287,8 @@ function NewTransaction({ kind, onPosted }: { kind: TxKind; onPosted: (docNumber
   const [unitCost, setUnitCost] = useState<number | string>("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState("");
+  const [newSku, setNewSku] = useState("");
+  const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState("");
   const form = useBlurErrors();
@@ -294,19 +297,22 @@ function NewTransaction({ kind, onPosted }: { kind: TxKind; onPosted: (docNumber
   const n = wholeOrNull(qty) ?? 0;
   const avg = valuation.data?.rows.find((r) => String(r.itemId) === itemId)?.averageCents;
   const cost = unitCost === "" ? null : Math.round(Number(unitCost) * 100);
-  const unit = kind === "LOSS" ? (avg ?? 0) : (cost ?? avg ?? 0);
+  const unit = kind === "LOSS" || kind === "RECLASS" ? (avg ?? 0) : (cost ?? avg ?? 0);
   const needsCost = kind === "OPENING";
   const dateOk = kind !== "OPENING" || !Number.isNaN(new Date(`${date}T12:00:00`).getTime());
-  const notesOk = kind === "OPENING" || notes.trim().length >= 3;
+  const notesOk = kind === "OPENING" || kind === "RECLASS" || notes.trim().length >= 3;
   const costOk = !needsCost || (cost != null && !Number.isNaN(cost));
-  const valid = Boolean(itemId && wid && n > 0 && costOk && notesOk && dateOk);
+  const reclassOk = kind !== "RECLASS" || (newSku.trim() !== "" && newName.trim() !== "");
+  const valid = Boolean(itemId && wid && n > 0 && costOk && notesOk && dateOk && reclassOk);
   const post_ = async () => {
     if (busy || !form.submit(valid)) return;
     setBusy(true);
     setFailed("");
     try {
       const base = { itemId: Number(itemId), warehouseId: Number(wid) };
-      const result = kind === "OPENING"
+      const result = kind === "RECLASS"
+        ? await post<{ docNumber: string }>("/reclassifications", { ...base, qty: n, newSku: newSku.trim(), newName: newName.trim(), reason: notes.trim() || undefined })
+        : kind === "OPENING"
         ? await post<{ docNumber: string }>("/setup/opening-stock", { date: new Date(`${date}T12:00:00`).toISOString(), notes: notes.trim() || undefined, lines: [{ ...base, qty: n, unitCostCents: cost! }] })
         : await post<{ docNumber: string }>("/adjustments", { ...base, qty: kind === "LOSS" ? -n : n, unitCostCents: kind === "GAIN" && cost != null ? cost : undefined, reason: notes.trim() });
       await onPosted(result.docNumber);
@@ -346,8 +352,8 @@ function NewTransaction({ kind, onPosted }: { kind: TxKind; onPosted: (docNumber
           onBlur={form.blur("qty")}
           error={form.show("qty", n > 0 ? null : "Enter a quantity of at least 1.")}
         />
-        {kind === "LOSS" ? (
-          <NumberInput label="Unit cost" value={avg != null ? avg / 100 : ""} readOnly prefix="$" decimalScale={2} hideControls inputMode="decimal" description="Leaves at average cost" />
+        {kind === "LOSS" || kind === "RECLASS" ? (
+          <NumberInput label="Unit cost" value={avg != null ? avg / 100 : ""} readOnly prefix="$" decimalScale={2} hideControls inputMode="decimal" description={kind === "RECLASS" ? "Moves at average cost" : "Leaves at average cost"} />
         ) : (
           <NumberInput
             label="Unit cost" withAsterisk={needsCost} value={unitCost} onChange={setUnitCost} min={0} prefix="$" decimalScale={2} allowNegative={false}
@@ -358,6 +364,18 @@ function NewTransaction({ kind, onPosted }: { kind: TxKind; onPosted: (docNumber
           />
         )}
       </Group>
+      {kind === "RECLASS" ? (
+        <>
+          <TextInput
+            label="New SKU" withAsterisk value={newSku} onChange={(e) => setNewSku(e.currentTarget.value)} maxLength={64}
+            onBlur={form.blur("newSku")} error={form.show("newSku", newSku.trim() ? null : "Enter the new SKU.")}
+          />
+          <TextInput
+            label="New item name" withAsterisk value={newName} onChange={(e) => setNewName(e.currentTarget.value)}
+            onBlur={form.blur("newName")} error={form.show("newName", newName.trim() ? null : "Enter the new item name.")}
+          />
+        </>
+      ) : null}
       <Text size="sm">Amount: <b>${((unit * n) / 100).toFixed(2)}</b></Text>
       {kind === "OPENING" ? (
         <TextInput
@@ -367,8 +385,8 @@ function NewTransaction({ kind, onPosted }: { kind: TxKind; onPosted: (docNumber
         />
       ) : null}
       <TextInput
-        label={kind === "OPENING" ? "Notes" : "Notes (why)"}
-        withAsterisk={kind !== "OPENING"}
+        label={kind === "OPENING" || kind === "RECLASS" ? "Notes" : "Notes (why)"}
+        withAsterisk={kind !== "OPENING" && kind !== "RECLASS"}
         value={notes} onChange={(e) => setNotes(e.currentTarget.value)} maxLength={300}
         onBlur={form.blur("notes")}
         error={form.show("notes", notesOk ? null : "Type why this adjustment happened, at least 3 characters.")}

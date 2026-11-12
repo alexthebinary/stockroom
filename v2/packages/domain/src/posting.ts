@@ -30,6 +30,8 @@ export const EVENTS = {
   },
   INVENTORY_ADJUSTMENT_GAIN: { label: "Inventory adjustment – gain", sides: { inventoryOnHand: "DEBIT", adjustmentGain: "CREDIT" } },
   INVENTORY_ADJUSTMENT_LOSS: { label: "Inventory adjustment – loss", sides: { adjustmentLoss: "DEBIT", inventoryOnHand: "CREDIT" } },
+  // Value moves between two items inside the same account: the old item's line is negative, so it credits.
+  INVENTORY_RECLASSIFICATION: { label: "Inventory reclassification", sides: { inventoryOnHand: "DEBIT" } },
   BUNDLE_SHIPPED: { label: "Bundle shipped", sides: { cogs: "DEBIT", inventoryOnHand: "CREDIT" } },
   BILL_PAYMENT: { label: "Vendor payment", sides: { payable: "DEBIT", bank: "CREDIT" } },
   VENDOR_REFUND: { label: "Vendor refund", sides: { bank: "DEBIT", payable: "CREDIT" } },
