@@ -11,6 +11,8 @@ import type { Bill, Item } from "../../lib/types";
 
 const KIND = { INVENTORY: "Stock", FREIGHT_IN: "Freight in", FREIGHT_OUT: "Freight out" } as const;
 const days = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+/** A draft shows how long it has waited; a posted bill shows when it is due. */
+const dueOrAge = (b: Bill) => (b.status === "DRAFT" ? `${plural(days(b.createdAt), "day")} old` : formatDate(b.dueDate));
 
 /** The accounting inbox: what the dock received that needs a bill, then what's posted and unpaid. */
 export function BillDesk() {
@@ -58,14 +60,15 @@ export function BillDesk() {
           rows={shown}
           rowKey={(b) => b.id}
           to={(b) => `/bills/${b.id}`}
-          selectable={{ filename: "bills-selected.csv", csv: (b) => ({ Bill: b.number, Vendor: b.vendor?.name, Type: KIND[b.kind] ?? b.kind, "Vendor invoice": b.vendorInvoiceNumber, Status: b.status, Amount: (((b.status === "POSTED" ? b.openCents : b.totalCents) ?? 0) / 100).toFixed(2) }) }}
+          selectable={{ filename: "bills-selected.csv", csv: (b) => ({ Bill: b.number, "Bill date": formatDate(b.billDate), "Due / age": dueOrAge(b), Vendor: b.vendor?.name, Type: KIND[b.kind] ?? b.kind, "Vendor invoice": b.vendorInvoiceNumber, Status: b.status, Amount: (((b.status === "POSTED" ? b.openCents : b.totalCents) ?? 0) / 100).toFixed(2) }) }}
           empty={tab === "review" ? "Nothing to review. When the dock receives a delivery that isn't billed yet, its draft bill appears here." : "Nothing here."}
           columns={[
             { key: "number", label: "Bill", width: 130, primary: true, strong: true, render: (b) => b.number },
+            { key: "billDate", label: "Bill date", width: 130, render: (b) => formatDate(b.billDate) },
             { key: "vendor", label: "Vendor", render: (b) => b.vendor?.name ?? "Vendor not set" },
             { key: "kind", label: "Type", width: 130, render: (b) => KIND[b.kind] },
             { key: "invoice", label: "Vendor invoice", width: 150, render: (b) => b.vendorInvoiceNumber ?? "—" },
-            { key: "when", label: "Due / age", width: 150, render: (b) => (b.status === "DRAFT" ? `${plural(days(b.createdAt), "day")} old` : formatDate(b.dueDate)) },
+            { key: "when", label: "Due / age", width: 150, render: dueOrAge },
             { key: "units", label: "Waiting", width: 100, align: "right", render: (b) => (b.heldUnits ? plural(b.heldUnits, "unit") : "—") },
             { key: "status", label: "Status", width: 120, render: (b) => <StatusBadge status={b.status} /> },
             { key: "amount", label: "Amount", width: 120, align: "right", strong: true, render: (b) => <Money cents={b.status === "POSTED" ? b.openCents : b.totalCents} /> },
