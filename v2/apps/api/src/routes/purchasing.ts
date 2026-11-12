@@ -333,8 +333,18 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
       bill.status === State.bill.DRAFT ? inTx(db, (tx) => previewBill(tx, id)) : null,
       orderMatch(db, bill),
     ]);
+    // Freight-in: the orders this bill's cost was spread over, and the vendor bills on those orders.
+    let allocatedTo: { orders: { id: number; number: string }[]; bills: { id: number; number: string }[] } | null = null;
+    if (bill.kind === "FREIGHT_IN" && bill.targetPoIds.length > 0) {
+      const [orders, stockBills] = await Promise.all([
+        db.purchaseOrder.findMany({ where: { id: { in: bill.targetPoIds } }, select: { id: true, number: true }, orderBy: { id: "asc" } }),
+        db.vendorBill.findMany({ where: { poId: { in: bill.targetPoIds }, kind: "INVENTORY", status: { not: State.bill.VOID } }, select: { id: true, number: true }, orderBy: { id: "asc" } }),
+      ]);
+      allocatedTo = { orders, bills: stockBills };
+    }
     return {
       ...bill,
+      allocatedTo,
       vendor,
       payments,
       credits,

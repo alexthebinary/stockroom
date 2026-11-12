@@ -35,7 +35,7 @@ import { MatchPanel, type OrderMatch } from "./MatchPanel";
 type Rule = { role: string; account: { code: string; name: string } };
 type Payment = { id: number; number: string; direction: "OUT" | "IN"; amountCents: number; method: string; paidAt: string; status: string; actor: string };
 type Credit = { id: number; number: string; kind: string; totalCents: number; date: string; memo: string | null; actor: string; lines: { id: number; itemId: number; qty: number; amountCents: number }[] };
-type FullBill = Bill & { payments: Payment[]; credits: Credit[]; allocations: { poLineId: number; amountCents: number; inboundCents: number; onHandCents: number; soldCents: number }[]; match: OrderMatch[] | null };
+type FullBill = Bill & { payments: Payment[]; credits: Credit[]; allocations: { poLineId: number; amountCents: number; inboundCents: number; onHandCents: number; soldCents: number }[]; match: OrderMatch[] | null; allocatedTo?: { orders: { id: number; number: string }[]; bills: { id: number; number: string }[] } | null };
 
 const dollars = (cents: number) => (cents / 100).toFixed(2);
 const cents = (value: string | number) => parseUsd(String(value)) ?? 0;
@@ -559,6 +559,31 @@ function PostedBill({ bill }: { bill: FullBill }) {
 
       </aside>
       <div className="detail-main">
+      {bill.allocatedTo && bill.allocatedTo.orders.length + bill.allocatedTo.bills.length > 0 ? (
+        <Card withBorder className="section">
+          <Title order={3} mb="xs">
+            Allocated to
+          </Title>
+          <Stack gap={4}>
+            {bill.allocatedTo.orders.map((o) => (
+              <Text key={`po-${o.id}`} size="sm">
+                Allocated to:{" "}
+                <Anchor component={Link} to={`/orders/${o.id}`}>
+                  {o.number}
+                </Anchor>
+              </Text>
+            ))}
+            {bill.allocatedTo.bills.map((b) => (
+              <Text key={`bill-${b.id}`} size="sm">
+                Allocated to:{" "}
+                <Anchor component={Link} to={`/bills/${b.id}`}>
+                  {b.number}
+                </Anchor>
+              </Text>
+            ))}
+          </Stack>
+        </Card>
+      ) : null}
       <Card withBorder className="section">
         <Title order={3} mb="sm">
           Lines
