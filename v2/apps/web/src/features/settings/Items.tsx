@@ -208,7 +208,7 @@ export function Items() {
       </section>
       </Tabs.Panel>
       </Tabs>
-      <Modal opened={adding || editing != null} onClose={() => { setEditing(null); setAdding(false); }} title={editing ? `Edit ${editing.sku}` : "Add item"} size="lg">
+      <Modal opened={adding || editing != null} onClose={() => { setEditing(null); setAdding(false); }} title={itemModalTitle(editing != null)} size="lg">
         {adding || editing ? (
           <EditItem
             key={editing?.id ?? "new"}
@@ -567,10 +567,32 @@ const wholeOrNull = (value: number | string) => {
   return Number.isFinite(n) ? Math.trunc(n) : null;
 };
 
+export const itemModalTitle = (editing: boolean) => (editing ? "Item details" : "Add item");
+
+export const itemSaveBody = (form: {
+  sku: string; name: string; serialNumber: string; modelNumber: string; weightLb: number | string; lengthIn: number | string;
+  widthIn: number | string; heightIn: number | string; brand: string; category: string; defaultVendorId: string | null;
+  reorderPoint: number | string; reorderQty: number | string;
+}) => ({
+  sku: form.sku.trim(),
+  name: form.name,
+  serialNumber: form.serialNumber,
+  modelNumber: form.modelNumber,
+  weightKg: form.weightLb === "" ? null : lbToKg(Number(form.weightLb)),
+  lengthCm: form.lengthIn === "" ? null : inToCm(Number(form.lengthIn)),
+  widthCm: form.widthIn === "" ? null : inToCm(Number(form.widthIn)),
+  heightCm: form.heightIn === "" ? null : inToCm(Number(form.heightIn)),
+  brand: form.brand,
+  category: form.category,
+  defaultVendorId: form.defaultVendorId ? Number(form.defaultVendorId) : null,
+  reorderPoint: wholeOrNull(form.reorderPoint),
+  reorderQty: wholeOrNull(form.reorderQty),
+});
+
 export function EditItem({ item, facets, onSaved }: { item: Item | null; facets: Facets | undefined; onSaved: () => Promise<void> }) {
   const vendors = useQuery({ queryKey: ["vendors", "SUPPLIER"], queryFn: () => get<Vendor[]>("/vendors?kind=SUPPLIER") });
   const [form, setForm] = useState({
-    sku: "",
+    sku: item?.sku ?? "",
     name: item?.name ?? "",
     serialNumber: item?.serialNumber ?? "",
     modelNumber: item?.modelNumber ?? "",
@@ -587,28 +609,15 @@ export function EditItem({ item, facets, onSaved }: { item: Item | null; facets:
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState("");
   const errors = useBlurErrors();
-  const valid = Boolean(form.name.trim()) && (item != null || Boolean(form.sku.trim()));
+  const valid = Boolean(form.name.trim()) && Boolean(form.sku.trim());
   const save = async () => {
     if (busy || !errors.submit(valid)) return;
     setBusy(true);
     setFailed("");
     try {
-      const body = {
-        name: form.name,
-        serialNumber: form.serialNumber,
-        modelNumber: form.modelNumber,
-        weightKg: form.weightLb === "" ? null : lbToKg(Number(form.weightLb)),
-        lengthCm: form.lengthIn === "" ? null : inToCm(Number(form.lengthIn)),
-        widthCm: form.widthIn === "" ? null : inToCm(Number(form.widthIn)),
-        heightCm: form.heightIn === "" ? null : inToCm(Number(form.heightIn)),
-        brand: form.brand,
-        category: form.category,
-        defaultVendorId: form.defaultVendorId ? Number(form.defaultVendorId) : null,
-        reorderPoint: wholeOrNull(form.reorderPoint),
-        reorderQty: wholeOrNull(form.reorderQty),
-      };
+      const body = itemSaveBody(form);
       if (item) await put(`/items/${item.id}`, body);
-      else await post("/items", { ...body, sku: form.sku.trim() });
+      else await post("/items", body);
       await onSaved();
     } catch (error) {
       setFailed(error instanceof Error ? error.message : String(error));
@@ -621,13 +630,11 @@ export function EditItem({ item, facets, onSaved }: { item: Item | null; facets:
     <form noValidate onSubmit={(e) => { e.preventDefault(); void save(); }}>
     <Stack>
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-      {!item ? (
-        <TextInput
-          label="SKU" withAsterisk value={form.sku} onChange={(e) => setForm({ ...form, sku: e.currentTarget.value })} maxLength={64}
-          onBlur={errors.blur("sku")}
-          error={errors.show("sku", form.sku.trim() ? null : "Type a SKU for this item.")}
-        />
-      ) : null}
+      <TextInput
+        label="SKU" withAsterisk value={form.sku} onChange={(e) => setForm({ ...form, sku: e.currentTarget.value })} maxLength={64}
+        onBlur={errors.blur("sku")}
+        error={errors.show("sku", form.sku.trim() ? null : "Type a SKU for this item.")}
+      />
       <TextInput
         label="Name" withAsterisk style={{ gridColumn: "1 / -1" }} value={form.name} onChange={(e) => setForm({ ...form, name: e.currentTarget.value })}
         onBlur={errors.blur("name")}
