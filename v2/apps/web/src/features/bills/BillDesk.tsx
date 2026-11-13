@@ -1,12 +1,13 @@
 import { Badge, Button, Card, Group, Modal, Select, SimpleGrid, Stack, Tabs, Text } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { IconPlus, IconTruck } from "@tabler/icons-react";
+import { IconDownload, IconPlus, IconTruck } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Coach } from "../../components/Coach";
 import { DataTable } from "../../components/DataTable";
 import { plural, formatDate, Loading, Money, PageHeader, StatusBadge, toastErr, toastOk } from "../../components/ui";
 import { get, post } from "../../lib/api";
+import { downloadCsv, toCsv } from "../../lib/csv";
 import type { Bill, Item } from "../../lib/types";
 
 const KIND = { INVENTORY: "Stock", FREIGHT_IN: "Freight in", FREIGHT_OUT: "Freight out" } as const;
@@ -14,9 +15,31 @@ const days = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) 
 /** A draft shows how long it has waited; a posted bill shows when it is due. */
 const dueOrAge = (b: Bill) => (b.status === "DRAFT" ? `${plural(days(b.createdAt), "day")} old` : formatDate(b.dueDate));
 
+const money = (cents: number) => (cents / 100).toFixed(2);
+
+/** One row per bill line (stock and service/freight lines), with the documents each bill relates to. */
+export function billDetailCsv(bills: Bill[], items: Pick<Item, "id" | "sku" | "name">[] = []) {
+  const header = ["Bill", "Bill date", "Vendor", "Type", "Status", "Vendor invoice", "Purchase order", "Related orders", "Line", "Item SKU", "Item / service", "Qty", "Unit cost", "Discount", "Amount", "Freight", "Landed", "Bill total"];
+  const poNumbers = new Map<number, string>();
+  for (const b of bills) if (b.po) poNumbers.set(b.po.id, b.po.number);
+  const rows: (string | number)[][] = [];
+  for (const b of bills) {
+    const related = (b.targetPoIds ?? []).map((id) => poNumbers.get(id) ?? `PO #${id}`).join("; ");
+    b.lines.forEach((l, i) => {
+      const item = l.item ?? items.find((x) => x.id === l.itemId);
+      rows.push([
+        b.number, formatDate(b.billDate), b.vendor?.name ?? "", KIND[b.kind] ?? b.kind, b.status, b.vendorInvoiceNumber ?? "", b.po?.number ?? "", related,
+        i + 1, item?.sku ?? "", item?.name ?? l.description ?? "", l.qty, money(l.unitCostCents), money(l.discountCents), money(l.amountCents), money(l.freightCents), money(l.landedCents), money(b.totalCents),
+      ]);
+    });
+  }
+  return { header, rows };
+}
+
 /** The accounting inbox: what the dock received that needs a bill, then what's posted and unpaid. */
 export function BillDesk() {
   const bills = useQuery({ queryKey: ["bills"], queryFn: () => get<Bill[]>("/bills"), refetchInterval: 30_000 });
+  const items = useQuery({ queryKey: ["items"], queryFn: () => get<Item[]>("/items") });
   const unknown = useQuery({ queryKey: ["unknown"], queryFn: () => get<{ sessionId: number; code: string | null; name: string | null; qty: number; startedBy: string; submittedAt: string }[]>("/receiving/unknown") });
   const [tab, setTab] = useState<string | null>("review");
   if (!bills.data) return <><PageHeader title="Bills" /><Loading /></>;
@@ -29,9 +52,21 @@ export function BillDesk() {
         title="Bills"
         subtitle="Vendor bills are the only purchase documents that post money. Review what the dock received, then post."
         action={
-          <Button component={Link} to="/bills/freight/new" leftSection={<IconTruck size={18} />} variant="light">
-            Freight bill
-          </Button>
+          <Group gap="xs">
+            <Button
+              variant="default"
+              leftSection={<IconDownload size={18} />}
+              onClick={() => {
+                const { header, rows } = billDetailCsv(shown, items.data);
+                downloadCsv("bills-detail.csv", toCsv(header, rows));
+              }}
+            >
+              Export CSV Detail
+            </Button>
+            <Button component={Link} to="/bills/freight/new" leftSection={<IconTruck size={18} />} variant="light">
+              Freight bill
+            </Button>
+          </Group>
         }
       />
       <Coach id="bill-desk" title="From the dock to the books">
