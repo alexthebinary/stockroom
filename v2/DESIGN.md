@@ -68,6 +68,12 @@ Operate-mode guidance and craft floor: build fully, inspect once in a batch
 (phone and desktop, light and dark — the e2e saves these screenshots to
 `e2e/screenshots/`), fix everything in one go, confirm once, stop.
 
+A review flags, in new or changed UI: a hand-rolled list, form field or button where
+`DataTable`, `components/form.ts` or a Mantine control already exists; a hex colour,
+radius or font size that is not a `theme.css` / `theme.ts` token. Multi-line text keeps a
+line height of at least 1.3. `.claude/tools/ui-audit.py` reports the elements that push a
+page wider than the screen and any tight multi-line text.
+
 ## Lists and tables (2026-11-10)
 
 - **One list pattern: `DataTable`** (`components/DataTable.tsx`). Stock, Orders, Bills,
