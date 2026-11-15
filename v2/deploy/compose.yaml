@@ -69,7 +69,7 @@ services:
     command: TCP-LISTEN:8081,bind=172.17.0.1,fork,reuseaddr TCP:127.0.0.1:8080
 
   cloudflared:
-    image: cloudflare/cloudflared:2026.9.3
+    image: cloudflare/cloudflared:2026.10.4
     restart: unless-stopped
     # No token: a quick tunnel to the app. A token: your named tunnel, whose
     # hostname and route (app:4100) are set in the Cloudflare dashboard.
