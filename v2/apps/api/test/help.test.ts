@@ -132,23 +132,34 @@ describe("help tool loop", () => {
 });
 
 describe("cloud help model", () => {
+  const streamReply = (delta: unknown) => new Response(`data: ${JSON.stringify({ choices: [{ delta }] })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
   const reply = (message: unknown, status = 200) => (async (url: string, init?: RequestInit) => {
     reply.last = { url, init };
     return new Response(JSON.stringify(message), { status });
   }) as typeof fetch;
   reply.last = null as null | { url: string; init?: RequestInit };
 
-  it("posts one non-streaming turn to /v1/help and emits the whole reply once", async () => {
-    const fetchImpl = reply({ status: "ok", message: { role: "assistant", content: "Open Receive and choose the delivery." } });
+  it("posts a streaming turn to /v1/help and emits each delta with assembled tool calls", async () => {
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      reply.last = { url, init };
+      const events = [
+        { content: "Open Receive " },
+        { content: "and choose the delivery.", tool_calls: [{ index: 0, id: "t1", function: { name: "go_to", arguments: '{"screen":' } }] },
+        { tool_calls: [{ index: 0, function: { arguments: '"receive"}' } }] },
+      ];
+      const bytes = new TextEncoder().encode(events.map((delta) => `data: ${JSON.stringify({ choices: [{ delta }] })}\r\n\r\n`).join("") + "data: [DONE]\r\n\r\n");
+      return new Response(new ReadableStream({ start(c) { for (let i = 0; i < bytes.length; i += 7) c.enqueue(bytes.slice(i, i + 7)); c.close(); } }), { headers: { "content-type": "text/event-stream" } });
+    }) as typeof fetch;
     const parts: string[] = [];
     const message = await createCloudHelpModel("https://w.example/v1/clarify", "sek", fetchImpl)([{ role: "user", content: "How do I receive a delivery?" }], (text) => parts.push(text));
     expect(reply.last!.url).toBe("https://w.example/v1/help");
     expect((reply.last!.init!.headers as Record<string, string>).authorization).toBe("Bearer sek");
     const sent = JSON.parse(String(reply.last!.init!.body));
     expect(sent.tool_choice).toBe("auto");
+    expect(sent.stream).toBe(true);
     expect(sent.tools.map((tool: { function: { name: string } }) => tool.function.name)).toEqual(["read_wiki", "go_to"]);
-    expect(parts).toEqual(["Open Receive and choose the delivery."]);
-    expect(message).toEqual({ role: "assistant", content: "Open Receive and choose the delivery." });
+    expect(parts).toEqual(["Open Receive ", "and choose the delivery."]);
+    expect(message).toEqual({ role: "assistant", content: "Open Receive and choose the delivery.", tool_calls: [{ id: "t1", type: "function", function: { name: "go_to", arguments: '{"screen":"receive"}' } }] });
   });
 
   it("follows a go_to tool call through the chat loop and still offers the screen", async () => {
@@ -159,12 +170,12 @@ describe("cloud help model", () => {
       round++;
       if (round === 1) {
         expect(sent.tool_choice).toBe("auto");
-        return new Response(JSON.stringify({ status: "ok", message: { role: "assistant", content: null, tool_calls: [call("go_to", { screen: "receive" })] } }));
+        return streamReply({ tool_calls: [{ index: 0, ...call("go_to", { screen: "receive" }) }] });
       }
       expect(sent.tool_choice).toBe("none");
       expect(sent.messages.at(-1)?.role).toBe("tool");
       expect(sent.messages.at(-1)?.content).toContain("/receive");
-      return new Response(JSON.stringify({ status: "ok", message: { role: "assistant", content: "Open Receive and choose the delivery." } }));
+      return streamReply({ content: "Open Receive and choose the delivery." });
     }) as typeof fetch;
     const events: unknown[] = [];
     const result = await chat(createCloudHelpModel("https://w/v1/clarify/", "s", fetchImpl), input, (event) => events.push(event));
@@ -172,6 +183,16 @@ describe("cloud help model", () => {
     expect(result).toMatchObject({ reply: "Open Receive and choose the delivery.", navigate: { to: "/receive", label: "Receive" }, unanswered: false });
     expect(events).toContainEqual({ type: "reset" });
     expect(events).toContainEqual({ type: "text", text: "Open Receive and choose the delivery." });
+  });
+
+  it("rejects a truncated or failed stream so chat clears partial text", async () => {
+    for (const wire of ['data: {"choices":[{"delta":{"content":"partial"}}]}\n\n', 'data: {"error":"upstream failed"}\n\ndata: [DONE]\n\n']) {
+      const fetchImpl = (async () => new Response(wire, { headers: { "content-type": "text/event-stream" } })) as typeof fetch;
+      const events: unknown[] = [];
+      const result = await chat(createCloudHelpModel("https://w/v1/clarify", "s", fetchImpl), input, (event) => events.push(event));
+      expect(result.unanswered).toBe(true);
+      expect(events.at(-1)).toEqual({ type: "reset" });
+    }
   });
 
   it("turns a capped reply and a 30s timeout into the unknown answer", async () => {

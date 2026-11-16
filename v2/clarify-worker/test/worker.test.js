@@ -158,3 +158,73 @@ test("the API's local fallback uses the same system prompt", () => {
   assert.ok(pick(src).length > 100);
   assert.equal(pick(ts).replace(/[`'"+\s]/g, ""), pick(src).replace(/[`'"+\s]/g, ""));
 });
+
+const sse = (events, done = true) => new ReadableStream({ start(c) {
+  const bytes = new TextEncoder().encode(events.map((event) => `data: ${JSON.stringify(event)}\r\n\r\n`).join('') + (done ? 'data: [DONE]\r\n\r\n' : ''));
+  for (let i = 0; i < bytes.length; i += 7) c.enqueue(bytes.slice(i, i + 7));
+  c.close();
+} });
+
+test('streaming help forwards text and fragmented tools as OpenAI SSE, hiding reasoning', async () => {
+  let seen;
+  const r = await worker.fetch(helpReq({ ...HELP_BODY, stream: true }), env(async (_model, input) => {
+    seen = input;
+    return sse([
+      { choices: [{ delta: { reasoning_content: 'private thinking' } }] },
+      { choices: [{ delta: { content: 'Open ' } }] },
+      { choices: [{ delta: { content: 'Receive.', tool_calls: [{ index: 0, id: 't1', function: { name: 'go_to', arguments: '{"screen":' } }] } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"receive"}' } }] } }] },
+      { response: '', usage: {} },
+    ]);
+  }));
+  assert.equal(seen.stream, true);
+  assert.match(r.headers.get('content-type'), /text\/event-stream/);
+  const wire = await r.text();
+  assert.ok(wire.endsWith('data: [DONE]\n\n'));
+  assert.doesNotMatch(wire, /private thinking|reasoning|usage/);
+  const events = wire.split('\n').filter((s) => s.startsWith('data: {')).map((s) => JSON.parse(s.slice(6)).choices[0].delta);
+  assert.equal(events.map((d) => d.content ?? '').join(''), 'Open Receive.');
+  assert.equal(events.flatMap((d) => d.tool_calls ?? []).map((t) => t.function.arguments).join(''), '{"screen":"receive"}');
+});
+
+test('streaming help normalises legacy response and object tool arguments', async () => {
+  const r = await worker.fetch(helpReq({ ...HELP_BODY, stream: true }), env(async () => sse([
+    { response: 'Open Receive.' }, { tool_calls: [{ name: 'go_to', arguments: { screen: 'receive' } }] },
+  ])));
+  const wire = await r.text();
+  const delta = JSON.parse(wire.split('\n')[2].slice(6)).choices[0].delta;
+  assert.deepEqual(delta.tool_calls[0], { index: 0, id: 'call_0', type: 'function', function: { name: 'go_to', arguments: '{"screen":"receive"}' } });
+});
+
+test('streaming cap and pre-stream errors remain JSON', async () => {
+  const body = { ...HELP_BODY, stream: true };
+  const e = env(async () => sse([{ response: 'OK' }]), { HELP_PER_DAY: '1' });
+  await (await worker.fetch(helpReq(body), e)).text();
+  const capped = await worker.fetch(helpReq(body), e);
+  assert.match(capped.headers.get('content-type'), /application\/json/);
+  assert.deepEqual(await capped.json(), { status: 'capped' });
+  const failed = await worker.fetch(helpReq(body), env(async () => { throw new Error('boom'); }));
+  assert.equal(failed.status, 502);
+  assert.deepEqual(await failed.json(), { status: 'error' });
+});
+
+test('truncated and failed upstream streams do not become successful DONE streams', async () => {
+  for (const events of [[{ response: 'partial' }], [{ error: 'upstream failed' }]]) {
+    const r = await worker.fetch(helpReq({ ...HELP_BODY, stream: true }), env(async () => sse(events, false)));
+    await assert.rejects(r.text());
+  }
+});
+
+test('help releases the first text delta while upstream is still open', { timeout: 2000 }, async () => {
+  let upstream;
+  const r = await worker.fetch(helpReq({ ...HELP_BODY, stream: true }), env(async () => new ReadableStream({ start(c) { upstream = c; } })));
+  const reader = r.body.getReader();
+  upstream.enqueue(new TextEncoder().encode('data: {"response":"first"}\n\n'));
+  const first = await reader.read();
+  assert.match(new TextDecoder().decode(first.value), /"content":"first"/);
+  upstream.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
+  upstream.close();
+  assert.equal(new TextDecoder().decode((await reader.read()).value), 'data: [DONE]\n\n');
+  assert.equal((await reader.read()).done, true);
+  reader.releaseLock();
+});

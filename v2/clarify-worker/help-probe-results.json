@@ -1,0 +1,265 @@
+[
+  {
+    "model": "@cf/zai-org/glm-4.7-flash",
+    "id": "barcode",
+    "question": "How do I receive a delivery using the barcode camera?",
+    "expectedScreen": "receive",
+    "firstTextMs": 4918,
+    "lastTextMs": 6575,
+    "totalMs": 6761,
+    "done": true,
+    "calls": [
+      {
+        "name": "go_to",
+        "arguments": "{\"screen\": \"receive\"}"
+      }
+    ],
+    "content": "To receive using the barcode camera:\n\n1. Open Receive and choose the warehouse and supplier\n2. Tap Open scanner to start the barcode camera\n3. Aim the barcode into the white frame\n4. A buzz and lime frame means it counted; orange means check the screen\n5. Scan more items by reopening the scanner\n6. For serial-tracked items, scan or type each unit's serial label\n7. Check & finish to review and submit the delivery\n\nThe receipt shows In stock now and Awaiting the bill until the vendor bill is posted.",
+    "neurons": 37.9845,
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/zai-org/glm-4.7-flash",
+    "id": "no-barcode",
+    "question": "How do I receive an item with no barcode?",
+    "expectedScreen": "receive",
+    "firstTextMs": 4289,
+    "lastTextMs": 5009,
+    "totalMs": 5156,
+    "done": true,
+    "calls": [
+      {
+        "name": "go_to",
+        "arguments": "{\"screen\": \"receive\"}"
+      }
+    ],
+    "content": "When scanning, if there's no barcode, tap \"Pick the item\" to manually enter the item name or SKU. The scanner will then count that item.",
+    "neurons": 32.3006,
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/zai-org/glm-4.7-flash",
+    "id": "payment",
+    "question": "How do I record a partial payment on a vendor bill?",
+    "expectedScreen": "payables",
+    "firstTextMs": 4899,
+    "lastTextMs": 6286,
+    "totalMs": 6467,
+    "done": true,
+    "calls": [
+      {
+        "name": "go_to",
+        "arguments": "{\"screen\": \"payables\"}"
+      }
+    ],
+    "content": "To record a partial payment on a vendor bill:\n\n1. Open Payables to see unsettled bills\n2. Tap the bill you want to pay\n3. Choose Record payment\n4. Enter the payment amount, method and date\n5. Tap Record payment\n\nThe bill's Open balance updates to total less paid. If the amount exceeds what you owe, Vendor owes us appears and you can use Record vendor refund.\n\nNavigate to Payables to start:",
+    "neurons": 37.1892,
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/zai-org/glm-4.7-flash",
+    "id": "credit",
+    "question": "How do I return received units using a vendor credit, and where does a credit difference post?",
+    "expectedScreen": "bills",
+    "firstTextMs": 3394,
+    "lastTextMs": 5908,
+    "totalMs": 5934,
+    "done": true,
+    "calls": [
+      {
+        "name": "read_wiki",
+        "arguments": "{\"page\": \"vendor-credits\"}"
+      }
+    ],
+    "content": "Return units on a vendor credit:\n\n1) Open a posted inventory bill.\n2) Tap Vendor credit.\n3) Choose Return units and pick an item line and quantity.\n4) Enter the credit amount (or leave it blank to use the bill\u2019s cost).\n5) Post the credit.\n\nThe credit reduces Accounts Payable. When the credit differs from the stock removal cost, the difference records to 6950 (Vendor Return Variance), not to Cost of Goods Sold. Stock price adjustments (Credit amount only) affect in-transit, on-hand, or Cost of Goods Sold.\n\ngo_to screen: settings",
+    "neurons": 27.5089,
+    "firstTurnMs": 1473,
+    "followupToolChoice": "none",
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/zai-org/glm-4.7-flash",
+    "id": "opening",
+    "question": "How is opening stock entered during setup, and what is the other side of the entry?",
+    "expectedScreen": "setup",
+    "firstTextMs": 3129,
+    "lastTextMs": 4184,
+    "totalMs": 4204,
+    "done": true,
+    "calls": [
+      {
+        "name": "read_wiki",
+        "arguments": "{\"page\": \"getting-started\"}"
+      }
+    ],
+    "content": "I don't have that information in the help pages. The help text notes that opening stock is a financial entry against Opening Balance Equity, but it does not provide the details you need. For questions about how an entry is booked and which accounts are used, you can inspect the journal entries in Accounting (Reports \u2192 Accounting \u2192 Journal entries), or check Account assignment in Settings \u2192 Accounts.",
+    "neurons": 28.0494,
+    "firstTurnMs": 1704,
+    "followupToolChoice": "none",
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/zai-org/glm-4.7-flash",
+    "id": "reports-go_to",
+    "question": "Take me to Reports and tell me where I can check stock value.",
+    "expectedScreen": "reports",
+    "firstTextMs": 1667,
+    "lastTextMs": 1969,
+    "totalMs": 2072,
+    "done": true,
+    "calls": [
+      {
+        "name": "go_to",
+        "arguments": "{\"screen\": \"reports\"}"
+      }
+    ],
+    "content": "Stock value is in the Inventory tab of Reports. It shows on-hand quantities, held quantities, average cost, stock value, ledger value and any variance.",
+    "neurons": 30.721,
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/zai-org/glm-4.7-flash",
+    "id": "settings",
+    "question": "How do I change account assignments? Will this change existing entries?",
+    "expectedScreen": "settings",
+    "firstTextMs": 3097,
+    "lastTextMs": 3885,
+    "totalMs": 4069,
+    "done": true,
+    "calls": [
+      {
+        "name": "go_to",
+        "arguments": "{\"screen\": \"settings\"}"
+      }
+    ],
+    "content": "To change account assignments, go to Settings \u2192 Accounts \u2192 Account assignment. There you can map posting lines to different accounts.\n\nChanging an unlocked assignment affects only new entries; existing entries keep their original account. Locked assignments like 1200 Inventory Asset cannot be changed.",
+    "neurons": 33.5547,
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/zai-org/glm-4.7-flash",
+    "id": "off-topic",
+    "question": "What is the weather in Paris tomorrow?",
+    "expectedScreen": null,
+    "firstTextMs": 3241,
+    "lastTextMs": 3730,
+    "totalMs": 3737,
+    "done": true,
+    "calls": [],
+    "content": "I don't have that information in the help pages. The ProfitIndex v2 app is focused on inventory management, warehouse receipts, bills and payables, and accounting reports. It doesn't include weather forecasting or external data services.",
+    "neurons": 34.7648,
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/openai/gpt-oss-20b",
+    "id": "barcode",
+    "question": "How do I receive a delivery using the barcode camera?",
+    "expectedScreen": "receive",
+    "firstTextMs": 898,
+    "lastTextMs": 1490,
+    "totalMs": 1490,
+    "done": true,
+    "calls": [],
+    "content": "To receive a delivery with the barcode camera:\n\n1. Open the **Receive** screen.  \n2. Choose the warehouse if prompted.  \n3. Select the supplier or expected order, or tap \u201cStart scanning.\u201d  \n4. The camera opens; aim the box barcode at the white frame.  \n5. A buzz and lime frame confirm the count; tap \u201cCheck & finish\u201d to review.  \n6. Finish the delivery to create the WH\u2011IN receipt.\n\nNow you can start scanning.  \n\ngo_to: receive",
+    "neurons": 86.836277,
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/openai/gpt-oss-20b",
+    "id": "no-barcode",
+    "question": "How do I receive an item with no barcode?",
+    "expectedScreen": "receive",
+    "firstTextMs": 1559,
+    "lastTextMs": 2488,
+    "totalMs": 2488,
+    "done": true,
+    "calls": [],
+    "content": "To receive an item that has no barcode, start the Receive screen and begin the scan.  \nWhen the scanner shows \u201cNo barcode\u201d, tap the manual\u2011entry button (or the item search icon) to type the item\u2019s name or SKU. Add the quantity, then continue counting any other items. Once all lines are entered, finish the delivery to create the warehouse receipt.  \n\nThe item will be counted and posted just like any other.  \ngo_to: receive",
+    "neurons": 87.581731,
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/openai/gpt-oss-20b",
+    "id": "payment",
+    "question": "How do I record a partial payment on a vendor bill?",
+    "expectedScreen": "payables",
+    "firstTextMs": 2380,
+    "lastTextMs": 3114,
+    "totalMs": 3126,
+    "done": true,
+    "calls": [],
+    "content": "To record a partial payment, open the posted vendor bill in the Bills screen.  \nFrom the bill\u2019s detail page tap **Record payment**.  \nEnter the amount you\u2019re paying (less than the total), choose the payment method and date, then save. The bill\u2019s open balance will reduce by that amount.  \n\nIf you need to see the bill list, I can take you to Bills.  \n\ngo_to: bills",
+    "neurons": 89.118093,
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/openai/gpt-oss-20b",
+    "id": "credit",
+    "question": "How do I return received units using a vendor credit, and where does a credit difference post?",
+    "expectedScreen": "bills",
+    "firstTextMs": 1866,
+    "lastTextMs": 3364,
+    "totalMs": 3377,
+    "done": true,
+    "calls": [],
+    "content": "To return units you use a vendor credit on the posted bill that received the goods.  \n1. Open **Bills** and tap the posted inventory bill.  \n2. Choose **Vendor credit**.  \n3. Pick **Return units**, select the line and the number of units (or serials if the item is serial\u2011tracked).  \n4. Leave the credit amount blank to use the bill\u2019s unit cost, or enter a different amount.  \n5. Post the credit.  \n\nThe credit reduces Accounts Payable. If the credit amount differs from the cost of the returned stock, the difference is posted to the **Vendor Return Variance** account (default 6950). This keeps the cost of goods sold unchanged and records the variance separately.  \n\nYou can start this process from the Bills screen.  \ngo_to Bills",
+    "neurons": 90.854455,
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/openai/gpt-oss-20b",
+    "id": "opening",
+    "question": "How is opening stock entered during setup, and what is the other side of the entry?",
+    "expectedScreen": "setup",
+    "firstTextMs": 3286,
+    "lastTextMs": 3910,
+    "totalMs": 3911,
+    "done": true,
+    "calls": [],
+    "content": "During the setup wizard you create an opening stock entry by entering the quantity and cost of each item. That entry is posted as a financial transaction that debits the Inventory Asset account and credits the Opening Equity account. The \u201cother side\u201d of the entry is the Opening Balance Equity account, which records the initial equity balance that backs the inventory.  \n\ngo_to: settings",
+    "neurons": 90.509,
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/openai/gpt-oss-20b",
+    "id": "reports-go_to",
+    "question": "Take me to Reports and tell me where I can check stock value.",
+    "expectedScreen": "reports",
+    "firstTextMs": 976,
+    "lastTextMs": 1174,
+    "totalMs": 1187,
+    "done": true,
+    "calls": [],
+    "content": "To see stock value, open the Reports screen, tap the Inventory tab, and then select Stock value.  \n\ngo_to reports",
+    "neurons": 84.981733,
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/openai/gpt-oss-20b",
+    "id": "settings",
+    "question": "How do I change account assignments? Will this change existing entries?",
+    "expectedScreen": "settings",
+    "firstTextMs": 1482,
+    "lastTextMs": 2105,
+    "totalMs": 2119,
+    "done": true,
+    "calls": [],
+    "content": "To change an account assignment, go to Settings \u2192 Accounts \u2192 Account assignment. Find the posting line you want to change, tap it, and select a new account. Only unlocked assignments can be edited. Changing an assignment only affects new entries that use that line; existing journal entries keep the account they were originally posted to.  \n\nScreen link:  \n\ngo_to screen: settings",
+    "neurons": 87.799912,
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  },
+  {
+    "model": "@cf/openai/gpt-oss-20b",
+    "id": "off-topic",
+    "question": "What is the weather in Paris tomorrow?",
+    "expectedScreen": null,
+    "firstTextMs": 1140,
+    "lastTextMs": 1219,
+    "totalMs": 1230,
+    "done": true,
+    "calls": [],
+    "content": "I don't have that information in the help pages.",
+    "neurons": 84.872642,
+    "neuronScope": "first turn only; corrected duplicate per-delta plus summary accounting"
+  }
+]

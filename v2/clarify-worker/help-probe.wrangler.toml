@@ -1,0 +1,6 @@
+# Temporary remote preview only: no production KV, secrets or deploy configuration.
+name = "profitindex-help-probe"
+main = "help-probe-worker.js"
+compatibility_date = "2026-10-01"
+[ai]
+binding = "AI"

@@ -124,6 +124,56 @@ function assistantMessage(d) {
   return message;
 }
 
+// Remote probe (2026-11-16): both candidates emit choices[0].delta plus a trailing
+// {response:"",usage} and [DONE]. GLM emits reasoning_content (never forwarded),
+// text deltas, then a complete indexed tool_calls delta. GPT-OSS printed a JSON
+// code block instead of calling go_to in the smoke probe; see MODEL-CHOICE.md.
+// Also accept the documented legacy {response,tool_calls} stream shape.
+function helpStream(upstream) {
+  const decoder = new TextDecoder(), encoder = new TextEncoder();
+  let buffer = "", done = false;
+  const ids = new Map();
+  const send = (controller, data) => controller.enqueue(encoder.encode(`data: ${typeof data === "string" ? data : JSON.stringify(data)}\n\n`));
+  const line = (raw, controller) => {
+    if (done || !raw.startsWith("data:")) return;
+    const data = raw.slice(5).trim();
+    if (!data) return;
+    if (data === "[DONE]") { done = true; send(controller, "[DONE]"); return; }
+    const event = JSON.parse(data);
+    if (event.error) throw new Error("Help upstream stream failed");
+    const source = event.choices?.[0]?.delta ?? { content: event.response, tool_calls: event.tool_calls };
+    const delta = {};
+    if (typeof source.content === "string" && source.content) delta.content = source.content;
+    if (Array.isArray(source.tool_calls) && source.tool_calls.length) {
+      delta.tool_calls = source.tool_calls.map((call, i) => {
+        const index = call.index ?? i, fn = call.function ?? call;
+        if (!ids.has(index)) ids.set(index, call.id || `call_${index}`);
+        if (call.id) ids.set(index, call.id);
+        const fragment = {};
+        if (typeof fn.name === "string") fragment.name = fn.name;
+        if (fn.arguments != null) fragment.arguments = typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments);
+        return { index, id: ids.get(index), type: "function", function: fragment };
+      });
+    }
+    if (Object.keys(delta).length) send(controller, { choices: [{ delta }] });
+  };
+  return upstream.pipeThrough(new TransformStream({
+    transform(bytes, controller) {
+      buffer += decoder.decode(bytes, { stream: true });
+      let end;
+      while ((end = buffer.indexOf("\n")) >= 0) {
+        line(buffer.slice(0, end).replace(/\r$/, ""), controller);
+        buffer = buffer.slice(end + 1);
+      }
+    },
+    flush(controller) {
+      buffer += decoder.decode();
+      if (buffer.trim()) line(buffer.trim(), controller);
+      if (!done) throw new Error("Incomplete help upstream stream");
+    },
+  }));
+}
+
 async function help(req, env) {
   const raw = await req.text();
   if (raw.length > HELP_MAX_BODY) return json({ error: "too large" }, 413);
@@ -138,7 +188,10 @@ async function help(req, env) {
 
   let d;
   try {
-    d = await env.AI.run(env.MODEL || MODEL, { messages: body.messages, tools: body.tools, tool_choice: body.tool_choice, max_completion_tokens: 1200, temperature: 0.2 });
+    d = await env.AI.run(env.MODEL || MODEL, { messages: body.messages, tools: body.tools, tool_choice: body.tool_choice, max_completion_tokens: 1200, temperature: 0.2, ...(body.stream === true ? { stream: true } : {}) });
+    if (body.stream === true) {
+      return new Response(helpStream(d), { headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" } });
+    }
   } catch (e) {
     const s = String(e?.message ?? e);
     console.log("upstream", s.slice(0, 200));
