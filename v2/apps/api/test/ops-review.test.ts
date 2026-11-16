@@ -218,5 +218,5 @@ it("#25 passes the default log level through deploy compose without changing the
   const compose = readFileSync(new URL("../../../deploy/compose.yaml", import.meta.url), "utf8");
   const app = compose.split("\n  app:\n")[1]!.split("\n  # Lets")[0]!;
   expect(app).toContain("LOG_LEVEL: ${LOG_LEVEL:-info}");
-  expect(compose).toContain("image: cloudflare/cloudflared:2026.9.3");
+  expect(compose).toContain("image: cloudflare/cloudflared:2026.10.4");
 });

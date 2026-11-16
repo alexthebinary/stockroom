@@ -2,13 +2,13 @@ import { Axis, DomainError, State } from "@pi/domain";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Deps } from "../app";
+import { DAY, daysLate, payableTotals } from "../aging";
 import { audit } from "../audit";
 import { checkBooks } from "../books";
 import { inTx, type Tx } from "../db";
 import { actorOf, parse } from "../http";
 import { createPo } from "../purchasing/po";
 
-const DAY = 86_400_000;
 
 /** The business document behind an on-hand movement, named as on the journal. */
 export function movementType(m: { register: string; counterType: string; qtyDelta: number }) {
@@ -262,7 +262,7 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
     }, { isolationLevel: "RepeatableRead", maxWait: 10_000, timeout: 30_000 });
     const buckets = ["current", "1-30", "31-60", "61-90", "90+"] as const;
     const bucketOf = (due: Date) => {
-      const late = Math.floor((asOf.getTime() - due.getTime()) / DAY);
+      const late = daysLate(due, asOf);
       if (late <= 0) return "current";
       if (late <= 30) return "1-30";
       if (late <= 60) return "31-60";
@@ -289,8 +289,7 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
       checkBooks(db),
     ]);
     const held = await db.purchaseOrderLine.aggregate({ _sum: { qtyHeld: true } });
-    const weekAhead = Date.now() + 7 * DAY;
-    const open = posted.map((b) => ({ open: b.totalCents - b.paidCents - b.creditedCents, due: b.dueDate.getTime() })).filter((b) => b.open > 0);
+    const open = posted.map((b) => ({ openCents: b.totalCents - b.paidCents - b.creditedCents, due: b.dueDate })).filter((b) => b.openCents > 0);
     const unknownItems = unknownSessions.reduce((s, x) => s + ((x.result as { unknown?: unknown[] } | null)?.unknown?.length ?? 0), 0);
     return {
       clerk: { openDeliveries, expectedOrders: expected },
@@ -298,9 +297,7 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
         draftBills,
         heldUnits: held._sum.qtyHeld ?? 0,
         unknownItems,
-        payableCents: open.reduce((s, b) => s + b.open, 0),
-        dueThisWeekCents: open.filter((b) => b.due <= weekAhead).reduce((s, b) => s + b.open, 0),
-        overdueCents: open.filter((b) => b.due < Date.now()).reduce((s, b) => s + b.open, 0),
+        ...payableTotals(open),
       },
       admin: { booksSound: books.sound, problems: books.problems.slice(0, 5) },
     };
