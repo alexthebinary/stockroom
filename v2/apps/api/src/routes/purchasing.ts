@@ -6,7 +6,7 @@ import { audit } from "../audit";
 import { inTx, Prisma, type Db } from "../db";
 import { actorOf, idParam, notFound, parse } from "../http";
 import { transition } from "../transition";
-import { dueDateFor, draftBillFromPo, postInventoryBill, previewBill, recomputeTotals } from "../purchasing/bills";
+import { calendarDay, dueDateFor, draftBillFromPo, postInventoryBill, previewBill, recomputeTotals } from "../purchasing/bills";
 import { postFreightBill } from "../purchasing/freight";
 import { lockBill } from "../purchasing/locks";
 import { createPo, refreshPoStatus } from "../purchasing/po";
@@ -385,7 +385,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
       const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id }, include: { lines: true } });
       if (bill.status !== State.bill.DRAFT) throw new DomainError(`${bill.number} is ${bill.status.toLowerCase()} and can't be edited`, 409);
       if (bill.version !== body.version) throw new DomainError(`${bill.number} was changed by someone else. Reload it.`, 409);
-      const billDate = body.billDate ?? bill.billDate;
+      const billDate = body.billDate ? calendarDay(body.billDate) : bill.billDate;
       const termsDays = body.termsDays ?? bill.termsDays;
       const vendorChanged = body.vendorId !== undefined && body.vendorId !== bill.vendorId;
       let terms = termsDays;

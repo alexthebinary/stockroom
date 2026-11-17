@@ -383,4 +383,13 @@ describe("review findings on money, dates, and waiting units", () => {
     expect((await c.accountant.post(`/api/bills/${bill.id}/payments`, { amountCents: 100, paidAt: new Date(Date.now() + 5 * 60_000).toISOString() })).status).toBe(400);
     await expectBooksSound();
   });
+
+  it("#7 a dock draft stores the bill date and due date as UTC midnights", async () => {
+    const c = await sampleCompany();
+    await deliver(c.clerk, { warehouseId: c.ids.warehouse, vendorId: c.ids.supplier }, [{ code: WIDGET }]);
+    const bill = await testDb().vendorBill.findFirstOrThrow();
+    expect(bill.billDate.toISOString()).toMatch(/T00:00:00\.000Z$/);
+    expect(bill.dueDate.toISOString()).toMatch(/T00:00:00\.000Z$/);
+    expect(bill.dueDate.getTime() - bill.billDate.getTime()).toBe(bill.termsDays * 86_400_000);
+  });
 });

@@ -5,7 +5,7 @@ import { nextNumber } from "../numbering";
 import type { StockCtx } from "../stock";
 import { transition } from "../transition";
 import { applyLineAdjustment, freightTargets } from "./adjust";
-import { dueDateFor } from "./bills";
+import { calendarDay, dueDateFor } from "./bills";
 import { lockBill, lockVendorInvoice } from "./locks";
 import { refreshPoStatus } from "./po";
 
@@ -34,7 +34,7 @@ export async function draftFreightBill(
       kind: input.kind,
       vendorId: vendor.id,
       vendorInvoiceNumber: input.vendorInvoiceNumber,
-      billDate: input.billDate,
+      billDate: calendarDay(input.billDate),
       termsDays,
       dueDate: dueDateFor(input.billDate, termsDays),
       targetPoIds: input.targetPoIds,
