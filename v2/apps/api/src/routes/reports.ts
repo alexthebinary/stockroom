@@ -289,7 +289,7 @@ export function registerReports(app: FastifyInstance, { db }: Deps) {
       checkBooks(db),
     ]);
     const held = await db.purchaseOrderLine.aggregate({ _sum: { qtyHeld: true } });
-    const open = posted.map((b) => ({ openCents: b.totalCents - b.paidCents - b.creditedCents, due: b.dueDate })).filter((b) => b.openCents > 0);
+    const open = posted.map((b) => ({ openCents: b.totalCents - b.paidCents - b.creditedCents, due: b.dueDate })).filter((b) => b.openCents !== 0);
     const unknownItems = unknownSessions.reduce((s, x) => s + ((x.result as { unknown?: unknown[] } | null)?.unknown?.length ?? 0), 0);
     return {
       clerk: { openDeliveries, expectedOrders: expected },

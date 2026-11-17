@@ -340,3 +340,20 @@ describe("freight-in links (feedback #48, #49)", () => {
     expect(ok(await c.admin.get(`/api/purchase-orders/${a.po.id}`)).body.freightBills).toEqual([]);
   });
 });
+
+describe("review findings on money, dates, and waiting units", () => {
+  it("#4 home nets a vendor credit into what we owe, the same figure as aging", async () => {
+    const c = await sampleCompany();
+    const { po, bill } = await billedPo(c, 2, 10000);
+    await deliver(c.clerk, { warehouseId: c.ids.warehouse, poId: po.id }, [{ code: WIDGET, qty: 2 }]);
+    const full = ok(await c.accountant.get(`/api/bills/${bill.id}`)).body;
+    ok(await c.accountant.post(`/api/bills/${bill.id}/payments`, { amountCents: 110000 }));
+    ok(await c.accountant.post(`/api/bills/${bill.id}/credits`, { kind: "PRICE_ALLOWANCE", lines: [{ billLineId: full.lines[0].id, amountCents: 4000 }] }));
+    const home = ok(await c.accountant.get("/api/home")).body;
+    const aging = ok(await c.accountant.get("/api/reports/ap-aging")).body;
+    const net = aging.vendors.reduce((sum: number, vendor: { totalCents: number }) => sum + vendor.totalCents, 0);
+    expect(net).toBe(-4000);
+    expect(home.accounting.payableCents).toBe(net);
+    await expectBooksSound();
+  });
+});
