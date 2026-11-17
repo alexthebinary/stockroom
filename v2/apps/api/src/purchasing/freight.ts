@@ -6,6 +6,7 @@ import type { StockCtx } from "../stock";
 import { transition } from "../transition";
 import { applyLineAdjustment, freightTargets } from "./adjust";
 import { dueDateFor } from "./bills";
+import { lockBill } from "./locks";
 import { refreshPoStatus } from "./po";
 
 /** A carrier's bill: freight-in (spread over the orders it carried) or freight-out (an expense). */
@@ -57,6 +58,9 @@ export async function previewFreight(tx: Tx, billId: number) {
 
 export async function postFreightBill(ctx: StockCtx, billId: number, expectedVersion: number) {
   const { tx, actor } = ctx;
+  // Same first step as a receipt: lock the target PO lines before reading them.
+  // A delivery cannot land those units between the split and the write.
+  await lockBill(tx, billId);
   const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id: billId } });
   if (bill.status !== State.bill.DRAFT) throw new DomainError(`${bill.number} is already ${bill.status.toLowerCase()}`, 409);
   if (bill.version !== expectedVersion) throw new DomainError(`${bill.number} was changed by someone else. Reload it and post again.`, 409);
