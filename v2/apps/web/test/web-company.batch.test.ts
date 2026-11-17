@@ -75,6 +75,21 @@ test('review #2: upgrading v1 tags both pending and sent scans with the current 
   ]);
 });
 
+test('finding #1: a case scan is queued in units and sent as one package', async () => {
+  const queue = await import('../src/features/receive/outbox');
+  db = queue.outbox;
+  const queued = await queue.enqueue({ ...scan, qty: 12 });
+  vi.mocked(fetch).mockImplementation(async (_url, init) => {
+    const sent = JSON.parse(String((init as RequestInit).body)).events[0];
+    expect(sent).toMatchObject({ source: 'BARCODE', qty: 1, clientId: queued.clientId });
+    return new Response(JSON.stringify([{ ...sent, qty: 6 }]), { status: 200 });
+  });
+  expect(await queue.flush(1)).toBe(0);
+  const saved = await queue.eventsFor(1);
+  expect(saved).toEqual([expect.objectContaining({ qty: 6, sent: 1 })]);
+  expect(queue.receiptLines(saved)).toEqual([expect.objectContaining({ itemId: 7, qty: 6 })]);
+});
+
 test('review #2: resume pointers require company identity; legacy and foreign pointers are ignored', async () => {
   const queue = await import('../src/features/receive/outbox');
   db = queue.outbox;

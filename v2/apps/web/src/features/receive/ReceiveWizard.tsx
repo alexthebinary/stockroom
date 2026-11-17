@@ -31,7 +31,7 @@ import { plural, Problem, toastErr } from "../../components/ui";
 import { ApiError, get, patch, post } from "../../lib/api";
 import type { Item, Vendor, Warehouse } from "../../lib/types";
 import { type ScanFeedback, Scanner } from "../scan/Scanner";
-import { enqueue, eventsFor, flush, forget, recalled, remember, type QueuedEvent } from "./outbox";
+import { enqueue, eventsFor, flush, forget, receiptLines, recalled, remember, type QueuedEvent } from "./outbox";
 
 type Expected = { id: number; number: string; warehouseId: number | null; billingStatus: string; vendor: Vendor | null; lines: { id: number; itemId: number; item: Item; outstanding: number }[] }[];
 type Session = { id: number; clientId: string; warehouseId: number; vendorId: number | null; poId: number | null; status: string };
@@ -312,19 +312,12 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
   }, [items.data]);
   const itemById = (id: number | null) => (items.data ?? []).find((i) => i.id === id) ?? null;
 
-  const lines: Line[] = useMemo(() => {
-    const map = new Map<string, Line>();
-    for (const e of events) {
-      const key = e.itemId ? `i${e.itemId}` : `c${e.code ?? e.unknownName}`;
-      const line = map.get(key) ?? { key, itemId: e.itemId, item: itemById(e.itemId), code: e.code, name: e.unknownName, qty: 0, serials: [] };
-      line.qty += e.qty;
-      line.name ??= e.unknownName;
-      if (e.serial) line.serials = e.qty > 0 ? [...line.serials, e.serial] : line.serials.filter((s) => s !== e.serial);
-      map.set(key, line);
-    }
-    return [...map.values()].filter((l) => l.qty !== 0);
+  const lines: Line[] = useMemo(
+    () => receiptLines(events).map((line) => ({ ...line, item: itemById(line.itemId) })),
+    // itemById closes over the latest catalog. The catalog is the dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, items.data]);
+    [events, items.data],
+  );
   const pending = events.filter((e) => !e.sent).length;
   const po = expected.data?.find((p) => p.id === session.poId) ?? null;
 
@@ -338,7 +331,8 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
 
   const onScan = async (raw: string): Promise<ScanFeedback> => {
     const gs1 = parseGs1(raw);
-    const item = byKey.get(barcodeKey(raw)) ?? null;
+    const code = barcodeKey(raw);
+    const item = byKey.get(code) ?? null;
     if (pendingSerialFor && !item) {
       await record({ code: null, itemId: pendingSerialFor.id, qty: 1, serial: raw.trim(), unknownName: null, photo: null, source: "BARCODE" });
       setPendingSerialFor(null);
@@ -348,7 +342,10 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
       setPendingSerialFor(item);
       return "warn";
     }
-    await record({ code: raw, itemId: item?.id ?? null, qty: 1, serial: gs1?.serial ?? null, unknownName: null, photo: null, source: "BARCODE" });
+    // A known case barcode counts units on the phone immediately. An unknown
+    // code stays one package until the server says what the case holds.
+    const packQty = item && item.trackingMode !== "SERIAL" ? (item.barcodes?.find((barcode) => barcode.code === code)?.packQty ?? 1) : 1;
+    await record({ code: raw, itemId: item?.id ?? null, qty: packQty, serial: gs1?.serial ?? null, unknownName: null, photo: null, source: "BARCODE" });
     return item ? "ok" : "warn";
   };
 
@@ -393,10 +390,11 @@ function ScanAndCheck({ session, step, onStep, onDone, onAbandon }: { session: S
     try {
       const left = await flush(session.id);
       if (left > 0) throw new ApiError(`${left} scan(s) are still on this phone. They'll send when you have signal — then finish.`, 0);
-      const total = (await eventsFor(session.id)).length;
-      const result = await post<Result>(`/scan-sessions/${session.id}/submit`, { expectedEventCount: total });
+      const saved = await eventsFor(session.id);
+      const counted = receiptLines(saved).map((line) => ({ ...line, item: itemById(line.itemId) }));
+      const result = await post<Result>(`/scan-sessions/${session.id}/submit`, { expectedEventCount: saved.length });
       await forget(session.id);
-      onDone(result, lines);
+      onDone(result, counted);
     } catch (error) {
       toastErr(error);
       setFinishing(false);
