@@ -223,4 +223,21 @@ describe("purchasing locking regressions", () => {
     expect(await testDb().purchaseOrderLine.findFirstOrThrow({ where: { poId: po.id } })).toMatchObject({ inboundCents: 0, qtyLanded: 1 });
     await expectBooksSound();
   });
+
+  it("finding #3 two drafts with the same invoice cannot both post", async () => {
+    const c = await sampleCompany();
+    const make = (invoice: string) => c.accountant.post("/api/freight-bills", {
+      kind: "FREIGHT_OUT", vendorId: c.ids.carrier, vendorInvoiceNumber: invoice, amountCents: 4500,
+    });
+    const first = ok(await make("DUP-9")).body;
+    const second = ok(await make("dup-9")).body;
+    const [posted, rejected] = await race(
+      (tx, pause) => postFreightBill(ctx(pauseRead(tx, "vendorBill", "findFirst", pause)), first.id, first.version),
+      () => inTx(testDb(), (tx) => postFreightBill(ctx(tx), second.id, second.version)),
+    );
+    expect(posted).not.toHaveProperty("error");
+    expect(rejected).toHaveProperty("error");
+    expect(await testDb().vendorBill.count({ where: { status: "POSTED", vendorId: c.ids.carrier } })).toBe(1);
+    await expectBooksSound();
+  });
 });

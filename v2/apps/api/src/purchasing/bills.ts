@@ -6,7 +6,7 @@ import { landUnits, type StockCtx } from "../stock";
 import { transition } from "../transition";
 import { billLineStock, unbilledInboundShare } from "./adjust";
 import { refreshPoStatus } from "./po";
-import { lockBill } from "./locks";
+import { lockBill, lockVendorInvoice } from "./locks";
 import { inboundShare, refreshReceiptState } from "./receive";
 
 const DAY = 86_400_000;
@@ -139,6 +139,7 @@ export async function postInventoryBill(ctx: StockCtx, billId: number, expectedV
   if (bill.version !== expectedVersion) throw new DomainError(`${bill.number} was changed by someone else. Reload it and post again.`, 409);
   if (!bill.vendorId) throw new DomainError("Choose the vendor before posting", 400);
   if (!bill.vendorInvoiceNumber?.trim()) throw new DomainError("Enter the vendor's invoice number before posting", 400);
+  await lockVendorInvoice(tx, bill.vendorId, bill.vendorInvoiceNumber);
   const duplicate = await tx.vendorBill.findFirst({
     where: { id: { not: bill.id }, vendorId: bill.vendorId, status: State.bill.POSTED, vendorInvoiceNumber: { equals: bill.vendorInvoiceNumber.trim(), mode: "insensitive" } },
   });

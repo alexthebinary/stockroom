@@ -6,7 +6,7 @@ import type { StockCtx } from "../stock";
 import { transition } from "../transition";
 import { applyLineAdjustment, freightTargets } from "./adjust";
 import { dueDateFor } from "./bills";
-import { lockBill } from "./locks";
+import { lockBill, lockVendorInvoice } from "./locks";
 import { refreshPoStatus } from "./po";
 
 /** A carrier's bill: freight-in (spread over the orders it carried) or freight-out (an expense). */
@@ -67,6 +67,7 @@ export async function postFreightBill(ctx: StockCtx, billId: number, expectedVer
   if (!bill.vendorId) throw new DomainError("Choose the carrier before posting", 400);
   if (!bill.vendorInvoiceNumber?.trim()) throw new DomainError("Enter the carrier's invoice number before posting", 400);
   if (bill.totalCents <= 0) throw new DomainError("A freight bill needs an amount", 400);
+  await lockVendorInvoice(tx, bill.vendorId, bill.vendorInvoiceNumber);
   const duplicate = await tx.vendorBill.findFirst({
     where: { id: { not: bill.id }, vendorId: bill.vendorId, status: State.bill.POSTED, vendorInvoiceNumber: { equals: bill.vendorInvoiceNumber.trim(), mode: "insensitive" } },
   });
