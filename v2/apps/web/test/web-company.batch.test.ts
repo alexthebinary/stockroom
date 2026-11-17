@@ -90,6 +90,13 @@ test('finding #1: a case scan is queued in units and sent as one package', async
   expect(queue.receiptLines(saved)).toEqual([expect.objectContaining({ itemId: 7, qty: 6 })]);
 });
 
+test('finding #6: now is the local calendar day and a stored midnight stays that UTC day', async () => {
+  const { toInputDate } = await import('../src/lib/dates');
+  expect(toInputDate(new Date(2026, 10, 17, 21, 30, 0))).toBe('2026-11-17');
+  expect(toInputDate('2026-11-18T00:00:00.000Z')).toBe('2026-11-18');
+  expect(toInputDate('2026-11-18')).toBe('2026-11-18');
+});
+
 test('review #2: resume pointers require company identity; legacy and foreign pointers are ignored', async () => {
   const queue = await import('../src/features/receive/outbox');
   db = queue.outbox;

@@ -6,6 +6,15 @@ import { transition } from "../transition";
 import { refreshPoStatus } from "./po";
 
 const openOf = (b: { totalCents: number; paidCents: number; creditedCents: number }) => b.totalCents - b.paidCents - b.creditedCents;
+const DAY = 86_400_000;
+
+/** A date-only value is UTC midnight. In zones ahead of UTC that midnight is still the local today. */
+const isUtcMidnight = (date: Date) => date.getUTCHours() === 0 && date.getUTCMinutes() === 0 && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0;
+
+export function paymentDateIsFuture(paidAt: Date, now = Date.now()) {
+  if (paidAt.getTime() <= now + 60_000) return false;
+  return !(isUtcMidnight(paidAt) && paidAt.getTime() - now < DAY);
+}
 
 /**
  * OUT: we pay a bill (Dr AP / Cr Bank), in full or in part, never more than is
@@ -39,7 +48,7 @@ export async function recordPayment(
   const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id: billId } });
   if (bill.status !== State.bill.POSTED) throw new DomainError("Only a posted bill can be paid", 409);
   if (input.amountCents <= 0) throw new DomainError("Enter an amount", 400);
-  if (paidAt.getTime() > Date.now() + 60_000) throw new DomainError("A payment can't be dated in the future", 400);
+  if (paymentDateIsFuture(paidAt)) throw new DomainError("A payment can't be dated in the future", 400);
   const open = openOf(bill);
   if (input.direction === "OUT" && input.amountCents > open) {
     throw new DomainError(open <= 0 ? `${bill.number} has nothing left to pay` : `Only $${(open / 100).toFixed(2)} is open on ${bill.number}`, 409);

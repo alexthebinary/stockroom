@@ -366,4 +366,21 @@ describe("review findings on money, dates, and waiting units", () => {
     expect((await testDb().purchaseOrder.findUniqueOrThrow({ where: { id: po.id } })).paymentStatus).toBe("REFUND_DUE");
     await expectBooksSound();
   });
+
+  it("#6 a date-only payment is accepted when that UTC midnight is still ahead", async () => {
+    const c = await sampleCompany();
+    const { bill } = await billedPo(c, 1, 0, "INV-DATE");
+    const now = new Date();
+    const nextMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    const delta = nextMidnight.getTime() - Date.now();
+    if (delta > 60_000 && delta < 86_400_000) {
+      const paid = await c.accountant.post(`/api/bills/${bill.id}/payments`, { amountCents: 100, paidAt: nextMidnight.toISOString(), method: "ACH" });
+      expect(paid.status, JSON.stringify(paid.body)).toBe(200);
+      expect(new Date(paid.body.paidAt).toISOString()).toBe(nextMidnight.toISOString());
+    }
+    const tooFar = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 3));
+    expect((await c.accountant.post(`/api/bills/${bill.id}/payments`, { amountCents: 100, paidAt: tooFar.toISOString() })).status).toBe(400);
+    expect((await c.accountant.post(`/api/bills/${bill.id}/payments`, { amountCents: 100, paidAt: new Date(Date.now() + 5 * 60_000).toISOString() })).status).toBe(400);
+    await expectBooksSound();
+  });
 });
