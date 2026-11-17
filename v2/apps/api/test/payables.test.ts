@@ -392,4 +392,23 @@ describe("review findings on money, dates, and waiting units", () => {
     expect(bill.dueDate.toISOString()).toMatch(/T00:00:00\.000Z$/);
     expect(bill.dueDate.getTime() - bill.billDate.getTime()).toBe(bill.termsDays * 86_400_000);
   });
+
+  it("#8 a bill's waiting units are only the unbilled lines on that bill", async () => {
+    const c = await sampleCompany();
+    const po = ok(await c.admin.post("/api/purchase-orders", {
+      vendorId: c.ids.supplier, warehouseId: c.ids.warehouse,
+      lines: [
+        { itemId: c.ids.widget, qtyOrdered: 2, unitCostCents: 50000 },
+        { itemId: c.ids.openBox, qtyOrdered: 3, unitCostCents: 1000 },
+      ],
+    })).body;
+    await deliver(c.clerk, { warehouseId: c.ids.warehouse, poId: po.id }, [{ code: WIDGET, qty: 2 }, { code: "SAMPLE-WIDGET-OB", qty: 3 }]);
+    const [draft] = ok(await c.accountant.get("/api/bills")).body;
+    expect(draft.heldUnits).toBe(5);
+    const openBox = draft.lines.find((line: { itemId: number }) => line.itemId === c.ids.openBox);
+    ok(await c.accountant.patch(`/api/bills/${draft.id}`, { version: draft.version, lines: [{ id: openBox.id, qty: 0, unitCostCents: 1000 }] }));
+    const [listed] = ok(await c.accountant.get("/api/bills")).body;
+    expect(listed.heldUnits).toBe(2);
+    await expectBooksSound();
+  });
 });
