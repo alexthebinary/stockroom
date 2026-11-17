@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { inTx, type Tx } from "../src/db";
 import { postInventoryBill } from "../src/purchasing/bills";
 import { postVendorCredit } from "../src/purchasing/credits";
+import { postFreightBill } from "../src/purchasing/freight";
 import { receive } from "../src/purchasing/receive";
 import { voidBill } from "../src/purchasing/void";
 import { expectBooksSound, ok, sampleCompany, testDb } from "./helpers";
@@ -43,7 +44,7 @@ async function race<A, B>(first: (tx: Tx, pause: () => Promise<void>) => Promise
   return Promise.all([aResult, bResult]);
 }
 
-function pauseRead(tx: Tx, model: "purchaseOrderLine" | "vendorBill", method: "findUniqueOrThrow", pause: () => Promise<void>): Tx {
+function pauseRead(tx: Tx, model: "purchaseOrderLine" | "vendorBill", method: "findUniqueOrThrow" | "findFirst", pause: () => Promise<void>): Tx {
   let once = true;
   return new Proxy(tx, {
     get(target, key) {
@@ -195,6 +196,48 @@ describe("purchasing locking regressions", () => {
     for (const result of results) expect(result).not.toHaveProperty("error");
     const lines = await testDb().purchaseOrderLine.findMany({ where: { poId: po.id } });
     expect(lines.map(l => l.qtyBilled)).toEqual([2, 2]);
+    await expectBooksSound();
+  });
+
+  it("finding #2 freight-in holds the PO lines until the split is written", async () => {
+    const c = await sampleCompany();
+    const po = ok(await c.admin.post("/api/purchase-orders", {
+      vendorId: c.ids.supplier, warehouseId: c.ids.warehouse,
+      lines: [{ itemId: c.ids.widget, qtyOrdered: 1, unitCostCents: 50000 }],
+    })).body;
+    const draft = ok(await c.accountant.post("/api/bills", { poId: po.id })).body;
+    const bill = ok(await c.accountant.patch(`/api/bills/${draft.id}`, { version: draft.version, vendorInvoiceNumber: "INV-FR" })).body;
+    ok(await c.accountant.post(`/api/bills/${bill.id}/post`, { version: bill.version }));
+    const freight = ok(await c.accountant.post("/api/freight-bills", {
+      kind: "FREIGHT_IN", vendorId: c.ids.carrier, vendorInvoiceNumber: "FR-LOCK", amountCents: 1000, targetPoIds: [po.id],
+    })).body;
+    const results = await race(
+      (tx, pause) => postFreightBill(ctx(pauseRead(tx, "purchaseOrderLine", "findUniqueOrThrow", pause)), freight.id, freight.version),
+      () => inTx(testDb(), (tx) => receive(ctx(tx), {
+        warehouseId: c.ids.warehouse, vendorId: c.ids.supplier, poId: po.id,
+        arrivals: [{ itemId: c.ids.widget, qty: 1, serials: [] }],
+      })),
+    );
+    for (const result of results) expect(result, JSON.stringify(result)).not.toHaveProperty("error");
+    expect(await testDb().costPool.findUniqueOrThrow({ where: { itemId: c.ids.widget } })).toMatchObject({ qty: 1, valueCents: 51000 });
+    expect(await testDb().purchaseOrderLine.findFirstOrThrow({ where: { poId: po.id } })).toMatchObject({ inboundCents: 0, qtyLanded: 1 });
+    await expectBooksSound();
+  });
+
+  it("finding #3 two drafts with the same invoice cannot both post", async () => {
+    const c = await sampleCompany();
+    const make = (invoice: string) => c.accountant.post("/api/freight-bills", {
+      kind: "FREIGHT_OUT", vendorId: c.ids.carrier, vendorInvoiceNumber: invoice, amountCents: 4500,
+    });
+    const first = ok(await make("DUP-9")).body;
+    const second = ok(await make("dup-9")).body;
+    const [posted, rejected] = await race(
+      (tx, pause) => postFreightBill(ctx(pauseRead(tx, "vendorBill", "findFirst", pause)), first.id, first.version),
+      () => inTx(testDb(), (tx) => postFreightBill(ctx(tx), second.id, second.version)),
+    );
+    expect(posted).not.toHaveProperty("error");
+    expect(rejected).toHaveProperty("error");
+    expect(await testDb().vendorBill.count({ where: { status: "POSTED", vendorId: c.ids.carrier } })).toBe(1);
     await expectBooksSound();
   });
 });

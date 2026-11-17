@@ -95,6 +95,18 @@ describe("scan/pay review regression batch", () => {
     await expectBooksSound();
   });
 
+  it("#1 a plus on an unmatched case barcode adds one unit, not another case", async () => {
+    const c = await sampleCompany();
+    await testDb().itemBarcode.updateMany({ where: { itemId: c.ids.widget }, data: { packQty: 12 } });
+    const session = ok(await c.clerk.post("/api/scan-sessions", { clientId: randomUUID(), warehouseId: c.ids.warehouse, vendorId: c.ids.supplier })).body;
+    ok(await c.clerk.post(`/api/scan-sessions/${session.id}/events`, { events: [
+      { ...event(), itemId: null },
+      { ...event(), itemId: null, source: "MANUAL", qty: 1 },
+    ] }));
+    expect(ok(await c.clerk.post(`/api/scan-sessions/${session.id}/submit`, { expectedEventCount: 2 })).body.heldUnits).toBe(13);
+    await expectBooksSound();
+  });
+
   it("#21 retrying submit with the same count returns the saved result", async () => {
     const c = await sampleCompany();
     const { session, submitted } = await deliver(c.clerk, { warehouseId: c.ids.warehouse, vendorId: c.ids.supplier }, [{ code: WIDGET }]);

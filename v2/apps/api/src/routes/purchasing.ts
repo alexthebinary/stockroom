@@ -6,7 +6,7 @@ import { audit } from "../audit";
 import { inTx, Prisma, type Db } from "../db";
 import { actorOf, idParam, notFound, parse } from "../http";
 import { transition } from "../transition";
-import { dueDateFor, draftBillFromPo, postInventoryBill, previewBill, recomputeTotals } from "../purchasing/bills";
+import { calendarDay, dueDateFor, draftBillFromPo, postInventoryBill, previewBill, recomputeTotals } from "../purchasing/bills";
 import { postFreightBill } from "../purchasing/freight";
 import { lockBill } from "../purchasing/locks";
 import { createPo, refreshPoStatus } from "../purchasing/po";
@@ -318,16 +318,22 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
       take: 500,
     });
     const vendors = await db.vendor.findMany({ where: { id: { in: bills.map((b) => b.vendorId!).filter(Boolean) } } });
-    const heldByPo = new Map<number, number>();
-    for (const line of await db.purchaseOrderLine.findMany({ where: { poId: { in: bills.map((b) => b.poId!).filter(Boolean) }, qtyHeld: { gt: 0 } } })) {
-      heldByPo.set(line.poId, (heldByPo.get(line.poId) ?? 0) + line.qtyHeld);
-    }
+    const poLineIds = bills.flatMap((b) => b.lines.map((line) => line.poLineId).filter((id): id is number => id != null));
+    const poLines = poLineIds.length ? await db.purchaseOrderLine.findMany({ where: { id: { in: poLineIds } }, select: { id: true, qtyHeld: true } }) : [];
+    const heldByLine = new Map(poLines.map((line) => [line.id, line.qtyHeld]));
+    // Waiting units are the held quantity this draft will actually land: the
+    // lines on the bill whose quantity is still unbilled, not every held unit on the order.
+    const heldUnits = (bill: (typeof bills)[number]) => bill.status !== State.bill.DRAFT ? 0 : bill.lines.reduce((sum, line) => {
+      if (!line.poLineId || line.qty <= 0) return sum;
+      const held = heldByLine.get(line.poLineId) ?? 0;
+      return held > 0 ? sum + Math.min(held, line.qty) : sum;
+    }, 0);
     return bills
       .map((b) => ({
         ...b,
         attachment: b.attachment ? true : null,
         vendor: vendors.find((v) => v.id === b.vendorId) ?? null,
-        heldUnits: b.poId ? (heldByPo.get(b.poId) ?? 0) : 0,
+        heldUnits: heldUnits(b),
         openCents: b.status === State.bill.POSTED ? b.totalCents - b.paidCents - b.creditedCents : 0,
       }))
       .filter((b) => !q.open || b.openCents !== 0);
@@ -385,7 +391,7 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
       const bill = await tx.vendorBill.findUniqueOrThrow({ where: { id }, include: { lines: true } });
       if (bill.status !== State.bill.DRAFT) throw new DomainError(`${bill.number} is ${bill.status.toLowerCase()} and can't be edited`, 409);
       if (bill.version !== body.version) throw new DomainError(`${bill.number} was changed by someone else. Reload it.`, 409);
-      const billDate = body.billDate ?? bill.billDate;
+      const billDate = body.billDate ? calendarDay(body.billDate) : bill.billDate;
       const termsDays = body.termsDays ?? bill.termsDays;
       const vendorChanged = body.vendorId !== undefined && body.vendorId !== bill.vendorId;
       let terms = termsDays;

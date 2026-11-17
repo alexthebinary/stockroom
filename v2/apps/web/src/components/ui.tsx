@@ -4,6 +4,9 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle, IconBan, IconCheck, IconCircleDashed, IconClockHour4 } from "@tabler/icons-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { isCalendarDay, toInputDate } from "../lib/dates";
+
+export { toInputDate };
 
 export const usd = (cents: number | null | undefined) => (cents == null ? "—" : formatUsd(cents));
 
@@ -88,6 +91,7 @@ const MEANING: Record<string, { tone: Tone; label: string }> = {
   UNPAID: { tone: "none", label: "Unpaid" },
   PARTIAL: { tone: "progress", label: "Part paid" },
   PAID: { tone: "done", label: "Paid" },
+  REFUND_DUE: { tone: "attention", label: "Refund due" },
   NOT_RECEIVED: { tone: "none", label: "Not received" },
   RECEIVED: { tone: "done", label: "Received" },
   PENDING_BILL: { tone: "attention", label: "Awaiting bill" },
@@ -158,8 +162,5 @@ export const toastErr = (error: unknown) => notifications.show({ title: "Not sav
  * A calendar day (a due date, a bill date) is stored as midnight UTC: it is shown as that day everywhere,
  * not shifted to the evening before in US time zones. A real moment (created, posted) shows in local time.
  */
-const isCalendarDay = (iso: string | Date) => (typeof iso === "string" ? /T00:00:00(\.000)?Z$/.test(iso) || /^\d{4}-\d{2}-\d{2}$/.test(iso) : false);
 export const formatDate = (iso: string | Date | null | undefined) =>
   iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", ...(isCalendarDay(iso) ? { timeZone: "UTC" } : {}) }) : "—";
-
-export const toInputDate = (iso: string | Date) => new Date(iso).toISOString().slice(0, 10);

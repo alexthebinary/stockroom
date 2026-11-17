@@ -86,7 +86,7 @@ function AccountingHome() {
         <Stat label="Bills to review" value={a.draftBills} />
         <Stat label="Units awaiting a bill" value={a.heldUnits} hint={a.heldUnits ? "Counted at the dock, not yet sellable" : undefined} />
         <Stat label="Unknown items" value={a.unknownItems} />
-        <Stat label="We owe" value={usd(a.payableCents)} />
+        <Stat label={a.payableCents < 0 ? "Vendors owe us" : "We owe"} value={usd(Math.abs(a.payableCents))} />
         <Stat label="Due in 7 days" value={usd(a.dueThisWeekCents)} />
         <Stat label="Overdue" value={usd(a.overdueCents)} />
       </SimpleGrid>
@@ -144,7 +144,7 @@ function AdminHome() {
           <section aria-labelledby="home-money">
             <h2 className="section-label" id="home-money">Money</h2>
             <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="lg" verticalSpacing="lg">
-              <Stat label="We owe" value={<Money cents={acct.payableCents} />} />
+              <Stat label={acct.payableCents < 0 ? "Vendors owe us" : "We owe"} value={<Money cents={Math.abs(acct.payableCents)} />} />
               <Stat label="Overdue" value={<Money cents={acct.overdueCents} />} tone={acct.overdueCents > 0 ? "warn" : undefined} />
               <Stat label="Due in 7 days" value={<Money cents={acct.dueThisWeekCents} />} />
             </SimpleGrid>

@@ -340,3 +340,75 @@ describe("freight-in links (feedback #48, #49)", () => {
     expect(ok(await c.admin.get(`/api/purchase-orders/${a.po.id}`)).body.freightBills).toEqual([]);
   });
 });
+
+describe("review findings on money, dates, and waiting units", () => {
+  it("#4 home nets a vendor credit into what we owe, the same figure as aging", async () => {
+    const c = await sampleCompany();
+    const { po, bill } = await billedPo(c, 2, 10000);
+    await deliver(c.clerk, { warehouseId: c.ids.warehouse, poId: po.id }, [{ code: WIDGET, qty: 2 }]);
+    const full = ok(await c.accountant.get(`/api/bills/${bill.id}`)).body;
+    ok(await c.accountant.post(`/api/bills/${bill.id}/payments`, { amountCents: 110000 }));
+    ok(await c.accountant.post(`/api/bills/${bill.id}/credits`, { kind: "PRICE_ALLOWANCE", lines: [{ billLineId: full.lines[0].id, amountCents: 4000 }] }));
+    const home = ok(await c.accountant.get("/api/home")).body;
+    const aging = ok(await c.accountant.get("/api/reports/ap-aging")).body;
+    const net = aging.vendors.reduce((sum: number, vendor: { totalCents: number }) => sum + vendor.totalCents, 0);
+    expect(net).toBe(-4000);
+    expect(home.accounting.payableCents).toBe(net);
+    await expectBooksSound();
+  });
+
+  it("#5 cash past the net owed reads refund due, not paid", async () => {
+    const c = await sampleCompany();
+    const { po, bill } = await billedPo(c, 2, 10000);
+    ok(await c.accountant.post(`/api/bills/${bill.id}/payments`, { amountCents: 110000 }));
+    const full = ok(await c.accountant.get(`/api/bills/${bill.id}`)).body;
+    ok(await c.accountant.post(`/api/bills/${bill.id}/credits`, { kind: "PRICE_ALLOWANCE", lines: [{ billLineId: full.lines[0].id, amountCents: 3000 }] }));
+    expect((await testDb().purchaseOrder.findUniqueOrThrow({ where: { id: po.id } })).paymentStatus).toBe("REFUND_DUE");
+    await expectBooksSound();
+  });
+
+  it("#6 a date-only payment is accepted when that UTC midnight is still ahead", async () => {
+    const c = await sampleCompany();
+    const { bill } = await billedPo(c, 1, 0, "INV-DATE");
+    const now = new Date();
+    const nextMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    const delta = nextMidnight.getTime() - Date.now();
+    if (delta > 60_000 && delta < 86_400_000) {
+      const paid = await c.accountant.post(`/api/bills/${bill.id}/payments`, { amountCents: 100, paidAt: nextMidnight.toISOString(), method: "ACH" });
+      expect(paid.status, JSON.stringify(paid.body)).toBe(200);
+      expect(new Date(paid.body.paidAt).toISOString()).toBe(nextMidnight.toISOString());
+    }
+    const tooFar = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 3));
+    expect((await c.accountant.post(`/api/bills/${bill.id}/payments`, { amountCents: 100, paidAt: tooFar.toISOString() })).status).toBe(400);
+    expect((await c.accountant.post(`/api/bills/${bill.id}/payments`, { amountCents: 100, paidAt: new Date(Date.now() + 5 * 60_000).toISOString() })).status).toBe(400);
+    await expectBooksSound();
+  });
+
+  it("#7 a dock draft stores the bill date and due date as UTC midnights", async () => {
+    const c = await sampleCompany();
+    await deliver(c.clerk, { warehouseId: c.ids.warehouse, vendorId: c.ids.supplier }, [{ code: WIDGET }]);
+    const bill = await testDb().vendorBill.findFirstOrThrow();
+    expect(bill.billDate.toISOString()).toMatch(/T00:00:00\.000Z$/);
+    expect(bill.dueDate.toISOString()).toMatch(/T00:00:00\.000Z$/);
+    expect(bill.dueDate.getTime() - bill.billDate.getTime()).toBe(bill.termsDays * 86_400_000);
+  });
+
+  it("#8 a bill's waiting units are only the unbilled lines on that bill", async () => {
+    const c = await sampleCompany();
+    const po = ok(await c.admin.post("/api/purchase-orders", {
+      vendorId: c.ids.supplier, warehouseId: c.ids.warehouse,
+      lines: [
+        { itemId: c.ids.widget, qtyOrdered: 2, unitCostCents: 50000 },
+        { itemId: c.ids.openBox, qtyOrdered: 3, unitCostCents: 1000 },
+      ],
+    })).body;
+    await deliver(c.clerk, { warehouseId: c.ids.warehouse, poId: po.id }, [{ code: WIDGET, qty: 2 }, { code: "SAMPLE-WIDGET-OB", qty: 3 }]);
+    const [draft] = ok(await c.accountant.get("/api/bills")).body;
+    expect(draft.heldUnits).toBe(5);
+    const openBox = draft.lines.find((line: { itemId: number }) => line.itemId === c.ids.openBox);
+    ok(await c.accountant.patch(`/api/bills/${draft.id}`, { version: draft.version, lines: [{ id: openBox.id, qty: 0, unitCostCents: 1000 }] }));
+    const [listed] = ok(await c.accountant.get("/api/bills")).body;
+    expect(listed.heldUnits).toBe(2);
+    await expectBooksSound();
+  });
+});

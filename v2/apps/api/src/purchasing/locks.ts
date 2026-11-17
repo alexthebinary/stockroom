@@ -12,6 +12,16 @@ export async function lockPoLinesForOrders(tx: Tx, poIds: number[]) {
     WHERE "poId" IN (${Prisma.join(ids)}) ORDER BY "id" FOR UPDATE`;
 }
 
+/**
+ * One posted invoice number per vendor, case-insensitive. Take this after the
+ * row locks and before the duplicate read, so the loser sees the winner's post
+ * and returns 409 instead of both inserting.
+ */
+export async function lockVendorInvoice(tx: Tx, vendorId: number, invoiceNumber: string) {
+  const key = `${vendorId}:${invoiceNumber.trim().toLowerCase()}`;
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 1))::text`;
+}
+
 export async function lockBill(tx: Tx, billId: number) {
   // This read only locates the locks. Status, version and lines are read by
   // the caller after locking; a concurrent edit/post cannot supply stale data.

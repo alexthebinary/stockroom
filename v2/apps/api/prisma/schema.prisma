@@ -384,6 +384,8 @@ model VendorBill {
   source              String    @default("MANUAL")
   vendorId            Int?
   poId                Int?
+  /// Posted bills are unique on (vendorId, lower(vendorInvoiceNumber)).
+  /// Partial index VendorBill_posted_invoice_key. Drafts may repeat a number.
   vendorInvoiceNumber String?
   billDate            DateTime
   termsDays           Int       @default(30)

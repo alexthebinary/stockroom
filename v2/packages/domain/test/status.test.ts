@@ -37,6 +37,7 @@ describe("purchase order axes (WMS doc: created, billed, paid/unpaid, received/p
     expect(paymentStatus(110000, 0)).toBe("UNPAID");
     expect(paymentStatus(110000, 60000)).toBe("PARTIAL");
     expect(paymentStatus(110000, 110000)).toBe("PAID");
+    expect(paymentStatus(7000, 10000), "cash past the net owed is a refund, not paid").toBe("REFUND_DUE");
   });
 
   it("receiving counts physical arrival, held units included", () => {

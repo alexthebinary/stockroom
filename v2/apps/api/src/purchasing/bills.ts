@@ -6,11 +6,15 @@ import { landUnits, type StockCtx } from "../stock";
 import { transition } from "../transition";
 import { billLineStock, unbilledInboundShare } from "./adjust";
 import { refreshPoStatus } from "./po";
-import { lockBill } from "./locks";
+import { lockBill, lockVendorInvoice } from "./locks";
 import { inboundShare, refreshReceiptState } from "./receive";
 
 const DAY = 86_400_000;
-export const dueDateFor = (billDate: Date, termsDays: number) => new Date(billDate.getTime() + termsDays * DAY);
+
+/** The UTC calendar day of a timestamp, stored as midnight so aging and the screen share one day. */
+export const calendarDay = (date: Date) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+
+export const dueDateFor = (billDate: Date, termsDays: number) => new Date(calendarDay(billDate).getTime() + termsDays * DAY);
 
 /**
  * Make sure a PO that is holding received-but-unbilled units has a draft bill
@@ -26,7 +30,7 @@ export async function ensureDraftBill(tx: Tx, poId: number, actor: string) {
   if (existing && existing.version > 0) return existing;
   const vendor = po.vendorId ? await tx.vendor.findUnique({ where: { id: po.vendorId } }) : null;
   const termsDays = vendor?.paymentTermsDays ?? 30;
-  const billDate = new Date();
+  const billDate = calendarDay(new Date());
   const lines = unbilled.map(({ line, qty }) => ({ poLineId: line.id, itemId: line.itemId, qty, unitCostCents: line.unitCostCents }));
   if (existing) {
     await tx.vendorBillLine.deleteMany({ where: { billId: existing.id } });
@@ -57,7 +61,7 @@ export async function draftBillFromPo(tx: Tx, poId: number) {
   if (lines.length === 0) throw new DomainError(`Everything on ${po.number} is already billed`, 409);
   const vendor = po.vendorId ? await tx.vendor.findUnique({ where: { id: po.vendorId } }) : null;
   const termsDays = vendor?.paymentTermsDays ?? 30;
-  const billDate = new Date();
+  const billDate = calendarDay(new Date());
   const bill = await tx.vendorBill.create({
     data: {
       number: await nextNumber(tx, "BILL"),
@@ -139,6 +143,7 @@ export async function postInventoryBill(ctx: StockCtx, billId: number, expectedV
   if (bill.version !== expectedVersion) throw new DomainError(`${bill.number} was changed by someone else. Reload it and post again.`, 409);
   if (!bill.vendorId) throw new DomainError("Choose the vendor before posting", 400);
   if (!bill.vendorInvoiceNumber?.trim()) throw new DomainError("Enter the vendor's invoice number before posting", 400);
+  await lockVendorInvoice(tx, bill.vendorId, bill.vendorInvoiceNumber);
   const duplicate = await tx.vendorBill.findFirst({
     where: { id: { not: bill.id }, vendorId: bill.vendorId, status: State.bill.POSTED, vendorInvoiceNumber: { equals: bill.vendorInvoiceNumber.trim(), mode: "insensitive" } },
   });

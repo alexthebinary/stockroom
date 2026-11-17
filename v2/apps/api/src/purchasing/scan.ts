@@ -44,8 +44,9 @@ export async function appendEvents(tx: Tx, sessionId: number, events: IncomingEv
         // The server's barcode table wins over the phone's copy: a 409 here would
         // jam the offline outbox, which resends the same batch until it succeeds.
         itemId = match.itemId;
-        // Camera quantities count packages; manual +/- corrections count units.
-        qty = event.source === "BARCODE" || !event.itemId ? event.qty * match.packQty : event.qty;
+        // Camera quantities count packages. A manual +/- counts units even when
+        // the line has no item yet, or a case barcode would multiply the correction.
+        qty = event.source === "BARCODE" ? event.qty * match.packQty : event.qty;
         serial ??= match.serial ?? null;
       }
     }
