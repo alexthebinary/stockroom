@@ -79,6 +79,10 @@ type Tone = "none" | "progress" | "done" | "attention" | "void";
 const TONE_ICON: Record<Tone, typeof IconCheck> = { void: IconBan, none: IconCircleDashed, progress: IconClockHour4, done: IconCheck, attention: IconAlertTriangle };
 const MEANING: Record<string, { tone: Tone; label: string }> = {
   NOT_BILLED: { tone: "none", label: "Not billed" },
+  NOT_INVOICED: { tone: "none", label: "Not invoiced" },
+  INVOICED: { tone: "done", label: "Invoiced" },
+  NOT_SHIPPED: { tone: "none", label: "Not shipped" },
+  SHIPPED: { tone: "done", label: "Shipped" },
   DRAFT: { tone: "attention", label: "Draft" },
   BILLED: { tone: "done", label: "Billed" },
   UNPAID: { tone: "none", label: "Unpaid" },

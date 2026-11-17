@@ -84,6 +84,12 @@ export const HELP_CARDS: HelpCard[] = [
     answer: "Settings, Accounts has Account assignment and the Chart of accounts. Enter Code, Name and type to add a posting account. Changing an unlocked assignment affects new entries only. Inventory 1200 has two locked roles, on hand and in transit.", screen: "settings" },
   { id: "test_company", when: "How to try the app with a test company or fake data.",
     answer: "Open Settings, Company, Test companies, type a name and choose Create and open. A test company starts empty and doesn't touch your main books. An orange button at the bottom takes you back. Deleting a test company can't be undone.", screen: "settings" },
+  { id: "sales_order", when: "How to create a sales order, ship it, or what a sales order does to stock.",
+    answer: "Open Sales orders and tap New. Pick the customer, where the goods leave from, and each item with quantity and price, then Create order. Ship remaining takes those units out of stock at average cost and posts cost of goods sold. Cancel is only possible before anything ships or is invoiced.", screen: "sales_orders" },
+  { id: "customer_invoice", when: "How to invoice a customer, void an invoice, or record a customer payment.",
+    answer: "On a sales order, hold Create invoice. That posts a debit to Accounts Receivable and a credit to Sales Revenue for the uninvoiced quantity at the order price. Open the invoice to record a payment, which debits cash and credits Accounts Receivable. Void invoice reverses that entry, and only while nothing has been paid.", screen: "invoices" },
+  { id: "receivables_aging", when: "What the Receivables screen shows, or how customer aging and overdue invoices work.",
+    answer: "Receivables lists posted customer invoices that are not yet settled, grouped by customer and due date. Current means not yet late. 1-30, 31-60, 61-90 and 90+ are days past the due date. Open an invoice number to record a payment.", screen: "receivables" },
   { id: "help_limits", when: "What the help assistant can and cannot do.",
     answer: "I can explain how ProfitIndex works and offer links to screens. I can't see your company records, post documents or change anything. Open the screen to look at your own data.", screen: "guide" },
 ];

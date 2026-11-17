@@ -33,6 +33,9 @@ type Section = { to: string; label: string; icon: typeof IconHome };
 const SECTIONS: Record<string, Section> = {
   home: { to: "/", label: "Home", icon: IconHome },
   receive: { to: "/receive", label: "Receive", icon: IconBarcode },
+  salesOrders: { to: "/sales/orders", label: "Sales Orders", icon: IconReceipt2 },
+  invoices: { to: "/sales/invoices", label: "Invoices", icon: IconFileInvoice },
+  receivables: { to: "/sales/receivables", label: "Receivables", icon: IconCash },
   orders: { to: "/orders", label: "Orders", icon: IconReceipt2 },
   bills: { to: "/bills", label: "Bills", icon: IconFileInvoice },
   payables: { to: "/payables", label: "Payables", icon: IconCash },
@@ -53,11 +56,12 @@ const TABS: Record<Job, (keyof typeof SECTIONS)[]> = {
 
 /** The desktop rail: everything, grouped, the job's own work first. */
 const RAIL: Record<Job, (keyof typeof SECTIONS)[]> = {
-  CLERK: ["home", "receive", "items", "stocktake", "orders", "guide"],
-  ACCOUNTING: ["home", "bills", "payables", "orders", "items", "reports", "receive", "settings", "guide", "feedback"],
-  ADMIN: ["home", "orders", "bills", "payables", "receive", "items", "stocktake", "reports", "settings", "guide", "feedback"],
+  CLERK: ["home", "salesOrders", "invoices", "receivables", "receive", "items", "stocktake", "orders", "guide"],
+  ACCOUNTING: ["home", "salesOrders", "invoices", "receivables", "bills", "payables", "orders", "items", "reports", "receive", "settings", "guide", "feedback"],
+  ADMIN: ["home", "salesOrders", "invoices", "receivables", "orders", "bills", "payables", "receive", "items", "stocktake", "reports", "settings", "guide", "feedback"],
 };
 
+const SALES = ["salesOrders", "invoices", "receivables"];
 const PURCHASES = ["orders", "bills", "payables"];
 const STOCK = ["items", "receive", "stocktake"];
 
@@ -68,10 +72,13 @@ export function Shell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const { colorScheme, setColorScheme } = useMantineColorScheme();
   const job = profile?.job ?? "CLERK";
+  const [salesOpened, setSalesOpened] = useState(true);
   const [purchasesOpened, setPurchasesOpened] = useState(true);
   const [stockOpened, setStockOpened] = useState(true);
   const [companiesOpen, setCompaniesOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const sales = SALES.filter((key) => RAIL[job].includes(key));
+  const salesActive = sales.some((key) => isActive(pathname, SECTIONS[key]!.to));
   const purchases = PURCHASES.filter((key) => RAIL[job].includes(key));
   const purchasesActive = purchases.some((key) => isActive(pathname, SECTIONS[key]!.to));
 
@@ -147,6 +154,11 @@ export function Shell({ children }: { children: ReactNode }) {
       <AppShell.Navbar p="xs" className="no-print" aria-label="Sections">
         <Stack gap={2}>
           {RAIL[job].filter((key) => key === "home").map((key) => sectionLink(key))}
+          {sales.length > 0 && (
+            <NavLink label="Sales" leftSection={<IconFileInvoice size={18} />} opened={salesActive || salesOpened} onChange={setSalesOpened} style={{ borderRadius: 8 }}>
+              {sales.map((key) => sectionLink(key))}
+            </NavLink>
+          )}
           {purchases.length > 0 && (
             <NavLink label="Purchases" leftSection={<IconReceipt2 size={18} />} opened={purchasesActive || purchasesOpened} onChange={setPurchasesOpened} style={{ borderRadius: 8 }}>
               {purchases.map((key) => sectionLink(key))}
@@ -157,7 +169,7 @@ export function Shell({ children }: { children: ReactNode }) {
               {stockKeys.map((key) => sectionLink(key, key === "items" ? "Inventory" : undefined))}
             </NavLink>
           ) : null}
-          {RAIL[job].filter((key) => key !== "home" && !PURCHASES.includes(key) && !(stockGrouped && STOCK.includes(key))).map((key) => sectionLink(key))}
+          {RAIL[job].filter((key) => key !== "home" && !SALES.includes(key) && !PURCHASES.includes(key) && !(stockGrouped && STOCK.includes(key))).map((key) => sectionLink(key))}
         </Stack>
       </AppShell.Navbar>
 

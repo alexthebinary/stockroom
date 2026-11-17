@@ -6,6 +6,10 @@ export const SCREENS = {
   home: { to: "/", label: "Home" },
   receive: { to: "/receive", label: "Receive" },
   practice: { to: "/receive/practice", label: "Scanner practice" },
+  sales_orders: { to: "/sales/orders", label: "Sales orders" },
+  new_sales_order: { to: "/sales/orders/new", label: "New sales order" },
+  invoices: { to: "/sales/invoices", label: "Invoices" },
+  receivables: { to: "/sales/receivables", label: "Receivables" },
   orders: { to: "/orders", label: "Orders" },
   new_order: { to: "/orders/new", label: "New order" },
   bills: { to: "/bills", label: "Bills" },
@@ -25,7 +29,7 @@ export function goTo(screen: string): Navigation {
   return SCREENS[screen as keyof typeof SCREENS];
 }
 
-export const HELP_PAGES = ["index", "getting-started", "items", "receive", "bills-payables", "vendor-credits", "reports", "settings"] as const;
+export const HELP_PAGES = ["index", "getting-started", "items", "receive", "bills-payables", "vendor-credits", "reports", "settings", "sales"] as const;
 // Source runs from src/ai; the production bundle runs from dist.
 const helpRoot = [resolve(import.meta.dirname, "../../../../docs/help"), resolve(import.meta.dirname, "../../../docs/help")].find((p) => existsSync(resolve(p, "index.md")));
 export function readWiki(page: string): string {

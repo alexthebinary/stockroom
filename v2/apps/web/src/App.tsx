@@ -12,6 +12,7 @@ import { HomePage } from "./features/home/Homes";
 import { ProfilePicker } from "./features/home/ProfilePicker";
 import { TestCompanyPill } from "./features/settings/Companies";
 import { NewOrder, OrderDetail, Orders } from "./features/orders/Orders";
+import { InvoiceDetail, Invoices, NewSalesOrder, Receivables, SalesOrderDetail, SalesOrders } from "./features/sales/Sales";
 import { Payables } from "./features/payables/Payables";
 import { ReceiveWizard } from "./features/receive/ReceiveWizard";
 import { Stocktake } from "./features/stocktake/Stocktake";
@@ -76,6 +77,12 @@ function Screens({ profile, required, pathname }: { profile: boolean; required: 
         <Route path="/" element={<HomePage />} />
         <Route path="/receive" element={<ReceiveWizard />} />
         <Route path="/receive/practice" element={<Practice />} />
+        <Route path="/sales/orders" element={<SalesOrders />} />
+        <Route path="/sales/orders/new" element={<NewSalesOrder />} />
+        <Route path="/sales/orders/:id" element={<SalesOrderDetail />} />
+        <Route path="/sales/invoices" element={<Invoices />} />
+        <Route path="/sales/invoices/:id" element={<InvoiceDetail />} />
+        <Route path="/sales/receivables" element={<Receivables />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/orders/new" element={<NewOrder />} />
         <Route path="/orders/:id" element={<OrderDetail />} />
