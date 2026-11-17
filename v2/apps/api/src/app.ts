@@ -19,6 +19,7 @@ import { registerHelp } from "./routes/help";
 import { registerPayables } from "./routes/payables";
 import { registerPurchasing } from "./routes/purchasing";
 import { registerReports } from "./routes/reports";
+import { registerSales } from "./routes/sales";
 import { registerSearch } from "./routes/search";
 import { registerSetup } from "./routes/setup";
 
@@ -142,6 +143,7 @@ export function buildApp(input: Deps): FastifyInstance {
   registerCatalog(app, deps);
   registerAccounting(app, deps);
   registerPurchasing(app, deps);
+  registerSales(app, deps);
   registerPayables(app, deps);
   registerReports(app, deps);
   registerSearch(app, deps);

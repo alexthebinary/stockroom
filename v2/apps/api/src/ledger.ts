@@ -75,6 +75,7 @@ export async function postEntry(tx: Tx, input: PostInput) {
             amountCents: line.amountCents,
             itemId: line.itemId,
             vendorId: line.vendorId,
+            customerId: line.customerId,
             poLineId: line.poLineId,
             memo: line.memo,
           };
@@ -108,6 +109,7 @@ export async function reverseEntry(tx: Tx, entryId: number, actor: string, date 
           amountCents: l.amountCents,
           itemId: l.itemId,
           vendorId: l.vendorId,
+          customerId: l.customerId,
           poLineId: l.poLineId,
           memo: l.memo,
         })),

@@ -16,6 +16,7 @@ export function movementType(m: { register: string; counterType: string; qtyDelt
   if (m.counterType === "RECLASS") return m.qtyDelta < 0 ? "Inventory reclassification – out" : "Inventory reclassification – in";
   if (m.counterType === "VENDOR_CREDIT") return "Purchase return";
   if (m.counterType === "BILL" || m.counterType === "PO") return m.qtyDelta < 0 ? "Receipt reversal" : "Warehouse receipt";
+  if (m.counterType === "SALES_ORDER") return "Sales shipment";
   if (m.register === "WH_OUT") return "Bundle shipped";
   return m.qtyDelta < 0 ? "Inventory adjustment – loss" : "Inventory adjustment – gain";
 }
