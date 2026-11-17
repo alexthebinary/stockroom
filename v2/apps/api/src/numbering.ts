@@ -3,6 +3,9 @@ import type { Tx } from "./db";
 /** Document number formats, as people read them on paper and on screen. */
 const FORMATS = {
   PO: (n: number) => `PO-${String(n).padStart(5, "0")}`,
+  SO: (n: number) => `SO-${String(n).padStart(5, "0")}`,
+  INV: (n: number) => `INV-${String(n).padStart(5, "0")}`,
+  CP: (n: number) => `CP-${String(n).padStart(5, "0")}`,
   BILL: (n: number) => `BILL-${String(n).padStart(5, "0")}`,
   WH_IN: (n: number) => `WH-IN-${String(n).padStart(5, "0")}`,
   WH_OUT: (n: number) => `WH-OUT-${String(n).padStart(5, "0")}`,

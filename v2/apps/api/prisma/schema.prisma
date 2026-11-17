@@ -128,6 +128,8 @@ model JournalLine {
   amountCents Int
   itemId      Int?
   vendorId    Int?
+  /// Accounts receivable lines name the customer, the way payable lines name the vendor.
+  customerId  Int?
   poLineId    Int?
   memo        String?
 
@@ -136,6 +138,7 @@ model JournalLine {
 
   @@index([accountId])
   @@index([itemId])
+  @@index([customerId])
 }
 
 // ─── Catalog, places, parties ────────────────────────────────────────────
@@ -630,4 +633,133 @@ model AiJudgment {
   actor        String?
   latencyMs    Int
   model        String
+}
+
+// ─── Sales ───────────────────────────────────────────────────────────────
+
+/// termsDays is the customer's default; an invoice copies it onto its due date.
+model Customer {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String?
+  phone     String?
+  termsDays Int      @default(30)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  orders   SalesOrder[]
+  invoices CustomerInvoice[]
+  payments CustomerPayment[]
+}
+
+/// lifecycle: OPEN | CANCELED (soLifecycle). The other three axes are derived
+/// by refreshSalesOrder and never set by hand. A sales order posts nothing
+/// until it is shipped (cost) or invoiced (revenue).
+model SalesOrder {
+  id              Int      @id @default(autoincrement())
+  number          String   @unique
+  customerId      Int?
+  warehouseId     Int
+  lifecycle       String   @default("OPEN")
+  invoicingStatus String   @default("NOT_INVOICED")
+  paymentStatus   String   @default("UNPAID")
+  shippingStatus  String   @default("NOT_SHIPPED")
+  notes           String?
+  createdBy       String
+  version         Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  customer Customer?           @relation(fields: [customerId], references: [id])
+  lines    SalesOrderLine[]
+  invoices CustomerInvoice[]
+
+  @@index([customerId])
+  @@index([lifecycle])
+}
+
+/// qtyShipped is units that have left stock. qtyInvoiced is units on a posted
+/// invoice. The two move independently: an invoice can precede the shipment.
+model SalesOrderLine {
+  id             Int @id @default(autoincrement())
+  salesOrderId   Int
+  itemId         Int
+  qtyOrdered     Int
+  unitPriceCents Int
+  qtyShipped     Int @default(0)
+  qtyInvoiced    Int @default(0)
+
+  salesOrder   SalesOrder            @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  invoiceLines CustomerInvoiceLine[]
+
+  @@index([salesOrderId])
+}
+
+/// status: DRAFT | POSTED | VOID (customerInvoice). Created as a draft and
+/// posted in the same transaction. paidCents is cash applied, not voided.
+model CustomerInvoice {
+  id            Int       @id @default(autoincrement())
+  number        String    @unique
+  status        String    @default("DRAFT")
+  customerId    Int
+  salesOrderId  Int?
+  invoiceDate   DateTime
+  termsDays     Int       @default(30)
+  dueDate       DateTime
+  subtotalCents Int       @default(0)
+  totalCents    Int       @default(0)
+  paidCents     Int       @default(0)
+  notes         String?
+  version       Int       @default(0)
+  postedAt      DateTime?
+  postedBy      String?
+  voidedAt      DateTime?
+  voidedBy      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  customer   Customer              @relation(fields: [customerId], references: [id])
+  salesOrder SalesOrder?           @relation(fields: [salesOrderId], references: [id])
+  lines      CustomerInvoiceLine[]
+  payments   CustomerPayment[]
+
+  @@index([status])
+  @@index([customerId])
+  @@index([salesOrderId])
+}
+
+model CustomerInvoiceLine {
+  id               Int     @id @default(autoincrement())
+  invoiceId        Int
+  salesOrderLineId Int?
+  itemId           Int?
+  description      String?
+  qty              Int     @default(0)
+  unitPriceCents   Int     @default(0)
+  amountCents      Int     @default(0)
+
+  invoice        CustomerInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  salesOrderLine SalesOrderLine? @relation(fields: [salesOrderLineId], references: [id])
+
+  @@index([invoiceId])
+}
+
+/// status: POSTED | VOID (payment machine). Dr cash / Cr accounts receivable.
+model CustomerPayment {
+  id          Int      @id @default(autoincrement())
+  number      String   @unique
+  status      String   @default("POSTED")
+  customerId  Int
+  invoiceId   Int
+  amountCents Int
+  method      String   @default("BANK")
+  paidAt      DateTime
+  memo        String?
+  actor       String
+  createdAt   DateTime @default(now())
+
+  customer Customer        @relation(fields: [customerId], references: [id])
+  invoice  CustomerInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId])
 }

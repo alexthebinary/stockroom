@@ -111,6 +111,21 @@ export const MACHINES = {
       CANCELED: ["CANCELED"],
     },
   },
+  soLifecycle: {
+    initial: "OPEN",
+    edges: {
+      OPEN: ["CANCELED"],
+      CANCELED: ["CANCELED"],
+    },
+  },
+  customerInvoice: {
+    initial: "DRAFT",
+    edges: {
+      DRAFT: ["POSTED", "VOID"],
+      POSTED: ["VOID"],
+      VOID: [],
+    },
+  },
   serialUnit: {
     initial: "HELD",
     edges: {
@@ -153,6 +168,8 @@ export type BillState = MachineState<"bill">;
 export type PaymentState = MachineState<"payment">;
 export type ScanSessionState = MachineState<"scanSession">;
 export type PoLifecycleState = MachineState<"poLifecycle">;
+export type SoLifecycleState = MachineState<"soLifecycle">;
+export type CustomerInvoiceState = MachineState<"customerInvoice">;
 export type SerialState = MachineState<"serialUnit">;
 export type FeedbackStatus = MachineState<"feedbackStatus">;
 export type FeedbackSpecState = MachineState<"feedbackSpec">;
@@ -162,6 +179,8 @@ export const BILL_STATES = ["DRAFT", "POSTED", "VOID"] as const satisfies readon
 export const PAYMENT_STATES = ["POSTED", "VOID"] as const satisfies readonly PaymentState[];
 export const SCAN_STATES = ["OPEN", "SUBMITTED", "ABANDONED"] as const satisfies readonly ScanSessionState[];
 export const PO_LIFECYCLE_STATES = ["OPEN", "CANCELED"] as const satisfies readonly PoLifecycleState[];
+export const SO_LIFECYCLE_STATES = ["OPEN", "CANCELED"] as const satisfies readonly SoLifecycleState[];
+export const CUSTOMER_INVOICE_STATES = ["DRAFT", "POSTED", "VOID"] as const satisfies readonly CustomerInvoiceState[];
 export const SERIAL_STATES = ["HELD", "IN_STOCK", "RETURNED"] as const satisfies readonly SerialState[];
 export const FEEDBACK_STATUSES = ["OPEN", "DONE", "WONTFIX"] as const satisfies readonly FeedbackStatus[];
 export const FEEDBACK_SPEC_STATES = ["NONE", "PROPOSED", "CONFIRMED"] as const satisfies readonly FeedbackSpecState[];
@@ -185,6 +204,8 @@ export const State = {
   payment: lookup(PAYMENT_STATES),
   scanSession: lookup(SCAN_STATES),
   poLifecycle: lookup(PO_LIFECYCLE_STATES),
+  soLifecycle: lookup(SO_LIFECYCLE_STATES),
+  customerInvoice: lookup(CUSTOMER_INVOICE_STATES),
   serialUnit: lookup(SERIAL_STATES),
   feedbackStatus: lookup(FEEDBACK_STATUSES),
   feedbackSpec: lookup(FEEDBACK_SPEC_STATES),

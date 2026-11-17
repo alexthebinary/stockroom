@@ -79,6 +79,42 @@ stateDiagram-v2
 
 `GET /api/purchase-orders` accepts `lifecycle` of OPEN (the default), CANCELED, CLOSED, or ALL. ALL omits the filter. CLOSED matches the column exactly, so it returns no rows. A typo is 400.
 
+## Sales order lifecycle
+
+States: OPEN (initial), CANCELED. Cancel is idempotent: a canceled order can be canceled again and stays CANCELED. Nothing writes CLOSED.
+
+```mermaid
+stateDiagram-v2
+  [*] --> OPEN
+  OPEN --> CANCELED: POST /api/sales-orders/:id/cancel
+  CANCELED --> CANCELED: POST /api/sales-orders/:id/cancel
+```
+
+| Edge | What triggers it | Illegal move |
+|---|---|---|
+| OPEN → CANCELED | `POST /api/sales-orders/:id/cancel`. | `{number} has shipped stock and can't be cancelled` or `{number} has a posted invoice; void the invoice first`. Those are refused before the lifecycle write. |
+| CANCELED → CANCELED | The same cancel route, called again. | The second call succeeds. The order stays CANCELED. |
+
+`GET /api/sales-orders` accepts `lifecycle` of OPEN (the default), CANCELED, CLOSED, or ALL. CLOSED matches the column exactly, so it returns no rows.
+
+Shipping, invoicing and payment on a sales order are derived by `refreshSalesOrder`, not by this machine. Ship and invoice refuse a cancelled order before they write.
+
+## Customer invoice
+
+States: DRAFT (initial), POSTED, VOID. VOID is final. Create inserts DRAFT and posts it in the same transaction, so a caller never sees a draft.
+
+```mermaid
+stateDiagram-v2
+  [*] --> DRAFT
+  DRAFT --> POSTED: POST /api/sales-orders/:id/invoice
+  POSTED --> VOID: POST /api/customer-invoices/:id/void
+```
+
+| Edge | What triggers it | Illegal move |
+|---|---|---|
+| DRAFT → POSTED | `POST /api/sales-orders/:id/invoice`, then the receivable entry. | `{number} is already invoiced` or `{number} has no amount left to invoice`, refused before the write. |
+| POSTED → VOID | `POST /api/customer-invoices/:id/void`. Reverses the invoice entry and does not return stock. | `{number} has a payment, so it can't be voided`. A void invoice is final. |
+
 Receiving against an order that is not OPEN is refused with `{number} is {lifecycle}; receive against an open order`.
 
 ## Serial unit
@@ -193,5 +229,9 @@ These are recomputed, not transitioned. `refreshPoStatus` writes billing, paymen
 | paymentStatus | UNPAID, PARTIAL, PAID |
 | receivingStatus | NOT_RECEIVED, PARTIAL, RECEIVED |
 | receiptState | PENDING_BILL, PARTIAL, POSTED |
+| invoicingStatus | NOT_INVOICED, PARTIAL, INVOICED |
+| shippingStatus | NOT_SHIPPED, PARTIAL, SHIPPED |
+
+`refreshSalesOrder` writes invoicing, payment and shipping for a sales order. Payment uses the same UNPAID, PARTIAL, PAID values as a purchase order.
 
 `GET /api/purchase-orders` accepts each billing, payment, and receiving value above. `GET /api/receipts` accepts `state` of PENDING_BILL, PARTIAL, or POSTED. Omitting a filter means no filter on that axis, except bills, which hide VOID unless `status` is sent.

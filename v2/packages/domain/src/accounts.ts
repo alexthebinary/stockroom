@@ -53,6 +53,8 @@ export const ROLES = {
   returnVariance: { label: "Vendor return variance", locked: false },
   adjustmentGain: { label: "Inventory adjustment gain", locked: false },
   adjustmentLoss: { label: "Inventory adjustment loss", locked: false },
+  receivable: { label: "Accounts receivable", locked: false },
+  revenue: { label: "Sales revenue", locked: false },
 } as const;
 
 export type Role = keyof typeof ROLES;
@@ -72,4 +74,6 @@ export const DEFAULT_ROLE_ACCOUNTS: Record<Role, string> = {
   returnVariance: "6950",
   adjustmentGain: "4900",
   adjustmentLoss: "6900",
+  receivable: "1100",
+  revenue: "4000",
 };

@@ -33,6 +33,9 @@ export const EVENTS = {
   // Value moves between two items inside the same account: the old item's line is negative, so it credits.
   INVENTORY_RECLASSIFICATION: { label: "Inventory reclassification", sides: { inventoryOnHand: "DEBIT" } },
   BUNDLE_SHIPPED: { label: "Bundle shipped", sides: { cogs: "DEBIT", inventoryOnHand: "CREDIT" } },
+  SALES_SHIPPED: { label: "Sales shipment", sides: { cogs: "DEBIT", inventoryOnHand: "CREDIT" } },
+  INVOICE_POSTED: { label: "Customer invoice", sides: { receivable: "DEBIT", revenue: "CREDIT" } },
+  CUSTOMER_PAYMENT: { label: "Customer payment", sides: { bank: "DEBIT", receivable: "CREDIT" } },
   BILL_PAYMENT: { label: "Vendor payment", sides: { payable: "DEBIT", bank: "CREDIT" } },
   VENDOR_REFUND: { label: "Vendor refund", sides: { bank: "DEBIT", payable: "CREDIT" } },
 } as const satisfies Record<string, { label: string; sides: Partial<Record<Role, Side>> }>;
@@ -47,11 +50,12 @@ export const REQUIRED_DIMENSION: Partial<Record<Role, keyof Dimensions>> = {
   inventoryOnHand: "itemId",
   inventoryInbound: "itemId",
   payable: "vendorId",
+  receivable: "customerId",
 };
 
 export type EventType = keyof typeof EVENTS;
 
-export type Dimensions = { itemId?: number; vendorId?: number; poLineId?: number };
+export type Dimensions = { itemId?: number; vendorId?: number; customerId?: number; poLineId?: number };
 export type AmountLine = Dimensions & { role: Role; amountCents: Cents; memo?: string };
 export type PlannedLine = Dimensions & { role: Role; side: Side; amountCents: Cents; memo?: string };
 
@@ -69,7 +73,8 @@ export function planEntry(event: EventType, amounts: AmountLine[]): PlannedLine[
     if (amountCents === 0) continue;
     const dimension = REQUIRED_DIMENSION[role];
     if (dimension && rest[dimension] == null) {
-      throw refuse(`${definition.label}: every ${role} line must name its ${dimension === "itemId" ? "item" : "vendor"}`);
+      const who = dimension === "itemId" ? "item" : dimension === "customerId" ? "customer" : "vendor";
+      throw refuse(`${definition.label}: every ${role} line must name its ${who}`);
     }
     lines.push({ role, side: amountCents > 0 ? side : flip(side), amountCents: Math.abs(amountCents), ...rest });
   }
