@@ -356,4 +356,14 @@ describe("review findings on money, dates, and waiting units", () => {
     expect(home.accounting.payableCents).toBe(net);
     await expectBooksSound();
   });
+
+  it("#5 cash past the net owed reads refund due, not paid", async () => {
+    const c = await sampleCompany();
+    const { po, bill } = await billedPo(c, 2, 10000);
+    ok(await c.accountant.post(`/api/bills/${bill.id}/payments`, { amountCents: 110000 }));
+    const full = ok(await c.accountant.get(`/api/bills/${bill.id}`)).body;
+    ok(await c.accountant.post(`/api/bills/${bill.id}/credits`, { kind: "PRICE_ALLOWANCE", lines: [{ billLineId: full.lines[0].id, amountCents: 3000 }] }));
+    expect((await testDb().purchaseOrder.findUniqueOrThrow({ where: { id: po.id } })).paymentStatus).toBe("REFUND_DUE");
+    await expectBooksSound();
+  });
 });

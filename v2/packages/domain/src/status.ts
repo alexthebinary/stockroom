@@ -11,7 +11,7 @@ import { conflict } from "./errors";
  */
 export const BILLING_STATUSES = ["NOT_BILLED", "DRAFT", "BILLED"] as const;
 export type BillingStatus = (typeof BILLING_STATUSES)[number];
-export const PAYMENT_STATUSES = ["UNPAID", "PARTIAL", "PAID"] as const;
+export const PAYMENT_STATUSES = ["UNPAID", "PARTIAL", "PAID", "REFUND_DUE"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export const RECEIVING_STATUSES = ["NOT_RECEIVED", "PARTIAL", "RECEIVED"] as const;
 export type ReceivingStatus = (typeof RECEIVING_STATUSES)[number];
@@ -45,11 +45,13 @@ export function billingStatus(bills: { status: string }[]): BillingStatus {
 
 /**
  * For one posted bill: what is still owed after credits, against what was paid
- * (net of refunds). A bill fully credited back owes nothing and reads PAID —
- * settled. A purchase order with no posted bill is UNPAID; the caller decides
- * that, because there is no bill to ask.
+ * (net of refunds). Cash past that figure is a refund still due, not settled.
+ * A bill fully credited back with nothing paid reads PAID. A purchase order
+ * with no posted bill is UNPAID; the caller decides that, because there is
+ * no bill to ask.
  */
 export function paymentStatus(owedCents: number, paidCents: number): PaymentStatus {
+  if (paidCents > owedCents) return Axis.payment.REFUND_DUE;
   if (owedCents <= 0) return Axis.payment.PAID;
   if (paidCents <= 0) return Axis.payment.UNPAID;
   return paidCents >= owedCents ? Axis.payment.PAID : Axis.payment.PARTIAL;

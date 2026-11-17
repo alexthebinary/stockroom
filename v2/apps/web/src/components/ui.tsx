@@ -84,6 +84,7 @@ const MEANING: Record<string, { tone: Tone; label: string }> = {
   UNPAID: { tone: "none", label: "Unpaid" },
   PARTIAL: { tone: "progress", label: "Part paid" },
   PAID: { tone: "done", label: "Paid" },
+  REFUND_DUE: { tone: "attention", label: "Refund due" },
   NOT_RECEIVED: { tone: "none", label: "Not received" },
   RECEIVED: { tone: "done", label: "Received" },
   PENDING_BILL: { tone: "attention", label: "Awaiting bill" },

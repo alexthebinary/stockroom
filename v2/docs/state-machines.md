@@ -190,7 +190,7 @@ These are recomputed, not transitioned. `refreshPoStatus` writes billing, paymen
 | Axis | Values |
 |---|---|
 | billingStatus | NOT_BILLED, DRAFT, BILLED |
-| paymentStatus | UNPAID, PARTIAL, PAID |
+| paymentStatus | UNPAID, PARTIAL, PAID, REFUND_DUE |
 | receivingStatus | NOT_RECEIVED, PARTIAL, RECEIVED |
 | receiptState | PENDING_BILL, PARTIAL, POSTED |
 

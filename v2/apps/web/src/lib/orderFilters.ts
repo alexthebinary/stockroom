@@ -3,7 +3,7 @@ import type { PurchaseOrder } from "./types";
 // Wording matches StatusBadge and ReceivingBadge; PARTIAL has a different meaning on each axis.
 export const orderFilterOptions = {
   billingStatus: [{ value: "NOT_BILLED", label: "Not billed" }, { value: "DRAFT", label: "Draft" }, { value: "BILLED", label: "Billed" }],
-  paymentStatus: [{ value: "UNPAID", label: "Unpaid" }, { value: "PARTIAL", label: "Part paid" }, { value: "PAID", label: "Paid" }],
+  paymentStatus: [{ value: "UNPAID", label: "Unpaid" }, { value: "PARTIAL", label: "Part paid" }, { value: "PAID", label: "Paid" }, { value: "REFUND_DUE", label: "Refund due" }],
   receivingStatus: [{ value: "NOT_RECEIVED", label: "Not received" }, { value: "PARTIAL", label: "Part received" }, { value: "RECEIVED", label: "Received" }],
   lifecycle: [{ value: "OPEN", label: "Open" }, { value: "ALL", label: "All" }, { value: "CLOSED", label: "Closed / cancelled" }],
 };

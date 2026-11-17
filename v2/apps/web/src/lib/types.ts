@@ -53,7 +53,7 @@ export type PurchaseOrder = {
   source: "MANUAL" | "SCAN";
   lifecycle: string;
   billingStatus: "NOT_BILLED" | "DRAFT" | "BILLED";
-  paymentStatus: "UNPAID" | "PARTIAL" | "PAID";
+  paymentStatus: "UNPAID" | "PARTIAL" | "PAID" | "REFUND_DUE";
   receivingStatus: "NOT_RECEIVED" | "PARTIAL" | "RECEIVED";
   notes: string | null;
   version: number;
