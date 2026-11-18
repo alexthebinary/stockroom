@@ -513,6 +513,23 @@ export function registerPurchasing(app: FastifyInstance, { db }: Deps) {
     return [...docs.values()].map((d) => ({ ...d, date: d.date.toISOString() }));
   });
 
+  /** Sales shipments (WH-OUT against a sales order): what left the warehouse for customers, one row per document, newest first. */
+  app.get("/api/sales-shipments", async () => {
+    const moves = await db.stockMovement.findMany({ where: { register: "WH_OUT", counterType: "SALES_ORDER", bucket: "ON_HAND" }, orderBy: { id: "desc" }, take: 1000 });
+    const orders = await db.salesOrder.findMany({
+      where: { id: { in: [...new Set(moves.map((m) => m.counterId))] } },
+      select: { id: true, number: true, customer: { select: { id: true, name: true } } },
+    });
+    const docs = new Map<string, { number: string; date: Date; actor: string; units: number; valueCents: number; order: { id: number; number: string } | null; customer: { id: number; name: string } | null }>();
+    for (const m of moves) {
+      const d = docs.get(m.docNumber);
+      if (d) { d.units += -m.qtyDelta; d.valueCents += m.valueCents ?? 0; continue; }
+      const so = orders.find((o) => o.id === m.counterId);
+      docs.set(m.docNumber, { number: m.docNumber, date: m.createdAt, actor: m.actor, units: -m.qtyDelta, valueCents: m.valueCents ?? 0, order: so ? { id: so.id, number: so.number } : null, customer: so?.customer ?? null });
+    }
+    return [...docs.values()].map((d) => ({ ...d, date: d.date.toISOString() }));
+  });
+
   app.get("/api/registers", async (request) => {
     const q = parse(z.object({ register: z.enum(["WH_IN", "WH_OUT", "ADJ"]).optional(), itemId: z.coerce.number().int().optional() }), request.query);
     return db.stockMovement.findMany({ where: { ...(q.register ? { register: q.register } : {}), ...(q.itemId ? { itemId: q.itemId } : {}) }, orderBy: { id: "desc" }, take: 500 });

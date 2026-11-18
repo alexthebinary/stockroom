@@ -14,6 +14,7 @@ import { cmToIn, formatMeasurements, inToCm, kgToLb, lbToKg } from "../../lib/un
 
 type Valuation = { rows: { itemId: number; onHand: number; held: number; valueCents: number; averageCents: number }[] };
 type ReceiptRow = { id: number; number: string; state: string; receivedAt: string; receivedBy: string; po: { number: string }; lines: { qty: number }[] };
+type ShipmentRow = { number: string; date: string; actor: string; units: number; valueCents: number; order: { id: number; number: string } | null; customer: { id: number; name: string } | null };
 type OtherTx = { number: string; type: string; date: string; qty: number; lines: number; actor: string };
 type Facets = { brands: string[]; categories: string[] };
 
@@ -26,7 +27,7 @@ export function stockCsvRow(i: Item, v?: Valuation["rows"][number]) {
 export function Items() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = ["receipts", "adjustments"].includes(searchParams.get("tab") ?? "") ? searchParams.get("tab") : "inventory";
+  const tab = ["receipts", "shipments", "adjustments"].includes(searchParams.get("tab") ?? "") ? searchParams.get("tab") : "inventory";
   const [search, setSearch] = useState("");
   const [brand, setBrand] = useState<string | null>(null);
   const [category, setCategory] = useState<string | null>(null);
@@ -45,6 +46,7 @@ export function Items() {
   const items = useQuery({ queryKey: ["items", debounced, brand, category], queryFn: () => get<Item[]>(`/items${query.size ? `?${query}` : ""}`), placeholderData: (prev) => prev });
   const valuation = useQuery({ queryKey: ["valuation"], queryFn: () => get<Valuation>("/reports/valuation") });
   const receipts = useQuery({ queryKey: ["receipts"], queryFn: () => get<ReceiptRow[]>("/receipts") });
+  const shipments = useQuery({ queryKey: ["sales-shipments"], queryFn: () => get<ShipmentRow[]>("/sales-shipments") });
   const otherTx = useQuery({ queryKey: ["other-transactions"], queryFn: () => get<OtherTx[]>("/other-transactions") });
   const refreshItems = async () => {
     await Promise.all([
@@ -66,6 +68,7 @@ export function Items() {
       <Tabs.List mb="md">
         <Tabs.Tab value="inventory">Inventory</Tabs.Tab>
         <Tabs.Tab value="receipts">Warehouse receipts</Tabs.Tab>
+        <Tabs.Tab value="shipments">Sales shipments</Tabs.Tab>
         <Tabs.Tab value="adjustments">Stock adjustments</Tabs.Tab>
       </Tabs.List>
       <Tabs.Panel value="inventory" className="tab-fade">
@@ -170,6 +173,34 @@ export function Items() {
               aside: <><span className="fig">{units}</span><span className="fig-unit">{units === 1 ? "unit" : "units"} · {r.state.replace(/_/g, " ").toLowerCase()}</span></>,
             };
           }}
+        />
+        )}
+      </section>
+      </Tabs.Panel>
+      <Tabs.Panel value="shipments" className="tab-fade">
+      <section aria-label="Sales shipments">
+        {shipments.error ? <Problem error={shipments.error} retry={() => shipments.refetch()} /> : (
+        <DataTable
+          id="stock-shipments"
+          label="Sales shipments"
+          rows={shipments.data ?? []}
+          rowKey={(s) => s.number}
+          to={(s) => `/sales/orders/${s.order?.id ?? ""}`}
+          selectable={{ filename: "shipments-selected.csv", csv: (s) => ({ Shipment: s.number, Order: s.order?.number ?? "", Customer: s.customer?.name ?? "", Shipped: new Date(s.date).toLocaleDateString(), By: s.actor, Units: s.units }) }}
+          empty={shipments.data ? "No sales shipments yet." : <Loading />}
+          columns={[
+            { key: "number", label: "Shipment", primary: true, strong: true, render: (s) => s.number },
+            { key: "order", label: "Order", width: 130, render: (s) => s.order?.number ?? "—" },
+            { key: "customer", label: "Customer", width: 180, render: (s) => s.customer?.name ?? "—" },
+            { key: "date", label: "Shipped", width: 130, render: (s) => new Date(s.date).toLocaleDateString() },
+            { key: "by", label: "By", width: 140, render: (s) => s.actor },
+            { key: "units", label: "Units", width: 90, align: "right", strong: true, render: (s) => s.units },
+          ]}
+          phone={(s) => ({
+            title: s.number,
+            meta: `${s.order?.number ?? "—"} · ${s.customer?.name ?? "No customer"} · ${new Date(s.date).toLocaleDateString()} · ${s.actor}`,
+            aside: <><span className="fig">{s.units}</span><span className="fig-unit">{s.units === 1 ? "unit" : "units"}</span></>,
+          })}
         />
         )}
       </section>
