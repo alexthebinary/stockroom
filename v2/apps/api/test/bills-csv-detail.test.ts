@@ -33,7 +33,7 @@ const bill = (over: object) => ({
 });
 
 describe("feedback #50: Export CSV Detail on Bills", () => {
-  it("shows the button on the Bills page", async () => {
+  it("keeps the detail export out of the page header (it sits in the selection bar beside Export CSV)", async () => {
     const render = () => {
       const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
       client.setQueryData(["setup"], { required: false });
@@ -49,7 +49,8 @@ describe("feedback #50: Export CSV Detail on Bills", () => {
         client.clear();
       }
     };
-    await vi.waitFor(() => expect(render()).toContain("Export CSV Detail"));
+    await vi.waitFor(() => expect(render()).toContain("Freight bill"));
+    expect(render()).not.toContain("Export CSV Detail");
   });
 
   it("writes one row per product and service line with the related documents", () => {
