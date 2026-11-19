@@ -3,14 +3,14 @@
 set -eu
 V2="$1"; ID=$$; NET="pitest-$ID"; DB="pitest-db-$ID"; NODE="pitest-node-$ID"; S=$(mktemp -d)
 # Cleanup never changes the verdict: keep the real exit code (with set -e, a failing rm here would turn a pass into exit 1).
-trap 'st=$?; docker rm -f "$NODE" "$DB" >/dev/null 2>&1 || :; docker network rm "$NET" >/dev/null 2>&1 || :; rm -rf "$S" 2>/dev/null || :; exit $st' EXIT
+trap 'st=$?; docker rm -fv "$NODE" "$DB" >/dev/null 2>&1 || :; docker network rm "$NET" >/dev/null 2>&1 || :; rm -rf "$S" 2>/dev/null || :; exit $st' EXIT
 trap 'exit 1' HUP INT TERM
 mkdir "$S/v2" "$S/results"
 tar -C "$V2" --exclude=node_modules --exclude=.env --exclude=clarify-worker -cf "$S/source.tar" .
 tar -C "$S/v2" -xf "$S/source.tar"
 for check in tsc-api tsc-web test build; do echo 1 > "$S/results/$check.rc"; done
 docker network create "$NET" >/dev/null
-docker run -d --network "$NET" --name "$DB" -e POSTGRES_USER=profitindex -e POSTGRES_PASSWORD=profitindex -e POSTGRES_DB=profitindex_test postgres:16 >/dev/null
+docker run -d --network "$NET" --name "$DB" --tmpfs /var/lib/postgresql/data -e POSTGRES_USER=profitindex -e POSTGRES_PASSWORD=profitindex -e POSTGRES_DB=profitindex_test postgres:16 -c fsync=off -c synchronous_commit=off -c full_page_writes=off >/dev/null
 for _ in $(seq 1 30); do
   docker exec "$DB" pg_isready -U profitindex >/dev/null 2>&1 && break
   sleep 2

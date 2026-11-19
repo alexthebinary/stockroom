@@ -4,11 +4,11 @@
 # that is live right now still serves on the upgraded database (so reverting the code is a real recovery).
 set -u
 CAND="$1"; BASE_IMAGE="$2"; DUMP="$3"; ID=$$; NET="mig-$ID"; DB="migdb-$ID"; IMG="pi-candidate-$ID"; S=$(mktemp -d)
-trap 'st=$?; docker rm -f "$DB" "app-$ID" >/dev/null 2>&1 || :; docker network rm "$NET" >/dev/null 2>&1 || :; docker image rm -f "$IMG" >/dev/null 2>&1 || :; rm -rf "$S" 2>/dev/null || :; exit $st' EXIT
+trap 'st=$?; docker rm -fv "$DB" "app-$ID" >/dev/null 2>&1 || :; docker network rm "$NET" >/dev/null 2>&1 || :; docker image rm -f "$IMG" >/dev/null 2>&1 || :; rm -rf "$S" 2>/dev/null || :; exit $st' EXIT
 docker build -q -t "$IMG" --build-arg APP_VERSION=candidate "$CAND" >/dev/null || { echo "candidate image does not build"; exit 1; }
 cp "$DUMP" "$S/db.dump"
 docker network create "$NET" >/dev/null
-docker run -d --network "$NET" --name "$DB" -e POSTGRES_USER=profitindex -e POSTGRES_PASSWORD=profitindex -e POSTGRES_DB=profitindex -v "$S/db.dump:/db.dump:ro" postgres:16 >/dev/null
+docker run -d --network "$NET" --name "$DB" --tmpfs /var/lib/postgresql/data -e POSTGRES_USER=profitindex -e POSTGRES_PASSWORD=profitindex -e POSTGRES_DB=profitindex -v "$S/db.dump:/db.dump:ro" postgres:16 -c fsync=off -c synchronous_commit=off -c full_page_writes=off >/dev/null
 for _ in $(seq 1 30); do docker exec "$DB" pg_isready -U profitindex >/dev/null 2>&1 && break; sleep 2; done
 docker exec "$DB" pg_restore --no-owner -U profitindex -d profitindex /db.dump || { echo "restore failed"; exit 1; }
 curl_() { docker run --rm --network "$NET" curlimages/curl:8.10.1 -s -m 10 "$@"; }

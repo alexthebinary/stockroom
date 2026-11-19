@@ -3,6 +3,9 @@
 services:
   db:
     image: postgres:16
+    # Dev and test only: no durability, much faster migrations and inserts.
+    # Never copy these flags into deploy/compose.yaml (production).
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
     environment:
       POSTGRES_USER: profitindex
       POSTGRES_PASSWORD: profitindex
