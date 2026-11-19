@@ -86,14 +86,126 @@ describe("feedback #56 and #55: shipment and invoice postings", () => {
     const shipped = ok(await admin.post(`/api/sales-orders/${order.id}/ship`)).body;
     expect(shipped.valueCents).toBe(2000);
     const shipLines = (await entry("SALES_SHIPPED")).lines as JournalLine[];
+    expect(shipLines).toHaveLength(2);
     expect(shipLines.find((l) => l.role === "inventoryOutbound" && l.side === "DEBIT")?.amountCents).toBe(2000);
     expect(sumRole(shipLines, "inventoryOnHand", "CREDIT")).toBe(2000);
-    expect(sumRole(shipLines, "cogs", "DEBIT")).toBe(2000);
-    expect(sumRole(shipLines, "inventoryOutbound", "CREDIT")).toBe(2000);
     const line = await testDb().salesOrderLine.findUniqueOrThrow({ where: { id: order.lines[0].id } });
     expect(line).toMatchObject({ qtyShipped: 4, qtyInvoiced: 4, qtyCosted: 4, cogsCents: 2000 });
     const report = await expectBooksSound();
     expect(report.figures.outboundOpenCents).toBe(0);
+  });
+
+  it("posts a shipped unit's cost to the invoice that already covered it", async () => {
+    const { admin, ids, item, customer } = await stocked();
+    const order = ok(await admin.post("/api/sales-orders", {
+      customerId: customer.id, warehouseId: ids.warehouse,
+      lines: [{ itemId: item.id, qtyOrdered: 1, unitPriceCents: 1200 }],
+    })).body;
+    const invoice = ok(await admin.post(`/api/sales-orders/${order.id}/invoice`)).body;
+    const shipped = ok(await admin.post(`/api/sales-orders/${order.id}/ship`)).body;
+    const { lines: shipLines } = await entry("SALES_SHIPPED");
+    const dimensions = { itemId: item.id, soLineId: order.lines[0].id, amountCents: shipped.valueCents };
+    expect(shipLines).toHaveLength(2);
+    expect(shipLines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ...dimensions, role: "inventoryOutbound", side: "DEBIT" }),
+      expect.objectContaining({ ...dimensions, role: "inventoryOnHand", side: "CREDIT" }),
+    ]));
+    const costing = await entry("INVOICE_COSTED");
+    expect(costing).toMatchObject({
+      sourceType: "CUSTOMER_INVOICE", sourceId: invoice.id,
+      memo: `${invoice.number} · ${order.number} · ${shipped.docNumber}`,
+    });
+    expect(costing.lines).toHaveLength(2);
+    expect(costing.lines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ...dimensions, role: "cogs", side: "DEBIT" }),
+      expect.objectContaining({ ...dimensions, role: "inventoryOutbound", side: "CREDIT" }),
+    ]));
+    const updated = ok(await admin.get(`/api/customer-invoices/${invoice.id}`)).body;
+    expect(updated.lines[0]).toMatchObject({ qtyCosted: 1, cogsCents: shipped.valueCents });
+    expect((await expectBooksSound()).figures).toMatchObject({ outboundGlCents: 0, outboundOpenCents: 0 });
+  });
+
+  it("allocates one shipment across invoices oldest first and gives the last invoice the rounding remainder", async () => {
+    const { admin, ids, item, customer } = await stocked(1, 10);
+    ok(await admin.post("/api/adjustments", { itemId: item.id, warehouseId: ids.warehouse, qty: 1, unitCostCents: 11, reason: "odd cost" }));
+    const order = ok(await admin.post("/api/sales-orders", {
+      customerId: customer.id, warehouseId: ids.warehouse,
+      lines: [{ itemId: item.id, qtyOrdered: 2, unitPriceCents: 1200 }],
+    })).body;
+    const lineId = order.lines[0].id;
+    const invoiceBody = { lines: [{ lineId, qty: 1 }] };
+    const first = ok(await admin.post(`/api/sales-orders/${order.id}/invoice`, invoiceBody)).body;
+    const second = ok(await admin.post(`/api/sales-orders/${order.id}/invoice`, invoiceBody)).body;
+    const shipped = ok(await admin.post(`/api/sales-orders/${order.id}/ship`)).body;
+    expect(shipped.valueCents).toBe(21);
+    const entries = await testDb().journalEntry.findMany({
+      where: { event: "INVOICE_COSTED", sourceType: "CUSTOMER_INVOICE", sourceId: { in: [first.id, second.id] } },
+      include: { lines: true }, orderBy: { sourceId: "asc" },
+    });
+    expect(entries.map((e) => [e.sourceId, sumRole(e.lines, "cogs", "DEBIT")])).toEqual([[first.id, 11], [second.id, 10]]);
+    const lines = await testDb().customerInvoiceLine.findMany({ where: { salesOrderLineId: lineId }, orderBy: { invoiceId: "asc" } });
+    expect(lines.map((l) => [l.invoiceId, l.qtyCosted, l.cogsCents])).toEqual([[first.id, 1, 11], [second.id, 1, 10]]);
+    expect((await expectBooksSound()).figures.outboundOpenCents).toBe(0);
+  });
+
+  it("posts one costing entry per shipment and reverses each entry when the invoice is voided", async () => {
+    const { admin, ids, item, customer } = await stocked();
+    const order = ok(await admin.post("/api/sales-orders", {
+      customerId: customer.id, warehouseId: ids.warehouse,
+      lines: [{ itemId: item.id, qtyOrdered: 2, unitPriceCents: 1200 }],
+    })).body;
+    const lineId = order.lines[0].id;
+    const invoice = ok(await admin.post(`/api/sales-orders/${order.id}/invoice`)).body;
+    const shipBody = { lines: [{ lineId, qty: 1 }] };
+    const first = ok(await admin.post(`/api/sales-orders/${order.id}/ship`, shipBody)).body;
+    const second = ok(await admin.post(`/api/sales-orders/${order.id}/ship`, shipBody)).body;
+    const source = { sourceType: "CUSTOMER_INVOICE", sourceId: invoice.id };
+    const costEntries = await testDb().journalEntry.findMany({
+      where: { ...source, event: "INVOICE_COSTED" }, include: { lines: true }, orderBy: { id: "asc" },
+    });
+    expect(costEntries.map((e) => [e.memo, sumRole(e.lines, "cogs", "DEBIT")])).toEqual([first, second].map((ship) => [
+      `${invoice.number} · ${order.number} · ${ship.docNumber}`, ship.valueCents,
+    ]));
+    const updated = ok(await admin.get(`/api/customer-invoices/${invoice.id}`)).body;
+    expect(updated.lines[0]).toMatchObject({ qtyCosted: 2, cogsCents: 1000 });
+    expect((await expectBooksSound()).figures.outboundOpenCents).toBe(0);
+
+    ok(await admin.post(`/api/customer-invoices/${invoice.id}/void`));
+    const reversals = await testDb().journalEntry.findMany({
+      where: source, include: { lines: true }, orderBy: { id: "asc" },
+    });
+    expect(reversals.map((e) => e.event)).toEqual([
+      "INVOICE_POSTED", "INVOICE_COSTED", "INVOICE_COSTED", "INVOICE_POSTED_REVERSAL", "INVOICE_COSTED_REVERSAL", "INVOICE_COSTED_REVERSAL",
+    ]);
+    expect(reversals.slice(3).map((e) => e.reversesId)).toEqual(reversals.slice(0, 3).map((e) => e.id));
+    for (const reversal of reversals.slice(4)) {
+      expect(sumRole(reversal.lines, "inventoryOutbound", "DEBIT")).toBe(500);
+      expect(sumRole(reversal.lines, "cogs", "CREDIT")).toBe(500);
+    }
+    const line = await testDb().salesOrderLine.findUniqueOrThrow({ where: { id: lineId } });
+    expect(line).toMatchObject({ qtyShipped: 2, qtyInvoiced: 0, qtyCosted: 0, shippedValueCents: 1000, cogsCents: 0 });
+    expect((await expectBooksSound()).figures).toMatchObject({ outboundGlCents: 1000, outboundOpenCents: 1000 });
+  });
+
+  it("after voiding one of two invoices, a replacement invoice costs only the quantity it bills", async () => {
+    const { admin, ids, item, customer } = await stocked();
+    const order = ok(await admin.post("/api/sales-orders", {
+      customerId: customer.id, warehouseId: ids.warehouse,
+      lines: [{ itemId: item.id, qtyOrdered: 5, unitPriceCents: 1200 }],
+    })).body;
+    const lineId = order.lines[0].id;
+    const twoUnits = { lines: [{ lineId, qty: 2 }] };
+    const first = ok(await admin.post(`/api/sales-orders/${order.id}/invoice`, twoUnits)).body;
+    const second = ok(await admin.post(`/api/sales-orders/${order.id}/invoice`, twoUnits)).body;
+    ok(await admin.post(`/api/sales-orders/${order.id}/ship`, twoUnits));
+    ok(await admin.post(`/api/customer-invoices/${first.id}/void`));
+    const replacement = ok(await admin.post(`/api/sales-orders/${order.id}/invoice`, { lines: [{ lineId, qty: 1 }] })).body;
+    expect(replacement.lines[0]).toMatchObject({ qty: 1, qtyCosted: 1, cogsCents: 500 });
+    expect((await expectBooksSound()).figures.outboundOpenCents).toBe(500);
+    ok(await admin.post(`/api/sales-orders/${order.id}/ship`));
+    const updated = ok(await admin.get(`/api/customer-invoices/${second.id}`)).body;
+    expect(updated.lines[0]).toMatchObject({ qtyCosted: 2, cogsCents: 1000 });
+    expect((await expectBooksSound()).figures.outboundOpenCents).toBe(1000);
   });
 
   it("costs only the overlap of a partial shipment and a partial invoice, and the last unit clears the remainder", async () => {
@@ -200,7 +312,7 @@ describe("feedback #56 and #55: shipment and invoice postings", () => {
     expect((await expectBooksSound()).figures.outboundOpenCents).toBe(0);
   });
 
-  it("void after invoice-then-ship puts the shipment cost back in in-transit-out", async () => {
+  it("void after a legacy invoice-then-ship puts the shipment cost back in in-transit-out", async () => {
     const { admin, ids, item, customer } = await stocked();
     const order = ok(await admin.post("/api/sales-orders", {
       customerId: customer.id, warehouseId: ids.warehouse,
@@ -209,6 +321,14 @@ describe("feedback #56 and #55: shipment and invoice postings", () => {
     const invoice = ok(await admin.post(`/api/sales-orders/${order.id}/invoice`)).body;
     const shipped = ok(await admin.post(`/api/sales-orders/${order.id}/ship`)).body;
     expect(shipped.valueCents).toBe(2000);
+    const shipmentEntry = await entry("SALES_SHIPPED");
+    const costingEntry = await entry("INVOICE_COSTED");
+    // Old shipments held the COGS lines and left the invoice line uncosted.
+    await testDb().$transaction([
+      testDb().journalLine.updateMany({ where: { entryId: costingEntry.id }, data: { entryId: shipmentEntry.id } }),
+      testDb().journalEntry.delete({ where: { id: costingEntry.id } }),
+      testDb().customerInvoiceLine.updateMany({ where: { invoiceId: invoice.id }, data: { qtyCosted: 0, cogsCents: 0 } }),
+    ]);
     expect((await expectBooksSound()).figures.outboundOpenCents).toBe(0);
 
     ok(await admin.post(`/api/customer-invoices/${invoice.id}/void`));

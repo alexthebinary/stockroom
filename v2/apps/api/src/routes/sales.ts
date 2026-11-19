@@ -1,4 +1,4 @@
-import { DomainError, paymentStatus, receivingStatus, State } from "@pi/domain";
+import { type AmountLine, DomainError, paymentStatus, receivingStatus, State } from "@pi/domain";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Deps } from "../app";
@@ -16,10 +16,10 @@ import { transition } from "../transition";
  * Ship takes units out at average cost (Dr inventory shipped, not yet invoiced /
  * Cr inventory on hand). Invoice recognises the sale (Dr AR for the total;
  * Cr sales revenue, shipping revenue and sales tax payable) and moves the cost
- * of the shipped units it covers to COGS. A customer payment clears the
- * receivable (Dr Cash / Cr AR). Voiding an invoice reverses that entry and
- * the cost it recognized. Units a later shipment already expensed go back to
- * in-transit-out. Voiding does not put the units back in stock.
+ * of the shipped units it covers to COGS. A later shipment posts cost for
+ * already-invoiced units in a separate entry on each invoice. A customer
+ * payment clears the receivable (Dr Cash / Cr AR). Voiding an invoice reverses
+ * its postings and puts their cost back in in-transit-out.
  */
 
 const lineBody = z.object({
@@ -322,6 +322,7 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
       if (so.lifecycle !== State.soLifecycle.OPEN) throw new DomainError(`${so.number} is cancelled`, 409);
       const wanted = body.lines ?? so.lines.filter((l) => l.qtyOrdered > l.qtyShipped).map((l) => ({ lineId: l.id, qty: l.qtyOrdered - l.qtyShipped }));
       if (wanted.length === 0) throw new DomainError(`${so.number} has nothing left to ship`, 409);
+      if (new Set(wanted.map((l) => l.lineId)).size !== wanted.length) throw new DomainError("Each line can be shipped only once per shipment", 400);
       const items = await tx.item.findMany({ where: { id: { in: so.lines.map((l) => l.itemId) } } });
       const warehouse = await tx.warehouse.findUnique({ where: { id: so.warehouseId } });
       const plan: { line: (typeof so.lines)[number]; qty: number; name: string }[] = [];
@@ -340,7 +341,8 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
       }
       const docNumber = await nextNumber(tx, "WH_OUT");
       const counter = { type: "SALES_ORDER" as const, id: so.id };
-      const issued: { lineId: number; itemId: number; qty: number; valueCents: number; costCents: number }[] = [];
+      const issued: { lineId: number; itemId: number; qty: number; valueCents: number }[] = [];
+      const costByInvoice = new Map<number, { number: string; lines: AmountLine[] }>();
       for (const step of plan) {
         const valueCents = await issueUnits({ tx, actor }, { itemId: step.line.itemId, warehouseId: so.warehouseId, qty: step.qty, docNumber, counter });
         const next = {
@@ -351,16 +353,50 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
         };
         const qtyToCost = Math.max(0, Math.min(next.qtyShipped, step.line.qtyInvoiced) - step.line.qtyCosted);
         const costCents = costOfShippedUnits(next, qtyToCost);
+        if (qtyToCost > 0) {
+          const invoiceLines = await tx.customerInvoiceLine.findMany({
+            where: {
+              salesOrderLineId: step.line.id,
+              invoice: { status: State.customerInvoice.POSTED },
+              qty: { gt: tx.customerInvoiceLine.fields.qtyCosted },
+            },
+            include: { invoice: { select: { number: true } } },
+            orderBy: [{ invoice: { invoiceDate: "asc" } }, { invoiceId: "asc" }],
+          });
+          let unitsLeft = qtyToCost;
+          let centsLeft = costCents;
+          const costing = { ...next };
+          for (const line of invoiceLines) {
+            const qty = Math.min(unitsLeft, line.qty - line.qtyCosted);
+            // Keep the shipment's original line total, including the rounding remainder.
+            const amountCents = qty === unitsLeft ? centsLeft : Math.min(centsLeft, costOfShippedUnits(costing, qty));
+            await tx.customerInvoiceLine.update({
+              where: { id: line.id },
+              data: { qtyCosted: { increment: qty }, cogsCents: { increment: amountCents } },
+            });
+            const invoice = costByInvoice.get(line.invoiceId) ?? { number: line.invoice.number, lines: [] };
+            const dimensions = { itemId: step.line.itemId, soLineId: step.line.id, amountCents };
+            invoice.lines.push({ role: "cogs", ...dimensions }, { role: "inventoryOutbound", ...dimensions });
+            costByInvoice.set(line.invoiceId, invoice);
+            unitsLeft -= qty;
+            centsLeft -= amountCents;
+            costing.qtyCosted += qty;
+            costing.cogsCents += amountCents;
+            if (unitsLeft === 0) break;
+          }
+          if (unitsLeft > 0) throw new DomainError(`${so.number} has fewer posted invoice units available for costing than expected`, 409);
+        }
         await tx.salesOrderLine.update({
           where: { id: step.line.id },
           data: { qtyShipped: next.qtyShipped, shippedValueCents: next.shippedValueCents, qtyCosted: next.qtyCosted + qtyToCost, cogsCents: next.cogsCents + costCents },
         });
-        issued.push({ lineId: step.line.id, itemId: step.line.itemId, qty: step.qty, valueCents, costCents });
+        issued.push({ lineId: step.line.id, itemId: step.line.itemId, qty: step.qty, valueCents });
       }
       const valueCents = issued.reduce((s, l) => s + l.valueCents, 0);
+      const date = new Date();
       await postEntry(tx, {
         event: "SALES_SHIPPED",
-        date: new Date(),
+        date,
         sourceType: "SALES_SHIP",
         sourceId: so.id,
         actor,
@@ -368,10 +404,19 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
         lines: issued.flatMap((l) => [
           { role: "inventoryOutbound" as const, amountCents: l.valueCents, itemId: l.itemId, soLineId: l.lineId },
           { role: "inventoryOnHand" as const, amountCents: l.valueCents, itemId: l.itemId, soLineId: l.lineId },
-          { role: "cogs" as const, amountCents: l.costCents, itemId: l.itemId, soLineId: l.lineId },
-          { role: "inventoryOutbound" as const, amountCents: -l.costCents, itemId: l.itemId, soLineId: l.lineId },
         ]),
       });
+      for (const [invoiceId, invoice] of costByInvoice) {
+        await postEntry(tx, {
+          event: "INVOICE_COSTED",
+          date,
+          sourceType: "CUSTOMER_INVOICE",
+          sourceId: invoiceId,
+          actor,
+          memo: `${invoice.number} · ${so.number} · ${docNumber}`,
+          lines: invoice.lines,
+        });
+      }
       await audit(tx, actor, "so.shipped", "SalesOrder", so.id, { docNumber, valueCents });
       const order = await refreshSalesOrder(tx, id);
       return { docNumber, valueCents, lines: issued.map(({ itemId, qty, valueCents: issuedValue }) => ({ itemId, qty, valueCents: issuedValue })), order };
@@ -400,7 +445,8 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
         if (!line) throw new DomainError("That line is not on this sales order", 400);
         const left = line.qtyOrdered - line.qtyInvoiced;
         if (ask.qty > left) throw new DomainError(`Only ${left} left to invoice on that line`, 409);
-        const qtyToCost = Math.max(0, Math.min(line.qtyShipped, line.qtyInvoiced + ask.qty) - line.qtyCosted);
+        // A void can leave shipped units uncosted while an older invoice is still open.
+        const qtyToCost = Math.max(0, Math.min(ask.qty, line.qtyShipped - line.qtyCosted));
         const cogsCents = costOfShippedUnits(line, qtyToCost);
         return { line, qty: ask.qty, amountCents: ask.qty * line.unitPriceCents, qtyToCost, cogsCents };
       });
@@ -509,8 +555,9 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
     const { id } = parse(idParam, request.params);
     const actor = actorOf(request);
     return inTx(db, async (tx) => {
-      const locked = await tx.$queryRaw<{ id: number }[]>`SELECT "id" FROM "CustomerInvoice" WHERE "id" = ${id} FOR UPDATE`;
-      if (locked.length === 0) throw notFound("Invoice");
+      const [locked] = await tx.$queryRaw<{ salesOrderId: number | null }[]>`SELECT "salesOrderId" FROM "CustomerInvoice" WHERE "id" = ${id} FOR UPDATE`;
+      if (!locked) throw notFound("Invoice");
+      if (locked.salesOrderId) await lockOrder(tx, locked.salesOrderId);
       const invoice = await tx.customerInvoice.findUniqueOrThrow({ where: { id }, include: { lines: true } });
       if (invoice.paidCents > 0) throw new DomainError(`${invoice.number} has a payment, so it can't be voided`, 409);
       await transition({
@@ -527,8 +574,13 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
       const entry = await tx.journalEntry.findFirst({ where: { sourceType: "CUSTOMER_INVOICE", sourceId: id, event: "INVOICE_POSTED", reversesId: null } });
       if (!entry) throw new DomainError(`${invoice.number} has no entry to reverse`, 409);
       await reverseEntry(tx, entry.id, actor);
+      const costEntries = await tx.journalEntry.findMany({
+        where: { sourceType: "CUSTOMER_INVOICE", sourceId: id, event: "INVOICE_COSTED", reversesId: null, reversedBy: null },
+        select: { id: true },
+        orderBy: { id: "asc" },
+      });
+      for (const costEntry of costEntries) await reverseEntry(tx, costEntry.id, actor);
       const so = invoice.salesOrderId ? await tx.salesOrder.findUnique({ where: { id: invoice.salesOrderId }, select: { id: true, number: true } }) : null;
-      if (so) await lockOrder(tx, so.id);
       const restored: { itemId: number; soLineId: number; amountCents: number }[] = [];
       for (const line of invoice.lines) {
         if (!line.salesOrderLineId) continue;
@@ -537,7 +589,7 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
         let cogsCents = soLine.cogsCents - line.cogsCents;
         const qtyInvoiced = soLine.qtyInvoiced - line.qty;
         const target = Math.min(soLine.qtyShipped, Math.max(0, qtyInvoiced));
-        // A later shipment expensed units only because this invoice covered them.
+        // Legacy shipments could expense units without recording their cost on the invoice.
         if (qtyCosted > target) {
           const remain = target === 0 ? 0 : costOfShippedUnits(
             { qtyShipped: soLine.qtyShipped, shippedValueCents: soLine.shippedValueCents, qtyCosted: 0, cogsCents: 0 },
@@ -564,10 +616,7 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
           ]),
         });
       }
-      if (invoice.salesOrderId) {
-        await lockOrder(tx, invoice.salesOrderId);
-        await refreshSalesOrder(tx, invoice.salesOrderId);
-      }
+      if (so) await refreshSalesOrder(tx, so.id);
       await audit(tx, actor, "invoice.voided", "CustomerInvoice", id);
       return tx.customerInvoice.findUniqueOrThrow({ where: { id }, include: { lines: true } });
     });
@@ -596,6 +645,7 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
       if (body.amountCents > open) {
         throw new DomainError(open <= 0 ? `${invoice.number} has nothing left to pay` : `Only $${(open / 100).toFixed(2)} is open on ${invoice.number}`, 409);
       }
+      if (invoice.salesOrderId) await lockOrder(tx, invoice.salesOrderId);
       const number = await nextNumber(tx, "CP");
       const payment = await tx.customerPayment.create({
         data: {
@@ -622,10 +672,7 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
         ],
       });
       await tx.customerInvoice.update({ where: { id }, data: { paidCents: { increment: body.amountCents } } });
-      if (invoice.salesOrderId) {
-        await lockOrder(tx, invoice.salesOrderId);
-        await refreshSalesOrder(tx, invoice.salesOrderId);
-      }
+      if (invoice.salesOrderId) await refreshSalesOrder(tx, invoice.salesOrderId);
       await audit(tx, actor, "customerPayment.posted", "CustomerPayment", payment.id, { number, invoiceId: id, amountCents: body.amountCents });
       return payment;
     });

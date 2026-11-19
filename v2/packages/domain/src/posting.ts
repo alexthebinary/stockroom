@@ -33,14 +33,15 @@ export const EVENTS = {
   // Value moves between two items inside the same account: the old item's line is negative, so it credits.
   INVENTORY_RECLASSIFICATION: { label: "Inventory reclassification", sides: { inventoryOnHand: "DEBIT" } },
   BUNDLE_SHIPPED: { label: "Bundle shipped", sides: { cogs: "DEBIT", inventoryOnHand: "CREDIT" } },
-  // Shipment parks cost in outbound. Units already invoiced also move outbound → COGS in the same entry.
-  SALES_SHIPPED: { label: "Sales shipment", sides: { inventoryOutbound: "DEBIT", cogs: "DEBIT", inventoryOnHand: "CREDIT" } },
+  // Shipment parks cost in outbound.
+  SALES_SHIPPED: { label: "Sales shipment", sides: { inventoryOutbound: "DEBIT", inventoryOnHand: "CREDIT" } },
   // Revenue splits off shipping and tax. COGS relieves outbound for units this invoice covers.
   INVOICE_POSTED: {
     label: "Customer invoice",
     sides: { receivable: "DEBIT", cogs: "DEBIT", revenue: "CREDIT", shippingRevenue: "CREDIT", salesTaxPayable: "CREDIT", inventoryOutbound: "CREDIT" },
   },
-  // A later shipment expensed units this invoice had covered. Void puts that cost back in transit.
+  INVOICE_COSTED: { label: "Customer invoice costing", sides: { cogs: "DEBIT", inventoryOutbound: "CREDIT" } },
+  // Legacy shipments expensed units in the shipment entry. Void puts that cost back in transit.
   INVOICE_UNCOSTED: { label: "Invoice void – cost back in transit", sides: { inventoryOutbound: "DEBIT", cogs: "CREDIT" } },
   CUSTOMER_PAYMENT: { label: "Customer payment", sides: { bank: "DEBIT", receivable: "CREDIT" } },
   BILL_PAYMENT: { label: "Vendor payment", sides: { payable: "DEBIT", bank: "CREDIT" } },
