@@ -47,6 +47,19 @@ function shippingOf(lines: { qtyOrdered: number; qtyShipped: number }[]) {
   return "PARTIAL";
 }
 
+/** Tax = (subtotal + shipping) x rate, rounded to the cent. Total = subtotal + shipping + tax. */
+export function salesTotals(subtotalCents: number, shippingCents: number, taxRateBps: number) {
+  const taxCents = Math.round(((subtotalCents + shippingCents) * taxRateBps) / 10000);
+  return { subtotalCents, shippingCents, taxRateBps, taxRatePct: taxRateBps / 100, taxCents, totalCents: subtotalCents + shippingCents + taxCents };
+}
+const orderTotals = (o: { lines: { qtyOrdered: number; unitPriceCents: number }[]; shippingCents: number; taxRateBps: number }) =>
+  salesTotals(o.lines.reduce((s, l) => s + l.qtyOrdered * l.unitPriceCents, 0), o.shippingCents, o.taxRateBps);
+const chargeFields = {
+  shippingCents: z.number().int().min(0).max(100_000_000).optional(),
+  taxRatePct: z.number().min(0).max(100).optional(),
+};
+const bpsOf = (pct: number) => Math.round(pct * 100);
+
 const dueDateFor = (invoiceDate: Date, termsDays: number) => new Date(invoiceDate.getTime() + termsDays * DAY);
 
 async function lockOrder(tx: Tx, id: number) {
@@ -141,7 +154,7 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
       ...o,
       lines: o.lines.map((line) => ({ ...line, item: itemsById.get(line.itemId) })),
       customer: customers.find((c) => c.id === o.customerId) ?? null,
-      totalCents: o.lines.reduce((s, l) => s + l.qtyOrdered * l.unitPriceCents, 0),
+      ...orderTotals(o),
     }));
   });
 
@@ -156,7 +169,7 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
     return {
       ...so,
       warehouse,
-      totalCents: so.lines.reduce((s, l) => s + l.qtyOrdered * l.unitPriceCents, 0),
+      ...orderTotals(so),
       lines: so.lines.map((l) => ({ ...l, item: items.find((i) => i.id === l.itemId) })),
       invoices: so.invoices.map((i) => ({ ...i, openCents: i.status === State.customerInvoice.POSTED ? i.totalCents - i.paidCents : 0 })),
     };
@@ -168,6 +181,7 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
         customerId: z.number().int().positive(),
         warehouseId: z.number().int().positive(),
         notes: z.string().max(2000).optional(),
+        ...chargeFields,
         lines: z.array(lineBody).min(1),
       }),
       request.body,
@@ -186,6 +200,8 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
           customerId: customer.id,
           warehouseId: warehouse.id,
           notes: body.notes,
+          shippingCents: body.shippingCents ?? 0,
+          taxRateBps: bpsOf(body.taxRatePct ?? 0),
           createdBy: actor,
           lines: { create: body.lines.map((l) => ({ itemId: l.itemId, qtyOrdered: l.qtyOrdered, unitPriceCents: l.unitPriceCents })) },
         },
@@ -203,6 +219,7 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
         version: z.number().int(),
         customerId: z.number().int().positive().nullish(),
         notes: z.string().max(2000).nullish(),
+        ...chargeFields,
         lines: z.array(lineBody.extend({ id: z.number().int().positive().optional() })).optional(),
       }),
       request.body,
@@ -238,6 +255,8 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
         data: {
           customerId: body.customerId === undefined ? undefined : body.customerId,
           notes: body.notes === undefined ? undefined : body.notes,
+          shippingCents: body.shippingCents,
+          taxRateBps: body.taxRatePct === undefined ? undefined : bpsOf(body.taxRatePct),
         },
       });
       await audit(tx, actorOf(request), "so.updated", "SalesOrder", id);
@@ -328,7 +347,7 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
     const actor = actorOf(request);
     return inTx(db, async (tx) => {
       await lockOrder(tx, id);
-      const so = await tx.salesOrder.findUniqueOrThrow({ where: { id }, include: { lines: true, customer: true } });
+      const so = await tx.salesOrder.findUniqueOrThrow({ where: { id }, include: { lines: true, customer: true, invoices: true } });
       if (so.lifecycle !== State.soLifecycle.OPEN) throw new DomainError(`${so.number} is cancelled`, 409);
       if (!so.customer) throw new DomainError(`${so.number} needs a customer before it can be invoiced`, 400);
       const open = so.lines.filter((l) => l.qtyOrdered > l.qtyInvoiced);
@@ -337,8 +356,12 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
         const qty = l.qtyOrdered - l.qtyInvoiced;
         return { line: l, qty, amountCents: qty * l.unitPriceCents };
       });
-      const totalCents = priced.reduce((s, l) => s + l.amountCents, 0);
-      if (totalCents <= 0) throw new DomainError(`${so.number} has no amount left to invoice`, 409);
+      const subtotalCents = priced.reduce((s, l) => s + l.amountCents, 0);
+      // Shipping & handling is billed once: whatever earlier posted invoices have not already charged.
+      const billedShipping = so.invoices.filter((i) => i.status === State.customerInvoice.POSTED).reduce((s, i) => s + i.shippingCents, 0);
+      const totals = salesTotals(subtotalCents, Math.max(0, so.shippingCents - billedShipping), so.taxRateBps);
+      const totalCents = totals.totalCents;
+      if (subtotalCents <= 0) throw new DomainError(`${so.number} has no amount left to invoice`, 409);
       const invoiceDate = new Date();
       const termsDays = so.customer.termsDays;
       const number = await nextNumber(tx, "INV");
@@ -351,7 +374,10 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
           invoiceDate,
           termsDays,
           dueDate: dueDateFor(invoiceDate, termsDays),
-          subtotalCents: totalCents,
+          subtotalCents,
+          shippingCents: totals.shippingCents,
+          taxRateBps: totals.taxRateBps,
+          taxCents: totals.taxCents,
           totalCents,
           lines: {
             create: priced.map((l) => ({
@@ -412,6 +438,7 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
     const items = await db.item.findMany({ where: { id: { in: invoice.lines.flatMap((l) => (l.itemId == null ? [] : [l.itemId])) } }, select: { id: true, sku: true, name: true } });
     return {
       ...invoice,
+      taxRatePct: invoice.taxRateBps / 100,
       openCents: invoice.status === State.customerInvoice.POSTED ? invoice.totalCents - invoice.paidCents : 0,
       lines: invoice.lines.map((l) => ({ ...l, item: items.find((i) => i.id === l.itemId) ?? null })),
     };

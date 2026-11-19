@@ -40,10 +40,18 @@ type SalesOrder = {
   createdAt: string;
   createdBy: string;
   lines: SalesLine[];
+  subtotalCents: number;
+  shippingCents: number;
+  taxRatePct: number;
+  taxCents: number;
   totalCents: number;
   invoices?: InvoiceSummary[];
 };
 type Invoice = InvoiceSummary & {
+  subtotalCents: number;
+  shippingCents: number;
+  taxRatePct: number;
+  taxCents: number;
   customer?: Customer | null;
   salesOrder?: { id: number; number: string } | null;
   termsDays: number;
@@ -51,6 +59,18 @@ type Invoice = InvoiceSummary & {
   lines: { id: number; qty: number; unitPriceCents: number; amountCents: number; item?: { sku: string; name: string } | null }[];
   payments: { id: number; number: string; amountCents: number; paidAt: string; method: string }[];
 };
+
+/** Subtotal, Shipping & Handling, Sales Tax (rate and amount), Total: always in this order, Total last. */
+export function SalesTotals({ subtotalCents, shippingCents, taxRatePct, taxCents, totalCents }: { subtotalCents: number; shippingCents: number; taxRatePct: number; taxCents: number; totalCents: number }) {
+  return (
+    <Stack gap={4} maw={360} ml="auto" aria-label="Order totals">
+      <Group justify="space-between"><Text>Subtotal</Text><Money cents={subtotalCents} /></Group>
+      <Group justify="space-between"><Text>Shipping &amp; Handling</Text><Money cents={shippingCents} /></Group>
+      <Group justify="space-between"><Text>Sales Tax ({taxRatePct}%)</Text><Money cents={taxCents} /></Group>
+      <Group justify="space-between"><Text fw={700}>Total</Text><Text fw={700}><Money cents={totalCents} /></Text></Group>
+    </Stack>
+  );
+}
 
 const filterKeys = ["search", "customerId", "invoicingStatus", "paymentStatus", "shippingStatus", "lifecycle", "from", "to"] as const;
 type FilterKey = (typeof filterKeys)[number];
@@ -213,12 +233,16 @@ export function NewSalesOrder() {
   const [warehouseId, setWarehouseId] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState([{ itemId: null as string | null, qty: 1, price: 0 }]);
+  const [shipping, setShipping] = useState(0);
+  const [taxRate, setTaxRate] = useState(0);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState("");
   const form = useBlurErrors();
   const stacked = useMediaQuery("(max-width: 899px)") ?? false;
   const sellable = (items.data ?? []).filter((item) => !item.isBundle && item.trackingMode !== "SERIAL");
-  const total = lines.reduce((s, l) => s + l.qty * Math.round(l.price * 100), 0);
+  const subtotal = lines.reduce((s, l) => s + l.qty * Math.round(l.price * 100), 0);
+  const shippingCents = Math.round(shipping * 100);
+  const taxCents = Math.round(((subtotal + shippingCents) * Math.round(taxRate * 100)) / 10000);
   const named = Boolean(customerId) || customerName.trim().length > 0;
   const valid = named && lines.every((l) => l.itemId);
   const loadError = customers.error ?? warehouses.error ?? items.error;
@@ -237,6 +261,8 @@ export function NewSalesOrder() {
         customerId: id,
         warehouseId: Number(warehouseId ?? warehouses.data?.[0]?.id),
         notes: notes || undefined,
+        shippingCents,
+        taxRatePct: taxRate,
         lines: lines.map((l) => ({ itemId: Number(l.itemId), qtyOrdered: l.qty, unitPriceCents: Math.round(l.price * 100) })),
       });
       toastOk(`${order.number} created`);
@@ -286,10 +312,16 @@ export function NewSalesOrder() {
           ))}
           <Group><Button variant="light" onClick={() => setLines([...lines, { itemId: null, qty: 1, price: 0 }])}>Add line</Button></Group>
         </Stack>
+        <SimpleGrid cols={{ base: 1, sm: 2 }}>
+          <NumberInput label="Shipping & Handling $" value={shipping} min={0} decimalScale={2} hideControls inputMode="decimal" onChange={(v) => setShipping(Number(v) || 0)} />
+          <NumberInput label="Sales Tax rate %" value={taxRate} min={0} max={100} decimalScale={2} hideControls inputMode="decimal" onChange={(v) => setTaxRate(Number(v) || 0)} />
+        </SimpleGrid>
         <Textarea label="Notes" description="Optional. Shown on the order." value={notes} onChange={(e) => setNotes(e.currentTarget.value)} autosize minRows={2} />
         {failed ? <Alert role="alert" color="orange" title="The order was not created">{failed} Nothing was saved.</Alert> : null}
-        <Group justify="space-between">
-          <Text fw={600} aria-live="polite">Total {usd(total)}</Text>
+        <div aria-live="polite">
+          <SalesTotals subtotalCents={subtotal} shippingCents={shippingCents} taxRatePct={taxRate} taxCents={taxCents} totalCents={subtotal + shippingCents + taxCents} />
+        </div>
+        <Group justify="flex-end">
           <Button size="md" type="submit" loading={busy}>Create order</Button>
         </Group>
       </Stack>
@@ -303,6 +335,8 @@ export function SalesOrderDetail() {
   const order = useQuery({ queryKey: ["sales-order", id], queryFn: () => get<SalesOrder>(`/sales-orders/${id}`) });
   const items = useQuery({ queryKey: ["items"], queryFn: () => get<Item[]>("/items") });
   const [notes, setNotes] = useState("");
+  const [shipping, setShipping] = useState(0);
+  const [taxRate, setTaxRate] = useState(0);
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [busy, setBusy] = useState(false);
   const [seed, setSeed] = useState("");
@@ -312,6 +346,8 @@ export function SalesOrderDetail() {
     if (next === seed) return;
     setSeed(next);
     setNotes(order.data.notes ?? "");
+    setShipping(order.data.shippingCents / 100);
+    setTaxRate(order.data.taxRatePct);
     setLines(order.data.lines.map((line) => ({
       key: String(line.id),
       id: line.id,
@@ -344,6 +380,8 @@ export function SalesOrderDetail() {
     await put(`/sales-orders/${current.id}`, {
       version: current.version,
       notes,
+      shippingCents: Math.round(shipping * 100),
+      taxRatePct: taxRate,
       lines: lines.map((line) => ({
         ...(line.id ? { id: line.id } : {}),
         itemId: Number(line.itemId),
@@ -400,6 +438,13 @@ export function SalesOrderDetail() {
             <Button onClick={() => void save()} loading={busy} disabled={lines.some((line) => !line.itemId)}>Save lines</Button>
           </Group>
         ) : null}
+        {open ? (
+          <SimpleGrid cols={{ base: 1, sm: 2 }} mt="sm">
+            <NumberInput label="Shipping & Handling $" value={shipping} min={0} decimalScale={2} hideControls onChange={(v) => setShipping(Number(v) || 0)} />
+            <NumberInput label="Sales Tax rate %" value={taxRate} min={0} max={100} decimalScale={2} hideControls onChange={(v) => setTaxRate(Number(v) || 0)} />
+          </SimpleGrid>
+        ) : null}
+        <Group mt="md" justify="flex-end"><SalesTotals {...current} /></Group>
       </Card>
       <Textarea label="Notes" value={notes} onChange={(e) => setNotes(e.currentTarget.value)} disabled={!open} autosize minRows={2} />
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
@@ -521,6 +566,7 @@ export function InvoiceDetail() {
             ))}
           </Table.Tbody>
         </Table>
+        <Group mt="md" justify="flex-end"><SalesTotals {...current} /></Group>
       </Card>
       {current.payments.length > 0 ? (
         <Card withBorder className="section">

@@ -666,6 +666,9 @@ model SalesOrder {
   invoicingStatus String   @default("NOT_INVOICED")
   paymentStatus   String   @default("UNPAID")
   shippingStatus  String   @default("NOT_SHIPPED")
+  /// Shipping & handling charge, and sales tax rate in basis points (825 = 8.25%).
+  shippingCents   Int      @default(0)
+  taxRateBps      Int      @default(0)
   notes           String?
   createdBy       String
   version         Int      @default(0)
@@ -709,6 +712,9 @@ model CustomerInvoice {
   termsDays     Int       @default(30)
   dueDate       DateTime
   subtotalCents Int       @default(0)
+  shippingCents Int       @default(0)
+  taxRateBps    Int       @default(0)
+  taxCents      Int       @default(0)
   totalCents    Int       @default(0)
   paidCents     Int       @default(0)
   notes         String?
