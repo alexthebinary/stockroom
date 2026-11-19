@@ -1,8 +1,8 @@
 import { ActionIcon, Alert, Anchor, Button, Card, Collapse, Group, NumberInput, Select, SimpleGrid, Stack, Table, Text, Textarea, TextInput, Title } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
-import { IconAdjustmentsHorizontal, IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconAdjustmentsHorizontal, IconChevronDown, IconChevronUp, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Coach } from "../../components/Coach";
 import { DataTable } from "../../components/DataTable";
@@ -520,6 +520,10 @@ export function InvoiceDetail() {
   const [amount, setAmount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [voiding, setVoiding] = useState(false);
+  const amountSteps = useRef<{ increment: () => void; decrement: () => void } | null>(null);
+  // Same breakpoint as theme.css: 44px on touch or under 900px, 24px with a mouse.
+  const bigHit = useMediaQuery("(pointer: coarse), (max-width: 899px)") ?? false;
+  const hit = bigHit ? 44 : 24;
   useEffect(() => {
     if (invoice.data) setAmount(invoice.data.openCents / 100);
   }, [invoice.data]);
@@ -583,7 +587,28 @@ export function InvoiceDetail() {
         <Card withBorder className="section">
           <Title order={3} mb="xs">Record payment</Title>
           <Group align="flex-end">
-            <NumberInput label="Amount $" value={amount} min={0} decimalScale={2} onChange={(v) => setAmount(Number(v) || 0)} w={160} />
+            <NumberInput
+              label="Amount $"
+              value={amount}
+              min={0}
+              decimalScale={2}
+              hideControls
+              handlersRef={amountSteps}
+              onChange={(v) => setAmount(Number(v) || 0)}
+              w={140 + hit * 2}
+              rightSectionWidth={hit * 2}
+              rightSectionPointerEvents="all"
+              rightSection={
+                <Group gap={0} wrap="nowrap">
+                  <ActionIcon type="button" variant="subtle" color="ink" size={hit} aria-label="Decrease amount" onPointerDown={(e) => { e.preventDefault(); amountSteps.current?.decrement(); }}>
+                    <IconChevronDown size={16} aria-hidden />
+                  </ActionIcon>
+                  <ActionIcon type="button" variant="subtle" color="ink" size={hit} aria-label="Increase amount" onPointerDown={(e) => { e.preventDefault(); amountSteps.current?.increment(); }}>
+                    <IconChevronUp size={16} aria-hidden />
+                  </ActionIcon>
+                </Group>
+              }
+            />
             <HoldToConfirmButton onConfirm={() => act(() => post(`/customer-invoices/${current.id}/payments`, { amountCents: Math.round(amount * 100) }), "Payment recorded")} busy={busy} disabled={Math.round(amount * 100) <= 0} confirmed="Recording…">
               Hold to record payment
             </HoldToConfirmButton>

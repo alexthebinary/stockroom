@@ -4,7 +4,7 @@
   cursor: pointer; box-shadow: 0 8px 20px -10px rgba(17, 18, 16, 0.6); transition: padding 150ms var(--ease-out); }
 .fb-tab:hover { padding-right: 12px; }
 .fb-tab-label { writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: 0.02em; }
-.fb-tab-count { display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--signal); color: var(--signal-ink); font-size: 11px; }
+.fb-tab-count { display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--signal); color: var(--signal-ink); font-size: var(--text-xs); }
 /* Phones: a 44px round button above the tab bar instead of an edge tab over the content. */
 @media (max-width: 640px) {
   .fb-tab { top: auto; bottom: calc(76px + env(safe-area-inset-bottom)); right: 12px; transform: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; justify-content: center; gap: 0; }

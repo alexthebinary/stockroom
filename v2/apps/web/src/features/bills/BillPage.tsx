@@ -236,7 +236,11 @@ function DraftInventoryBill({ bill }: { bill: FullBill }) {
         </Stack>
       </Card>
 
-      <MatchPanel match={bill.match} current={form.lines.map((l) => ({ billLineId: l.id, qty: l.qty, unitCostCents: parseUsd(l.unitCost) }))} />
+      {bill.match?.length ? (
+        <Table.ScrollContainer minWidth={1080} type="native">
+          <MatchPanel match={bill.match} current={form.lines.map((l) => ({ billLineId: l.id, qty: l.qty, unitCostCents: parseUsd(l.unitCost) }))} />
+        </Table.ScrollContainer>
+      ) : null}
 
       <Card withBorder className="section">
         <Title order={3} mb="sm">
@@ -614,7 +618,11 @@ function PostedBill({ bill }: { bill: FullBill }) {
         </Table.ScrollContainer>
       </Card>
 
-      {bill.status === "POSTED" ? <MatchPanel match={bill.match} /> : null}
+      {bill.status === "POSTED" && bill.match?.length ? (
+        <Table.ScrollContainer minWidth={1080} type="native">
+          <MatchPanel match={bill.match} />
+        </Table.ScrollContainer>
+      ) : null}
 
       {bill.payments.length || bill.credits.length ? (
         <Card withBorder className="section">
