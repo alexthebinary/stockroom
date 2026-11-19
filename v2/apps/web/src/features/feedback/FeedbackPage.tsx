@@ -9,9 +9,10 @@ import { get, patch } from "../../lib/api";
 import { ClarifyChat } from "./ClarifyChat";
 import { KIND_LABEL, type Note } from "./FeedbackLayer";
 import { Questions, type TeamQuestion } from "./Questions";
+import { Suggestions } from "./Suggestions";
 
 const STATUS_LABEL = { OPEN: "Open", DONE: "Done", WONTFIX: "Won't fix" } as const;
-type Tab = keyof typeof STATUS_LABEL | "ATTENTION" | "QUESTIONS";
+type Tab = keyof typeof STATUS_LABEL | "ATTENTION" | "QUESTIONS" | "DESIGN";
 
 /** Every note testers left, with what to do about it, and an export to paste into Claude. */
 export function FeedbackPage() {
@@ -19,13 +20,13 @@ export function FeedbackPage() {
   const phone = useMediaQuery("(max-width: 640px)");
   const [chatFor, setChatFor] = useState<number | null>(null);
   const [status, setStatus] = useState<Tab>("OPEN");
-  const apiStatus = status === "ATTENTION" || status === "QUESTIONS" ? "OPEN" : status;
-  const notes = useQuery({ queryKey: ["feedback", "all", apiStatus], queryFn: () => get<(Note & { turns?: { role: string; content: string }[] })[]>(`/feedback?status=${apiStatus}&turns=1`), enabled: status !== "QUESTIONS" });
+  const apiStatus = status === "ATTENTION" || status === "QUESTIONS" || status === "DESIGN" ? "OPEN" : status;
+  const notes = useQuery({ queryKey: ["feedback", "all", apiStatus], queryFn: () => get<(Note & { turns?: { role: string; content: string }[] })[]>(`/feedback?status=${apiStatus}&turns=1`), enabled: status !== "QUESTIONS" && status !== "DESIGN" });
   const open = useQuery({ queryKey: ["feedback", "all", "OPEN"], queryFn: () => get<(Note & { turns?: { role: string; content: string }[] })[]>("/feedback?status=OPEN&turns=1") });
   const questions = useQuery({ queryKey: ["questions"], queryFn: () => get<TeamQuestion[]>("/questions") });
   const openQuestions = (questions.data ?? []).filter((question) => question.status === "OPEN").length;
   /** Serhii signs off on every note: open until its spec is confirmed, or while the AI is waiting on his answer. */
-  const attention = (note: { status: string; autoState: string; specState: string }) => note.status === "OPEN" && (note.autoState === "NEEDS_ANSWER" || note.specState !== "CONFIRMED");
+  const attention = (note: { kind: string; status: string; autoState: string; specState: string }) => note.kind !== "DESIGN" && note.status === "OPEN" && (note.autoState === "NEEDS_ANSWER" || note.specState !== "CONFIRMED");
   const sorted = [...(notes.data ?? [])].sort((a, b) => Number(attention(b)) - Number(attention(a)));
   const rows = status === "ATTENTION" ? sorted.filter(attention) : sorted;
   const waiting = (open.data ?? []).filter(attention);
@@ -66,6 +67,7 @@ export function FeedbackPage() {
       <SegmentedControl mb="md" value={status} onChange={(v) => setStatus(v as typeof status)} data={[
           { value: "ATTENTION", label: <Text span c="red" fw={700}>Needs attention{waiting.length ? ` (${waiting.length})` : ""}</Text> },
           { value: "QUESTIONS", label: openQuestions > 0 ? <Text span c="red" fw={700}>Questions for Serhii ({openQuestions})</Text> : "Questions for Serhii" },
+          { value: "DESIGN", label: "Operations & logic" },
           ...Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })),
         ]}
       />
@@ -75,7 +77,7 @@ export function FeedbackPage() {
           {openQuestions > 0 ? <div>{openQuestions === 1 ? "1 question for Serhii is waiting for an answer." : `${openQuestions} questions for Serhii are waiting for an answer.`}</div> : null}
         </Alert>
       ) : null}
-      {status === "QUESTIONS" ? <Questions /> : (
+      {status === "QUESTIONS" ? <Questions /> : status === "DESIGN" ? <Suggestions /> : (
       <div className="ruled">
         {rows.length === 0 ? <div className="ruled-empty">{status === "ATTENTION" ? "Every open note has a confirmed spec." : `No ${STATUS_LABEL[status].toLowerCase()} feedback.`} Testers leave notes from the Feedback tab on the right edge of every screen.</div> : null}
         {rows.map((note) => (
@@ -94,7 +96,7 @@ export function FeedbackPage() {
                   {note.turns.at(-1)!.content}
                 </Text>
               ) : null}
-              {ai.data?.clarify && note.status === "OPEN" ? (
+              {ai.data?.clarify && note.status === "OPEN" && note.kind !== "DESIGN" ? (
                 <Button size="xs" variant={attention(note) ? "filled" : "light"} color={attention(note) ? "red" : undefined} my={attention(note) ? 6 : undefined} onClick={() => setChatFor(note.id)}>{note.autoState === "NEEDS_ANSWER" ? "Answer the question" : note.specState === "CONFIRMED" ? "Change the spec" : "Clarify"}</Button>
               ) : null}
               <Text size="xs" c="dimmed">

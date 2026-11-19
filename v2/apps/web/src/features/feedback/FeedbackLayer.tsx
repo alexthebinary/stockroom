@@ -14,10 +14,10 @@ import { type Anchor, anchorAt, locate, targetOf } from "./anchor";
 import { ClarifyChat, type Spec } from "./ClarifyChat";
 import "./feedback.css";
 
-export type Kind = "BUG" | "IDEA" | "QUESTION";
+export type Kind = "BUG" | "IDEA" | "QUESTION" | "DESIGN";
 export type Note = { id: number; kind: Kind; status: "OPEN" | "DONE" | "WONTFIX"; note: string; path: string; pageTitle: string | null; anchor: Anchor | null; author: string; authorJob: string | null; hasScreenshot: boolean; createdAt: string; context: { viewport?: string; build?: string; errors?: unknown[] }; spec: Spec | null; specState: "NONE" | "PROPOSED" | "CONFIRMED"; autoState: string; autoNote: string | null; autoCommit: string | null; turnCount: number };
 
-export const KIND_LABEL: Record<Kind, string> = { BUG: "Bug", IDEA: "Idea", QUESTION: "Question" };
+export const KIND_LABEL: Record<Kind, string> = { BUG: "Bug", IDEA: "Idea", QUESTION: "Question", DESIGN: "Operations & logic" };
 const KIND_OPTIONS = [
   { value: "BUG" as Kind, label: "Bug", icon: <IconBug size={20} /> },
   { value: "IDEA" as Kind, label: "Idea", icon: <IconBulb size={20} /> },

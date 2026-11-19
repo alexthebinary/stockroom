@@ -23,11 +23,13 @@ describe("beta feedback", () => {
       201,
     ).body;
     ok(await c.clerk.post("/api/feedback", { kind: "IDEA", note: "Bigger scan button", path: "/receive" }), 201);
+    ok(await c.clerk.post("/api/feedback", { kind: "DESIGN", note: "Bills should match receipts before posting", path: "/feedback", pageTitle: "Purchasing" }), 201);
 
     const onPage = ok(await anon.get("/api/feedback?path=/bills/1")).body;
     expect(onPage).toHaveLength(1);
     expect(onPage[0]).toMatchObject({ id, author: "Bea Tester", status: "OPEN", hasScreenshot: true });
     expect(ok(await anon.get("/api/feedback")).body.find((f: { kind: string }) => f.kind === "IDEA")).toMatchObject({ author: "Cal Clerk", authorJob: "CLERK" });
+    expect(ok(await anon.get("/api/feedback")).body.find((f: { kind: string }) => f.kind === "DESIGN")).toMatchObject({ pageTitle: "Purchasing", status: "OPEN", specState: "NONE" });
 
     const image = await client().app.inject({ method: "GET", url: `/api/feedback/${id}/screenshot` });
     expect(image.statusCode).toBe(200);
@@ -36,7 +38,7 @@ describe("beta feedback", () => {
 
     const md = await client().app.inject({ method: "GET", url: "/api/feedback/export.md" });
     expect(md.headers["content-type"]).toContain("text/markdown");
-    expect(md.body).toContain("# Feedback (open, 2)");
+    expect(md.body).toContain("# Feedback (open, 3)");
     expect(md.body).toContain("## #1 bug · `/bills/1` (Bill)");
     expect(md.body).toContain("> did nothing");
     expect(md.body).toContain('On: "Hold to post bill"');
@@ -44,7 +46,7 @@ describe("beta feedback", () => {
     expect(md.body).toContain(`/api/feedback/${id}/screenshot`);
 
     expect(ok(await c.admin.patch(`/api/feedback/${id}`, { status: "DONE" })).body.status).toBe("DONE");
-    expect(ok(await anon.get("/api/feedback?status=OPEN")).body).toHaveLength(1);
+    expect(ok(await anon.get("/api/feedback?status=OPEN")).body).toHaveLength(2);
   });
 
   it("pushes new feedback to the owner's phone when NOTIFY_URL is set", async () => {

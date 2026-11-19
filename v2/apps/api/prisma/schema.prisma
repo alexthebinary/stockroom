@@ -572,7 +572,8 @@ model VendorCreditLine {
   credit VendorCredit @relation(fields: [creditId], references: [id], onDelete: Cascade)
 }
 
-/// A tester's note pinned to a spot in the app. kind: BUG | IDEA | QUESTION;
+/// A tester's note pinned to a spot in the app. kind: BUG | IDEA | QUESTION | DESIGN
+/// (DESIGN = an operations-and-logic suggestion from the Feedback page, never auto-built);
 /// status: OPEN | DONE | WONTFIX. The author is a name snapshot, not a link to
 /// Profile, so feedback survives the demo being wiped (deploy/reset.sh).
 model Feedback {

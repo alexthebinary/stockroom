@@ -20,7 +20,7 @@ const SAVED_AS_IS = "Your note is saved as is.";
 const STOP = /^(?:next|stop|skip|done|that['’]?s all|send as is|(?:i['’]?m )?just testing|what['’]?s the question)[.!?]*$/i;
 
 const feedbackBody = z.object({
-  kind: z.enum(["BUG", "IDEA", "QUESTION"]),
+  kind: z.enum(["BUG", "IDEA", "QUESTION", "DESIGN"]),
   note: z.string().trim().min(1),
   path: z.string(),
   pageTitle: z.string().nullish(),
@@ -56,7 +56,7 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
       select: { id: true, author: true },
     });
     const origin = `${request.protocol}://${request.headers.host}`;
-    notify(`New ${body.kind.toLowerCase()} from ${row.author}`, `${body.note.slice(0, 240)}\n${body.path}`, { click: `${origin}/feedback`, tags: [body.kind === "BUG" ? "beetle" : body.kind === "IDEA" ? "bulb" : "question"] });
+    notify(`New ${body.kind.toLowerCase()} from ${row.author}`, `${body.note.slice(0, 240)}\n${body.path}`, { click: `${origin}/feedback`, tags: [body.kind === "BUG" ? "beetle" : body.kind === "IDEA" ? "bulb" : body.kind === "DESIGN" ? "building_construction" : "question"] });
     return reply.status(201).send({ id: row.id });
   });
 

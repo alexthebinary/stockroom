@@ -23,3 +23,7 @@ test("a note whose spec is not confirmed is never built, however many times it w
   const out = eligible([n(1, { specState: "NONE" }), n(2, { specState: "PROPOSED" }), n(3, { autoState: "FAILED", specState: "NONE", revision: 3, autoRevision: 2 }), n(4)], { authors: ["Serhii"], maxPerRun: 5 });
   assert.deepEqual(out.map((x) => x.id), [4]);
 });
+test("an operations-and-logic suggestion is never built, even with a confirmed spec", () => {
+  const out = eligible([n(1, { kind: "DESIGN" }), n(2, { kind: "IDEA" })], { authors: ["Serhii"], maxPerRun: 5 });
+  assert.deepEqual(out.map((x) => x.id), [2]);
+});
