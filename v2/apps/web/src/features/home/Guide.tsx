@@ -55,8 +55,8 @@ export function Guide() {
             title="Selling"
             steps={[
               ["1. Sales order", "Commits to sell. Posts nothing. Number SO-00001 and up. Invoicing, payment, and shipping each move on their own."],
-              ["2. Sales shipment", "Hold to ship remaining takes the units still to ship out of that warehouse at average cost. Number WH-OUT-00001 and up. Debits Cost of Goods Sold and credits Inventory Asset. Shipping more than is on hand is refused and posts nothing."],
-              ["3. Invoice", "Hold to create invoice bills the quantity not yet invoiced, at the order price. Number INV-00001 and up. Debits Accounts Receivable and credits Sales Revenue. It can come before or after the goods ship."],
+              ["2. Sales shipment", "Hold to ship remaining takes the units still to ship out of that warehouse at average cost. Number WH-OUT-00001 and up. Moves the cost within Inventory Asset (1200) from on hand to shipped, not yet invoiced. If the units were already invoiced, the same entry also moves that cost to Cost of Goods Sold. Shipping more than is on hand is refused and posts nothing."],
+              ["3. Invoice", "Hold to create invoice bills the quantity not yet invoiced, at the order price. Number INV-00001 and up. Debits Accounts Receivable for the total and credits Sales Revenue, Shipping & Handling Revenue and Sales Tax Payable. For units already shipped it also moves their cost from shipped, not yet invoiced to Cost of Goods Sold. It can come before or after the goods ship."],
               ["4. Customer payment", "On the invoice, enter the amount and hold Record payment. Number CP-00001 and up. Debits Bank / Cash and credits Accounts Receivable, in full or in part, and never more than is still open."],
             ]}
           />
@@ -69,7 +69,7 @@ export function Guide() {
             <b>Sales orders.</b> Open Sales orders and tap New. Choose the customer and the warehouse the goods leave from. Add each item with a quantity and a price, then Create order. You can type a new customer name, a shipping and handling amount, a sales tax rate, and notes. A customer added by name is stored with 30-day terms. Open an order to change lines while it is still open. A line that has shipped or been invoiced cannot drop below that quantity, and an invoiced line keeps its price. Cancel an order only before anything has shipped and before a posted invoice exists. Serial-tracked items and bundles are not on a sales order. Ship a bundle from Stock, or sell its components. Posts nothing. Tick rows to export them to CSV.
           </List.Item>
           <List.Item>
-            <b>Invoices.</b> On the order, hold to create invoice. The due date is the invoice date plus the customer's terms. The total is the goods, plus shipping and handling not already billed, plus tax at the order's rate. That whole total debits Accounts Receivable and credits Sales Revenue. Void… reverses that entry, and only while no payment has been recorded. Voiding does not put the units back into stock. The invoice list shows each invoice's open balance.
+            <b>Invoices.</b> On the order, hold to create invoice. The due date is the invoice date plus the customer's terms. The total is the goods, plus shipping and handling not already billed, plus tax at the order's rate. The total debits Accounts Receivable. The goods credit Sales Revenue (4000), shipping and handling credits Shipping & Handling Revenue (4100), and tax credits Sales Tax Payable (2100). For units that have shipped, the invoice also debits Cost of Goods Sold and credits Inventory Asset (shipped, not yet invoiced). Each entry names the invoice and its sales order. Void… reverses that entry and returns the cost to shipped, not yet invoiced, and only while no payment has been recorded. Voiding does not put the units back into stock. The invoice list shows each invoice's open balance.
           </List.Item>
           <List.Item>
             <b>Receivables.</b> Posted invoices that still have a balance, grouped by customer. Current means not yet past the due date. 1–30, 31–60, 61–90, and 90+ are days late. They owe, Past due, and Customers summarize it. Open an invoice number to record the payment. The list posts nothing.
@@ -78,7 +78,7 @@ export function Guide() {
             <b>Customer payments.</b> On a posted invoice with a balance, enter Amount $ and hold Record payment. The payment number is CP-00001 and up. It debits Bank / Cash and credits Accounts Receivable. The amount cannot be more than what is still open.
           </List.Item>
           <List.Item>
-            <b>Sales shipments.</b> Hold to ship remaining on the order writes the WH-OUT document and posts cost of goods sold against inventory on hand, at average cost. Stock lists those documents under Sales shipments, with the order and the customer. A bundle ships from its Inventory row. That takes every component out of the chosen warehouse at its average cost and debits Cost of Goods Sold. If any component is short, nothing is shipped.
+            <b>Sales shipments.</b> Hold to ship remaining on the order writes the WH-OUT document and moves the units' average cost within Inventory Asset from on hand to shipped, not yet invoiced. Cost of Goods Sold is recognized when the invoice covers those units. The entry names the shipment and its sales order. Stock lists those documents under Sales shipments, with the order and the customer. A bundle ships from its Inventory row. That takes every component out of the chosen warehouse at its average cost and debits Cost of Goods Sold. If any component is short, nothing is shipped.
           </List.Item>
         </List>
       </Section>
