@@ -200,6 +200,36 @@ describe("feedback #56 and #55: shipment and invoice postings", () => {
     expect((await expectBooksSound()).figures.outboundOpenCents).toBe(0);
   });
 
+  it("void after invoice-then-ship puts the shipment cost back in in-transit-out", async () => {
+    const { admin, ids, item, customer } = await stocked();
+    const order = ok(await admin.post("/api/sales-orders", {
+      customerId: customer.id, warehouseId: ids.warehouse,
+      lines: [{ itemId: item.id, qtyOrdered: 4, unitPriceCents: 1200 }],
+    })).body;
+    const invoice = ok(await admin.post(`/api/sales-orders/${order.id}/invoice`)).body;
+    const shipped = ok(await admin.post(`/api/sales-orders/${order.id}/ship`)).body;
+    expect(shipped.valueCents).toBe(2000);
+    expect((await expectBooksSound()).figures.outboundOpenCents).toBe(0);
+
+    ok(await admin.post(`/api/customer-invoices/${invoice.id}/void`));
+    const line = await testDb().salesOrderLine.findUniqueOrThrow({ where: { id: order.lines[0].id } });
+    expect(line).toMatchObject({ qtyShipped: 4, qtyInvoiced: 0, qtyCosted: 0, shippedValueCents: 2000, cogsCents: 0 });
+    const correction = await testDb().journalEntry.findFirstOrThrow({
+      where: { memo: `${invoice.number} void · ${order.number}` },
+      include: { lines: true },
+    });
+    expect(correction.lines.filter((l) => l.role === "inventoryOutbound" && l.side === "DEBIT")).toEqual([
+      expect.objectContaining({ amountCents: 2000, itemId: item.id, soLineId: order.lines[0].id }),
+    ]);
+    expect(sumRole(correction.lines, "cogs", "CREDIT")).toBe(2000);
+    const report = await expectBooksSound();
+    expect(report.figures.outboundGlCents).toBe(2000);
+    expect(report.figures.outboundOpenCents).toBe(2000);
+
+    ok(await admin.post(`/api/sales-orders/${order.id}/invoice`));
+    expect((await expectBooksSound()).figures.outboundOpenCents).toBe(0);
+  });
+
   it("seeds the new roles and keeps inventory shipped locked to 1200", async () => {
     const { admin } = await stocked();
     const rules = ok(await admin.get("/api/posting-rules")).body as { role: string; account: { code: string }; locked?: boolean }[];

@@ -17,8 +17,9 @@ import { transition } from "../transition";
  * Cr inventory on hand). Invoice recognises the sale (Dr AR for the total;
  * Cr sales revenue, shipping revenue and sales tax payable) and moves the cost
  * of the shipped units it covers to COGS. A customer payment clears the
- * receivable (Dr Cash / Cr AR). Voiding an invoice reverses only that entry
- * and the cost it recognized; it does not put the units back.
+ * receivable (Dr Cash / Cr AR). Voiding an invoice reverses that entry and
+ * the cost it recognized. Units a later shipment already expensed go back to
+ * in-transit-out. Voiding does not put the units back in stock.
  */
 
 const lineBody = z.object({
@@ -523,16 +524,45 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
         })).count,
         current: async () => (await tx.customerInvoice.findUnique({ where: { id }, select: { status: true } }))?.status ?? null,
       });
-      const entry = await tx.journalEntry.findFirst({ where: { sourceType: "CUSTOMER_INVOICE", sourceId: id, reversesId: null } });
+      const entry = await tx.journalEntry.findFirst({ where: { sourceType: "CUSTOMER_INVOICE", sourceId: id, event: "INVOICE_POSTED", reversesId: null } });
       if (!entry) throw new DomainError(`${invoice.number} has no entry to reverse`, 409);
       await reverseEntry(tx, entry.id, actor);
+      const so = invoice.salesOrderId ? await tx.salesOrder.findUnique({ where: { id: invoice.salesOrderId }, select: { id: true, number: true } }) : null;
+      if (so) await lockOrder(tx, so.id);
+      const restored: { itemId: number; soLineId: number; amountCents: number }[] = [];
       for (const line of invoice.lines) {
-        if (line.salesOrderLineId) {
-          await tx.salesOrderLine.update({
-            where: { id: line.salesOrderLineId },
-            data: { qtyInvoiced: { decrement: line.qty }, qtyCosted: { decrement: line.qtyCosted }, cogsCents: { decrement: line.cogsCents } },
-          });
+        if (!line.salesOrderLineId) continue;
+        const soLine = await tx.salesOrderLine.findUniqueOrThrow({ where: { id: line.salesOrderLineId } });
+        let qtyCosted = soLine.qtyCosted - line.qtyCosted;
+        let cogsCents = soLine.cogsCents - line.cogsCents;
+        const qtyInvoiced = soLine.qtyInvoiced - line.qty;
+        const target = Math.min(soLine.qtyShipped, Math.max(0, qtyInvoiced));
+        // A later shipment expensed units only because this invoice covered them.
+        if (qtyCosted > target) {
+          const remain = target === 0 ? 0 : costOfShippedUnits(
+            { qtyShipped: soLine.qtyShipped, shippedValueCents: soLine.shippedValueCents, qtyCosted: 0, cogsCents: 0 },
+            target,
+          );
+          const restore = Math.max(0, cogsCents - remain);
+          if (restore > 0) restored.push({ itemId: soLine.itemId, soLineId: soLine.id, amountCents: restore });
+          qtyCosted = target;
+          cogsCents -= restore;
         }
+        await tx.salesOrderLine.update({ where: { id: soLine.id }, data: { qtyInvoiced, qtyCosted, cogsCents } });
+      }
+      if (so && restored.length > 0) {
+        await postEntry(tx, {
+          event: "INVOICE_UNCOSTED",
+          date: new Date(),
+          sourceType: "CUSTOMER_INVOICE",
+          sourceId: invoice.id,
+          actor,
+          memo: `${invoice.number} void · ${so.number}`,
+          lines: restored.flatMap((l) => [
+            { role: "inventoryOutbound" as const, amountCents: l.amountCents, itemId: l.itemId, soLineId: l.soLineId },
+            { role: "cogs" as const, amountCents: l.amountCents, itemId: l.itemId, soLineId: l.soLineId },
+          ]),
+        });
       }
       if (invoice.salesOrderId) {
         await lockOrder(tx, invoice.salesOrderId);

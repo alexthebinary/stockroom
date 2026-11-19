@@ -44,8 +44,8 @@ describe("sales", () => {
     expect((await db.stockBalance.findFirstOrThrow({ where: { itemId: item.id, warehouseId: ids.warehouse } })).onHand).toBe(6);
 
     const shipEntry = await db.journalEntry.findFirstOrThrow({ where: { event: "SALES_SHIPPED" }, include: { lines: { include: { account: true } } } });
-    expect(sum(shipEntry.lines, "5000", "DEBIT")).toBe(2000);
-    expect(sum(shipEntry.lines, "1200", "CREDIT")).toBe(2000);
+    expect(shipEntry.lines.find((l) => l.role === "inventoryOutbound")).toMatchObject({ side: "DEBIT", amountCents: 2000, account: { code: "1200" } });
+    expect(shipEntry.lines.find((l) => l.role === "inventoryOnHand")).toMatchObject({ side: "CREDIT", amountCents: 2000, account: { code: "1200" } });
 
     const invoice = ok(await admin.post(`/api/sales-orders/${order.id}/invoice`)).body;
     expect(invoice.number).toBe("INV-00001");

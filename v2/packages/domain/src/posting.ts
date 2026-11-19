@@ -40,6 +40,8 @@ export const EVENTS = {
     label: "Customer invoice",
     sides: { receivable: "DEBIT", cogs: "DEBIT", revenue: "CREDIT", shippingRevenue: "CREDIT", salesTaxPayable: "CREDIT", inventoryOutbound: "CREDIT" },
   },
+  // A later shipment expensed units this invoice had covered. Void puts that cost back in transit.
+  INVOICE_UNCOSTED: { label: "Invoice void – cost back in transit", sides: { inventoryOutbound: "DEBIT", cogs: "CREDIT" } },
   CUSTOMER_PAYMENT: { label: "Customer payment", sides: { bank: "DEBIT", receivable: "CREDIT" } },
   BILL_PAYMENT: { label: "Vendor payment", sides: { payable: "DEBIT", bank: "CREDIT" } },
   VENDOR_REFUND: { label: "Vendor refund", sides: { bank: "DEBIT", payable: "CREDIT" } },

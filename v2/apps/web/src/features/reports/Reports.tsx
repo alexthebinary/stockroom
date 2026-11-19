@@ -255,7 +255,7 @@ function TrialBalance() {
 
 const PAGE = 50;
 /** Inventory is one account (1200); its lines say which part they move. */
-const INVENTORY_PART: Record<string, string> = { inventoryOnHand: "on hand", inventoryInbound: "in transit" };
+const INVENTORY_PART: Record<string, string> = { inventoryOnHand: "on hand", inventoryInbound: "in transit", inventoryOutbound: "shipped, not yet invoiced" };
 
 /** The general journal: every entry, newest first, each with its debits and credits. */
 function Journal() {
