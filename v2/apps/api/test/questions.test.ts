@@ -24,14 +24,14 @@ describe("questions for Serhii", () => {
     expect(created).toMatchObject({ text: body.text, status: "OPEN", askedBy: "Claude", context: null, feedbackIds: [], answer: null });
   });
 
-  it("lists newest first and filters by status", async () => {
+  it("lists oldest first (a later question can build on an earlier one) and filters by status", async () => {
     await resetDb();
     const first = ok(await call("POST", "/api/questions", { text: "First", context: "About the freight line", feedbackIds: [57, 58, 57] }), 201).body;
     const second = ok(await call("POST", "/api/questions", { text: "Second" }), 201).body;
     const all = ok(await client().get("/api/questions")).body as { id: number; text: string }[];
-    expect(all.map((row) => row.id)).toEqual([second.id, first.id]);
-    expect(all[1]).toMatchObject({ context: "About the freight line", feedbackIds: [57, 58] });
-    expect(ok(await client().get("/api/questions?status=OPEN")).body.map((row: { text: string }) => row.text)).toEqual(["Second", "First"]);
+    expect(all.map((row) => row.id)).toEqual([first.id, second.id]);
+    expect(all[0]).toMatchObject({ context: "About the freight line", feedbackIds: [57, 58] });
+    expect(ok(await client().get("/api/questions?status=OPEN")).body.map((row: { text: string }) => row.text)).toEqual(["First", "Second"]);
     expect(ok(await client().get("/api/questions?status=ANSWERED")).body).toEqual([]);
     ok(await call("PATCH", `/api/questions/${first.id}`, { status: "WITHDRAWN" }));
     expect(ok(await client().get("/api/questions?status=WITHDRAWN")).body.map((row: { id: number }) => row.id)).toEqual([first.id]);

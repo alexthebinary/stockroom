@@ -21,7 +21,7 @@ const patchBody = z.object({ status: z.enum(["WITHDRAWN", "OPEN"]) });
 export function registerQuestions(app: FastifyInstance, { db }: Deps) {
   app.get("/api/questions", async (request) => {
     const { status } = parse(listQuery, request.query);
-    return db.teamQuestion.findMany({ where: status ? { status } : undefined, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+    return db.teamQuestion.findMany({ where: status ? { status } : undefined, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
   });
 
   app.post("/api/questions", async (request, reply) => {
