@@ -87,9 +87,25 @@ Postgres, and `ANTHROPIC_API_KEY` to turn on the packing-slip reader.
 ## Tests
 
 ```bash
+docker compose up -d db  # start once, then share this dev Postgres across worktrees
+npm ci
+(cd apps/api && npx prisma generate)
 npm test          # domain rules (incl. golden tests of every GAAP-guide purchase entry) + API scenarios on real Postgres
 npm run e2e       # Playwright: fresh install → camera scan on a phone → hold-to-post → $550 landed → paid → books sound
 ```
+
+API tests create `profitindex_test_<branch>` on the local Postgres server. The
+branch name drops the worktree harness's `team/` prefix, uses lowercase letters,
+digits and underscores, and the full name is limited to 63 bytes. For a detached
+HEAD, the checkout directory name takes the place of the branch. An explicit
+`TEST_DATABASE_URL` in the environment or `v2/.env` selects an existing test
+database instead. If you copied `.env.example` to `v2/.env`, remove its
+`TEST_DATABASE_URL` line to use the per-worktree default. For an explicit URL,
+use a throwaway database because the suite recreates its `public` schema on
+every run.
+
+From the repo root, `sh .claude/verify.sh` runs the domain suite, then runs the
+API suite if `pg_isready` confirms that local Postgres is accepting connections.
 
 The e2e feeds Chromium's camera a generated video of the sample barcode, so
 the scanner is tested for real; it saves phone/desktop, light/dark screenshots

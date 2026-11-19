@@ -1,0 +1,1 @@
+sh .claude/verify.sh

@@ -16,14 +16,18 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 docker exec "$DB" pg_isready -U profitindex >/dev/null 2>&1
-docker run --rm --network "$NET" --name "$NODE" -v "$S/v2:/app" -v "$S/results:/results" -w /app \
-  -e DATABASE_URL="postgresql://profitindex:profitindex@$DB:5432/profitindex_test" \
-  -e HOST_IDS="$(id -u):$(id -g)" \
-  -e TEST_DATABASE_URL="postgresql://profitindex:profitindex@$DB:5432/profitindex_test" \
-  node:22-slim sh -c '
+DOCKERFILE="$(dirname "$0")/gate.Dockerfile"
+IMAGE_HASH=$(sha256sum < "$DOCKERFILE")
+IMAGE="pi-gate:$(printf '%.12s' "$IMAGE_HASH")"
+if docker image inspect "$IMAGE" >/dev/null 2>&1 || docker build -t "$IMAGE" - < "$DOCKERFILE"; then
+  docker run --rm --network "$NET" --name "$NODE" -v "$S/v2:/app" -v "$S/results:/results" -w /app \
+    -v pi-gate-npm-cache:/root/.npm \
+    -e DATABASE_URL="postgresql://profitindex:profitindex@$DB:5432/profitindex_test" \
+    -e HOST_IDS="$(id -u):$(id -g)" \
+    -e TEST_DATABASE_URL="postgresql://profitindex:profitindex@$DB:5432/profitindex_test" \
+    "$IMAGE" sh -c '
     trap "chown -R \"\$HOST_IDS\" /app /results" EXIT   # whatever happens, the host can delete what we made
     set -e
-    apt-get update && apt-get install -y --no-install-recommends openssl
     npm ci --workspace=@pi/domain --workspace=@pi/api --workspace=@pi/web --include-workspace-root
     npm run generate -w @pi/api
     set +e
@@ -36,6 +40,7 @@ docker run --rm --network "$NET" --name "$NODE" -v "$S/v2:/app" -v "$S/results:/
     npm run build -w @pi/web
     echo $? > /results/build.rc
   ' || :
+fi
 TSC_API=$(cat "$S/results/tsc-api.rc")
 TSC_WEB=$(cat "$S/results/tsc-web.rc")
 TEST=$(cat "$S/results/test.rc")
