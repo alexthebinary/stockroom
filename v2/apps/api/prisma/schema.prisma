@@ -131,6 +131,8 @@ model JournalLine {
   /// Accounts receivable lines name the customer, the way payable lines name the vendor.
   customerId  Int?
   poLineId    Int?
+  /// Sales shipment and invoice cost lines name the sales order line, so shipped-not-invoiced inventory reconciles per line.
+  soLineId    Int?
   memo        String?
 
   entry   JournalEntry @relation(fields: [entryId], references: [id])
@@ -139,6 +141,7 @@ model JournalLine {
   @@index([accountId])
   @@index([itemId])
   @@index([customerId])
+  @@index([soLineId])
 }
 
 // ─── Catalog, places, parties ────────────────────────────────────────────
@@ -685,14 +688,20 @@ model SalesOrder {
 
 /// qtyShipped is units that have left stock. qtyInvoiced is units on a posted
 /// invoice. The two move independently: an invoice can precede the shipment.
+/// qtyCosted is units whose cost has moved to COGS. shippedValueCents is the
+/// issue value of every unit shipped; cogsCents is the part already recognized.
+/// The difference is inventory shipped but not yet invoiced.
 model SalesOrderLine {
-  id             Int @id @default(autoincrement())
-  salesOrderId   Int
-  itemId         Int
-  qtyOrdered     Int
-  unitPriceCents Int
-  qtyShipped     Int @default(0)
-  qtyInvoiced    Int @default(0)
+  id                Int @id @default(autoincrement())
+  salesOrderId      Int
+  itemId            Int
+  qtyOrdered        Int
+  unitPriceCents    Int
+  qtyShipped        Int @default(0)
+  qtyInvoiced       Int @default(0)
+  qtyCosted         Int @default(0)
+  shippedValueCents Int @default(0)
+  cogsCents         Int @default(0)
 
   salesOrder   SalesOrder            @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
   invoiceLines CustomerInvoiceLine[]
@@ -745,6 +754,9 @@ model CustomerInvoiceLine {
   qty              Int     @default(0)
   unitPriceCents   Int     @default(0)
   amountCents      Int     @default(0)
+  /// Units and cost this invoice moved from shipped-not-invoiced inventory to COGS. Void rolls these back.
+  qtyCosted        Int     @default(0)
+  cogsCents        Int     @default(0)
 
   invoice        CustomerInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   salesOrderLine SalesOrderLine? @relation(fields: [salesOrderLineId], references: [id])
