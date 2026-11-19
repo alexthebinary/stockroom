@@ -205,7 +205,7 @@ export function Guide() {
       <Section title="Feedback and Help" lead="Notes about the app, and answers about how it works. Neither one posts to the books.">
         <List spacing={6}>
           <List.Item>
-            <b>Feedback.</b> The Feedback tab on the right edge of a screen lets a tester pin a note on what they see. Settings, Company, turns that tab on or off. The Feedback page lists the notes. Needs attention, Open, Done, and Won't fix are the views. Needs attention is an open note still waiting on an answer or a confirmed spec. Copy open as Markdown, or Download. Open page returns to the screen the note was pinned on. Done, Won't fix, and Reopen change the note. When clarify is available, Clarify asks the questions that turn the note into a spec.
+            <b>Feedback.</b> The Feedback tab on the right edge of a screen lets a tester pin a note on what they see. Settings, Company, turns that tab on or off. The Feedback page lists the notes. Needs attention, Questions for Serhii, Open, Done, and Won't fix are the views. Needs attention is an open note still waiting on an answer or a confirmed spec. Questions for Serhii are follow-ups from the build team; an open one has a box for the answer. Copy open as Markdown, or Download. Open page returns to the screen the note was pinned on. Done, Won't fix, and Reopen change the note. When clarify is available, Clarify asks the questions that turn the note into a spec.
           </List.Item>
           <List.Item>
             <b>Help.</b> The help button in the header opens a panel for the screen you are on. It answers from the help pages and can offer Take me there. It is shown when help is configured. It does not count stock, post a document, or look up a balance.

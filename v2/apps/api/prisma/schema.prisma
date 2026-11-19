@@ -624,6 +624,26 @@ model FeedbackTurn {
   @@index([feedbackId])
 }
 
+/// A follow-up the build team asks Serhii. status: OPEN | ANSWERED | WITHDRAWN.
+model TeamQuestion {
+  id          Int       @id @default(autoincrement())
+  /// The question, plain text, up to 4000 characters.
+  text        String
+  /// One or two lines of background shown under the question.
+  context     String?
+  /// Related feedback note numbers. May be empty.
+  feedbackIds Int[]     @default([])
+  askedBy     String    @default("Claude")
+  status      String    @default("OPEN")
+  answer      String?
+  answeredBy  String?
+  answeredAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status])
+}
+
 /// One typed Jev judgment. question is a catalog key (unknown_item_match).
 /// band: HIGH | MEDIUM | NONE. outcome: PENDING | ACCEPTED | CORRECTED | IGNORED.
 model AiJudgment {

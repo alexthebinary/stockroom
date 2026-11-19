@@ -15,6 +15,7 @@ import { registerBundles } from "./routes/bundles";
 import { registerCompanies } from "./routes/companies";
 import { registerCatalog } from "./routes/catalog";
 import { registerFeedback } from "./routes/feedback";
+import { registerQuestions } from "./routes/questions";
 import { registerHelp } from "./routes/help";
 import { registerPayables } from "./routes/payables";
 import { registerPurchasing } from "./routes/purchasing";
@@ -33,7 +34,7 @@ declare module "fastify" {
  *  typesafeApiKey and judgeFetch inject Jev for judge(). Omit the key to read the env or the key file. */
 export type Deps = { db: Db; reader: Reader | null; clarifier?: Clarifier | null; helpModel?: HelpModel | null; jevHelp?: JevHelp | null; companies?: Companies | null; typesafeApiKey?: string | null; judgeFetch?: typeof fetch };
 
-const OPEN_WITHOUT_PROFILE = ["/api/companies", "/api/setup", "/api/profiles", "/api/health", "/api/feedback"];
+const OPEN_WITHOUT_PROFILE = ["/api/companies", "/api/setup", "/api/profiles", "/api/health", "/api/feedback", "/api/questions"];
 
 /**
  * Sent with every response. The app is reachable from the open internet with
@@ -151,8 +152,9 @@ export function buildApp(input: Deps): FastifyInstance {
   registerBundles(app, deps);
   registerAi(app, deps);
   registerCompanies(app, deps);
-  // Feedback is one queue for the whole install, whichever company the tester is in.
+  // Feedback and the questions for Serhii are one queue for the whole install, whichever company the tester is in.
   registerFeedback(app, { ...deps, db: main });
+  registerQuestions(app, { ...deps, db: main });
   registerHelp(app, { ...deps, db: main });
   return app;
 }

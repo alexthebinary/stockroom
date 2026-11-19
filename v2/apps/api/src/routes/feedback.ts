@@ -9,6 +9,12 @@ import { notify } from "../notify";
 import { transition } from "../transition";
 
 export const UNAVAILABLE = "I'll ask you later — your note is saved.";
+
+/** Accident guard for the build team's routes on a login-free demo. A missing or wrong token is a 404, the same as a route that is not there. */
+export function requireAutoToken(request: { headers: Record<string, unknown> }): void {
+  const token = process.env.AUTO_TOKEN;
+  if (!token || request.headers["x-auto-token"] !== token) throw notFound("That route");
+}
 const SAVED_AS_IS = "Your note is saved as is.";
 // Match the whole reply: "TEST — change the Items heading" remains actionable.
 const STOP = /^(?:next|stop|skip|done|that['’]?s all|send as is|(?:i['’]?m )?just testing|what['’]?s the question)[.!?]*$/i;
@@ -204,10 +210,7 @@ export function registerFeedback(app: FastifyInstance, { db, clarifier }: Deps) 
 
   // ── The daily auto-apply job (Plan B). The token is an accident guard on a login-free demo, not auth. ──
   const jobBody = z.object({ runId: z.string().min(1).max(80), revision: z.number().int().positive() });
-  const guard = (request: { headers: Record<string, unknown> }) => {
-    const token = process.env.AUTO_TOKEN;
-    if (!token || request.headers["x-auto-token"] !== token) throw notFound("That route");
-  };
+  const guard = requireAutoToken;
   const moved = "The note moved on or is held by another run";
   const jobRow = async (id: number) => shape(await db.feedback.findUniqueOrThrow({ where: { id }, select: LIST_FIELDS }));
 
