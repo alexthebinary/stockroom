@@ -1,8 +1,9 @@
 /**
  * The chart of accounts from the GAAP guide (§III). All inventory posts to the
  * one Inventory Asset account (1200). Each inventory line is tagged with its
- * role, on hand or inbound (billed but still on its way), and that sub-ledger
- * is what lets the shelf value reconcile to the ledger to the cent.
+ * role — on hand, inbound (billed but still on its way), or outbound (shipped
+ * but not yet invoiced) — and that sub-ledger is what lets the shelf value
+ * reconcile to the ledger to the cent.
  */
 export type AccountType = "ASSET" | "LIABILITY" | "EQUITY" | "INCOME" | "EXPENSE";
 export type Side = "DEBIT" | "CREDIT";
@@ -21,7 +22,7 @@ export type AccountDef = {
 export const CHART: AccountDef[] = [
   { code: "1000", name: "Bank / Cash", type: "ASSET", normalSide: "DEBIT", purpose: "Customer receipts, vendor payments and cash refunds" },
   { code: "1100", name: "Accounts Receivable", type: "ASSET", normalSide: "DEBIT", purpose: "Amounts due from customers on sales invoices" },
-  { code: "1200", name: "Inventory Asset", type: "ASSET", normalSide: "DEBIT", purpose: "Stock on the shelf and stock billed but not yet arrived, at average landed cost" },
+  { code: "1200", name: "Inventory Asset", type: "ASSET", normalSide: "DEBIT", purpose: "Stock on the shelf, stock billed but not yet arrived, and stock shipped but not yet invoiced, at average landed cost" },
   { code: "2000", name: "Accounts Payable", type: "LIABILITY", normalSide: "CREDIT", purpose: "Vendor bills: inventory, freight-in and freight-out" },
   { code: "2100", name: "Sales Tax Payable", type: "LIABILITY", normalSide: "CREDIT", purpose: "Sales tax collected on products and on shipping & handling" },
   { code: "3000", name: "Opening Balance Equity", type: "EQUITY", normalSide: "CREDIT", purpose: "Offset to the opening inventory balance" },
@@ -47,6 +48,7 @@ export const ROLES = {
   payable: { label: "Accounts payable", locked: false },
   inventoryOnHand: { label: "Inventory on hand", locked: true },
   inventoryInbound: { label: "Inventory billed, in transit", locked: true },
+  inventoryOutbound: { label: "Inventory shipped, not yet invoiced", locked: true },
   cogs: { label: "Cost of goods sold", locked: false },
   openingEquity: { label: "Opening balance equity", locked: false },
   outboundShipping: { label: "Outbound shipping expense", locked: false },
@@ -55,6 +57,8 @@ export const ROLES = {
   adjustmentLoss: { label: "Inventory adjustment loss", locked: false },
   receivable: { label: "Accounts receivable", locked: false },
   revenue: { label: "Sales revenue", locked: false },
+  shippingRevenue: { label: "Shipping & handling revenue", locked: false },
+  salesTaxPayable: { label: "Sales tax payable", locked: false },
 } as const;
 
 export type Role = keyof typeof ROLES;
@@ -68,6 +72,7 @@ export const DEFAULT_ROLE_ACCOUNTS: Record<Role, string> = {
   payable: "2000",
   inventoryOnHand: "1200",
   inventoryInbound: "1200",
+  inventoryOutbound: "1200",
   cogs: "5000",
   openingEquity: "3000",
   outboundShipping: "6100",
@@ -76,4 +81,6 @@ export const DEFAULT_ROLE_ACCOUNTS: Record<Role, string> = {
   adjustmentLoss: "6900",
   receivable: "1100",
   revenue: "4000",
+  shippingRevenue: "4100",
+  salesTaxPayable: "2100",
 };

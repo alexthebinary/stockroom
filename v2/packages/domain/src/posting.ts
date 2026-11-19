@@ -33,8 +33,13 @@ export const EVENTS = {
   // Value moves between two items inside the same account: the old item's line is negative, so it credits.
   INVENTORY_RECLASSIFICATION: { label: "Inventory reclassification", sides: { inventoryOnHand: "DEBIT" } },
   BUNDLE_SHIPPED: { label: "Bundle shipped", sides: { cogs: "DEBIT", inventoryOnHand: "CREDIT" } },
-  SALES_SHIPPED: { label: "Sales shipment", sides: { cogs: "DEBIT", inventoryOnHand: "CREDIT" } },
-  INVOICE_POSTED: { label: "Customer invoice", sides: { receivable: "DEBIT", revenue: "CREDIT" } },
+  // Shipment parks cost in outbound. Units already invoiced also move outbound → COGS in the same entry.
+  SALES_SHIPPED: { label: "Sales shipment", sides: { inventoryOutbound: "DEBIT", cogs: "DEBIT", inventoryOnHand: "CREDIT" } },
+  // Revenue splits off shipping and tax. COGS relieves outbound for units this invoice covers.
+  INVOICE_POSTED: {
+    label: "Customer invoice",
+    sides: { receivable: "DEBIT", cogs: "DEBIT", revenue: "CREDIT", shippingRevenue: "CREDIT", salesTaxPayable: "CREDIT", inventoryOutbound: "CREDIT" },
+  },
   CUSTOMER_PAYMENT: { label: "Customer payment", sides: { bank: "DEBIT", receivable: "CREDIT" } },
   BILL_PAYMENT: { label: "Vendor payment", sides: { payable: "DEBIT", bank: "CREDIT" } },
   VENDOR_REFUND: { label: "Vendor refund", sides: { bank: "DEBIT", payable: "CREDIT" } },
@@ -49,13 +54,14 @@ export const EVENTS = {
 export const REQUIRED_DIMENSION: Partial<Record<Role, keyof Dimensions>> = {
   inventoryOnHand: "itemId",
   inventoryInbound: "itemId",
+  inventoryOutbound: "itemId",
   payable: "vendorId",
   receivable: "customerId",
 };
 
 export type EventType = keyof typeof EVENTS;
 
-export type Dimensions = { itemId?: number; vendorId?: number; customerId?: number; poLineId?: number };
+export type Dimensions = { itemId?: number; vendorId?: number; customerId?: number; poLineId?: number; soLineId?: number };
 export type AmountLine = Dimensions & { role: Role; amountCents: Cents; memo?: string };
 export type PlannedLine = Dimensions & { role: Role; side: Side; amountCents: Cents; memo?: string };
 

@@ -77,6 +77,7 @@ export async function postEntry(tx: Tx, input: PostInput) {
             vendorId: line.vendorId,
             customerId: line.customerId,
             poLineId: line.poLineId,
+            soLineId: line.soLineId,
             memo: line.memo,
           };
         }),
@@ -111,6 +112,7 @@ export async function reverseEntry(tx: Tx, entryId: number, actor: string, date 
           vendorId: l.vendorId,
           customerId: l.customerId,
           poLineId: l.poLineId,
+          soLineId: l.soLineId,
           memo: l.memo,
         })),
       },
@@ -127,8 +129,10 @@ export async function repointRole(tx: Tx, role: string, accountId: number, actor
   }
   const account = await tx.account.findUnique({ where: { id: accountId } });
   if (!account || !account.isActive || account.isHeader) throw new DomainError("Pick an active posting account (not a header)", 400);
-  const inventoryRules = await tx.postingRule.findMany({ where: { role: { in: ["inventoryOnHand", "inventoryInbound"] } } });
-  if (account.code === DEFAULT_ROLE_ACCOUNTS.inventoryOnHand || account.code === DEFAULT_ROLE_ACCOUNTS.inventoryInbound || inventoryRules.some((r) => r.accountId === accountId)) {
+  const inventoryRoles = ["inventoryOnHand", "inventoryInbound", "inventoryOutbound"] as const;
+  const inventoryRules = await tx.postingRule.findMany({ where: { role: { in: [...inventoryRoles] } } });
+  const reserved = new Set(inventoryRoles.map((role) => DEFAULT_ROLE_ACCOUNTS[role]));
+  if (reserved.has(account.code) || inventoryRules.some((r) => r.accountId === accountId)) {
     throw new DomainError("Inventory accounts are reserved for stock postings. Pick another account.", 409);
   }
   const rule = await tx.postingRule.findUniqueOrThrow({ where: { role } });

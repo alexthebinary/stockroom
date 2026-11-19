@@ -13,10 +13,12 @@ import { transition } from "../transition";
 
 /**
  * Sales orders mirror purchase orders: the order itself posts nothing.
- * Ship takes units out at average cost (Dr COGS / Cr Inventory). Invoice
- * recognises the sale (Dr Accounts Receivable / Cr Sales Revenue). A customer
- * payment clears the receivable (Dr Cash / Cr AR). Voiding an invoice reverses
- * only that entry; it does not put the units back.
+ * Ship takes units out at average cost (Dr inventory shipped, not yet invoiced /
+ * Cr inventory on hand). Invoice recognises the sale (Dr AR for the total;
+ * Cr sales revenue, shipping revenue and sales tax payable) and moves the cost
+ * of the shipped units it covers to COGS. A customer payment clears the
+ * receivable (Dr Cash / Cr AR). Voiding an invoice reverses only that entry
+ * and the cost it recognized; it does not put the units back.
  */
 
 const lineBody = z.object({
@@ -45,6 +47,27 @@ function shippingOf(lines: { qtyOrdered: number; qtyShipped: number }[]) {
   if (raw === "NOT_RECEIVED") return "NOT_SHIPPED";
   if (raw === "RECEIVED") return "SHIPPED";
   return "PARTIAL";
+}
+
+/**
+ * Cost of `qty` shipped units at the line's shipped average. The costing that
+ * finishes the line takes whatever value is left, so outbound lands on zero.
+ */
+export function costOfShippedUnits(
+  line: { qtyShipped: number; shippedValueCents: number; qtyCosted: number; cogsCents: number },
+  qty: number,
+) {
+  if (qty <= 0) return 0;
+  const uncostedQty = line.qtyShipped - line.qtyCosted;
+  if (!Number.isInteger(qty) || qty > uncostedQty) {
+    throw new DomainError(`Cannot cost ${qty} units when ${uncostedQty} shipped units are not yet costed`, 409);
+  }
+  const uncostedValue = line.shippedValueCents - line.cogsCents;
+  if (uncostedValue < 0) throw new DomainError("Shipped cost is below the cost already recognized", 409);
+  if (qty === uncostedQty) return uncostedValue;
+  if (line.qtyShipped <= 0) return 0;
+  const share = Math.round((line.shippedValueCents * qty) / line.qtyShipped);
+  return Math.min(Math.max(share, 0), uncostedValue);
 }
 
 /** Tax = (subtotal + shipping) x rate, rounded to the cent. Total = subtotal + shipping + tax. */
@@ -316,11 +339,22 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
       }
       const docNumber = await nextNumber(tx, "WH_OUT");
       const counter = { type: "SALES_ORDER" as const, id: so.id };
-      const issued: { itemId: number; qty: number; valueCents: number }[] = [];
+      const issued: { lineId: number; itemId: number; qty: number; valueCents: number; costCents: number }[] = [];
       for (const step of plan) {
         const valueCents = await issueUnits({ tx, actor }, { itemId: step.line.itemId, warehouseId: so.warehouseId, qty: step.qty, docNumber, counter });
-        await tx.salesOrderLine.update({ where: { id: step.line.id }, data: { qtyShipped: { increment: step.qty } } });
-        issued.push({ itemId: step.line.itemId, qty: step.qty, valueCents });
+        const next = {
+          qtyShipped: step.line.qtyShipped + step.qty,
+          shippedValueCents: step.line.shippedValueCents + valueCents,
+          qtyCosted: step.line.qtyCosted,
+          cogsCents: step.line.cogsCents,
+        };
+        const qtyToCost = Math.max(0, Math.min(next.qtyShipped, step.line.qtyInvoiced) - step.line.qtyCosted);
+        const costCents = costOfShippedUnits(next, qtyToCost);
+        await tx.salesOrderLine.update({
+          where: { id: step.line.id },
+          data: { qtyShipped: next.qtyShipped, shippedValueCents: next.shippedValueCents, qtyCosted: next.qtyCosted + qtyToCost, cogsCents: next.cogsCents + costCents },
+        });
+        issued.push({ lineId: step.line.id, itemId: step.line.itemId, qty: step.qty, valueCents, costCents });
       }
       const valueCents = issued.reduce((s, l) => s + l.valueCents, 0);
       await postEntry(tx, {
@@ -329,21 +363,27 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
         sourceType: "SALES_SHIP",
         sourceId: so.id,
         actor,
-        memo: `${docNumber}: ${so.number}`,
+        memo: `${docNumber} · ${so.number}`,
         lines: issued.flatMap((l) => [
-          { role: "cogs" as const, amountCents: l.valueCents, itemId: l.itemId },
-          { role: "inventoryOnHand" as const, amountCents: l.valueCents, itemId: l.itemId },
+          { role: "inventoryOutbound" as const, amountCents: l.valueCents, itemId: l.itemId, soLineId: l.lineId },
+          { role: "inventoryOnHand" as const, amountCents: l.valueCents, itemId: l.itemId, soLineId: l.lineId },
+          { role: "cogs" as const, amountCents: l.costCents, itemId: l.itemId, soLineId: l.lineId },
+          { role: "inventoryOutbound" as const, amountCents: -l.costCents, itemId: l.itemId, soLineId: l.lineId },
         ]),
       });
       await audit(tx, actor, "so.shipped", "SalesOrder", so.id, { docNumber, valueCents });
       const order = await refreshSalesOrder(tx, id);
-      return { docNumber, valueCents, lines: issued, order };
+      return { docNumber, valueCents, lines: issued.map(({ itemId, qty, valueCents: issuedValue }) => ({ itemId, qty, valueCents: issuedValue })), order };
     });
   });
 
-  /** Invoice whatever is still uninvoiced, at the order price. Posts immediately. */
+  /** Invoice whatever is still uninvoiced, or the quantities named, at the order price. Posts immediately. */
   app.post("/api/sales-orders/:id/invoice", async (request) => {
     const { id } = parse(idParam, request.params);
+    const body = parse(
+      z.object({ lines: z.array(z.object({ lineId: z.number().int().positive(), qty: z.number().int().positive() })).min(1).optional() }),
+      request.body ?? {},
+    );
     const actor = actorOf(request);
     return inTx(db, async (tx) => {
       await lockOrder(tx, id);
@@ -351,10 +391,17 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
       if (so.lifecycle !== State.soLifecycle.OPEN) throw new DomainError(`${so.number} is cancelled`, 409);
       if (!so.customer) throw new DomainError(`${so.number} needs a customer before it can be invoiced`, 400);
       const open = so.lines.filter((l) => l.qtyOrdered > l.qtyInvoiced);
-      if (open.length === 0) throw new DomainError(`${so.number} is already invoiced`, 409);
-      const priced = open.map((l) => {
-        const qty = l.qtyOrdered - l.qtyInvoiced;
-        return { line: l, qty, amountCents: qty * l.unitPriceCents };
+      const wanted = body.lines ?? open.map((l) => ({ lineId: l.id, qty: l.qtyOrdered - l.qtyInvoiced }));
+      if (wanted.length === 0) throw new DomainError(`${so.number} is already invoiced`, 409);
+      if (new Set(wanted.map((l) => l.lineId)).size !== wanted.length) throw new DomainError("Each line can be invoiced only once per invoice", 400);
+      const priced = wanted.map((ask) => {
+        const line = so.lines.find((l) => l.id === ask.lineId);
+        if (!line) throw new DomainError("That line is not on this sales order", 400);
+        const left = line.qtyOrdered - line.qtyInvoiced;
+        if (ask.qty > left) throw new DomainError(`Only ${left} left to invoice on that line`, 409);
+        const qtyToCost = Math.max(0, Math.min(line.qtyShipped, line.qtyInvoiced + ask.qty) - line.qtyCosted);
+        const cogsCents = costOfShippedUnits(line, qtyToCost);
+        return { line, qty: ask.qty, amountCents: ask.qty * line.unitPriceCents, qtyToCost, cogsCents };
       });
       const subtotalCents = priced.reduce((s, l) => s + l.amountCents, 0);
       // Shipping & handling is billed once: whatever earlier posted invoices have not already charged.
@@ -386,6 +433,8 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
               qty: l.qty,
               unitPriceCents: l.line.unitPriceCents,
               amountCents: l.amountCents,
+              qtyCosted: l.qtyToCost,
+              cogsCents: l.cogsCents,
             })),
           },
         },
@@ -406,13 +455,24 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
         sourceType: "CUSTOMER_INVOICE",
         sourceId: invoice.id,
         actor,
-        memo: `${number}: ${so.number}`,
+        memo: `${number} · ${so.number}`,
         lines: [
           { role: "receivable" as const, amountCents: totalCents, customerId: so.customer.id },
-          { role: "revenue" as const, amountCents: totalCents },
+          { role: "revenue" as const, amountCents: subtotalCents },
+          { role: "shippingRevenue" as const, amountCents: totals.shippingCents },
+          { role: "salesTaxPayable" as const, amountCents: totals.taxCents },
+          ...priced.flatMap((l) => [
+            { role: "cogs" as const, amountCents: l.cogsCents, itemId: l.line.itemId, soLineId: l.line.id },
+            { role: "inventoryOutbound" as const, amountCents: l.cogsCents, itemId: l.line.itemId, soLineId: l.line.id },
+          ]),
         ],
       });
-      for (const l of priced) await tx.salesOrderLine.update({ where: { id: l.line.id }, data: { qtyInvoiced: { increment: l.qty } } });
+      for (const l of priced) {
+        await tx.salesOrderLine.update({
+          where: { id: l.line.id },
+          data: { qtyInvoiced: { increment: l.qty }, qtyCosted: { increment: l.qtyToCost }, cogsCents: { increment: l.cogsCents } },
+        });
+      }
       await audit(tx, actor, "invoice.posted", "CustomerInvoice", invoice.id, { number, totalCents, salesOrderId: so.id });
       await refreshSalesOrder(tx, id);
       return tx.customerInvoice.findUniqueOrThrow({ where: { id: invoice.id }, include: { lines: true } });
@@ -467,7 +527,12 @@ export function registerSales(app: FastifyInstance, { db }: Deps) {
       if (!entry) throw new DomainError(`${invoice.number} has no entry to reverse`, 409);
       await reverseEntry(tx, entry.id, actor);
       for (const line of invoice.lines) {
-        if (line.salesOrderLineId) await tx.salesOrderLine.update({ where: { id: line.salesOrderLineId }, data: { qtyInvoiced: { decrement: line.qty } } });
+        if (line.salesOrderLineId) {
+          await tx.salesOrderLine.update({
+            where: { id: line.salesOrderLineId },
+            data: { qtyInvoiced: { decrement: line.qty }, qtyCosted: { decrement: line.qtyCosted }, cogsCents: { decrement: line.cogsCents } },
+          });
+        }
       }
       if (invoice.salesOrderId) {
         await lockOrder(tx, invoice.salesOrderId);
