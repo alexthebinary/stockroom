@@ -64,10 +64,12 @@ type Props<T> = {
   prefetch?: (row: T) => void;
   /** Buttons shown just left of Columns. */
   toolbar?: ReactNode;
+  /** Buttons in the selection bar, immediately left of Export CSV. */
+  selectionActions?: (selected: T[]) => ReactNode;
 };
 
 /** One list pattern for every document and item list: a one-line-per-row table on wide screens, ruled rows on phones. */
-export function DataTable<T>({ rows, rowKey, columns: allColumns, label, to, onOpen, empty, phone, selectable, id, prefetch, toolbar }: Props<T>) {
+export function DataTable<T>({ rows, rowKey, columns: allColumns, label, to, onOpen, empty, phone, selectable, id, prefetch, toolbar, selectionActions }: Props<T>) {
   const wide = useMediaQuery("(min-width: 900px)") ?? true;
   const navigate = useNavigate();
   const [hidden, setHidden] = useLocalStore<string[]>(`pi.cols.${id ?? "_"}`, []);
@@ -127,6 +129,7 @@ export function DataTable<T>({ rows, rowKey, columns: allColumns, label, to, onO
       <Group className="select-bar" role="toolbar" aria-label="Selected rows" justify="space-between" wrap="wrap" gap="xs">
         <Text fw={600} role="status">{selected.length} selected</Text>
         <Group gap="xs">
+          {selectionActions?.(selected)}
           {selectable.csv ? (
             <Button size="compact-md" variant="default" onClick={() => downloadCsv(selectable.filename, selected.map(selectable.csv!))}>Export CSV</Button>
           ) : null}

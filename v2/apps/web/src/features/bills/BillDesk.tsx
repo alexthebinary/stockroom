@@ -1,6 +1,6 @@
-import { Badge, Button, Card, Group, Modal, Select, SimpleGrid, Stack, Tabs, Text } from "@mantine/core";
+import { Badge, Button, Card, Modal, Select, SimpleGrid, Stack, Tabs, Text } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { IconDownload, IconPlus, IconTruck } from "@tabler/icons-react";
+import { IconPlus, IconTruck } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Coach } from "../../components/Coach";
@@ -52,21 +52,9 @@ export function BillDesk() {
         title="Bills"
         subtitle="Vendor bills are the only purchase documents that post money. Review what the dock received, then post."
         action={
-          <Group gap="xs">
-            <Button
-              variant="default"
-              leftSection={<IconDownload size={18} />}
-              onClick={() => {
-                const { header, rows } = billDetailCsv(shown, items.data);
-                downloadCsv("bills-detail.csv", toCsv(header, rows));
-              }}
-            >
-              Export CSV Detail
-            </Button>
-            <Button component={Link} to="/bills/freight/new" leftSection={<IconTruck size={18} />} variant="light">
-              Freight bill
-            </Button>
-          </Group>
+          <Button component={Link} to="/bills/freight/new" leftSection={<IconTruck size={18} />} variant="light">
+            Freight bill
+          </Button>
         }
       />
       <Coach id="bill-desk" title="From the dock to the books">
@@ -96,6 +84,18 @@ export function BillDesk() {
           rowKey={(b) => b.id}
           to={(b) => `/bills/${b.id}`}
           selectable={{ filename: "bills-selected.csv", csv: (b) => ({ Bill: b.number, "Bill date": formatDate(b.billDate), "Due / age": dueOrAge(b), Vendor: b.vendor?.name, Type: KIND[b.kind] ?? b.kind, "Vendor invoice": b.vendorInvoiceNumber, Status: b.status, Amount: (((b.status === "POSTED" ? b.openCents : b.totalCents) ?? 0) / 100).toFixed(2) }) }}
+          selectionActions={(selected) => (
+            <Button
+              size="compact-md"
+              variant="default"
+              onClick={() => {
+                const { header, rows } = billDetailCsv(selected, items.data);
+                downloadCsv("bills-detail.csv", toCsv(header, rows));
+              }}
+            >
+              Export CSV Detail
+            </Button>
+          )}
           empty={tab === "review" ? "Nothing to review. When the dock receives a delivery that isn't billed yet, its draft bill appears here." : "Nothing here."}
           columns={[
             { key: "number", label: "Bill", width: 130, primary: true, strong: true, render: (b) => b.number },
