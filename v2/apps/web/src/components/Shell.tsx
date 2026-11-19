@@ -1,4 +1,4 @@
-import { ActionIcon, AppShell, Avatar, Box, Drawer, Group, Menu, NavLink, Stack, Text, useMantineColorScheme } from "@mantine/core";
+import { ActionIcon, AppShell, Avatar, Box, Drawer, Group, Menu, NavLink, ScrollArea, Stack, Text, useMantineColorScheme } from "@mantine/core";
 import {
   IconBarcode,
   IconBook2,
@@ -152,6 +152,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </AppShell.Header>
 
       <AppShell.Navbar p="xs" className="no-print" aria-label="Sections">
+        <AppShell.Section grow component={ScrollArea} type="auto" scrollbarSize={8} offsetScrollbars="y">
         <Stack gap={2}>
           {RAIL[job].filter((key) => key === "home").map((key) => sectionLink(key))}
           {sales.length > 0 && (
@@ -171,6 +172,7 @@ export function Shell({ children }: { children: ReactNode }) {
           ) : null}
           {RAIL[job].filter((key) => key !== "home" && !SALES.includes(key) && !PURCHASES.includes(key) && !(stockGrouped && STOCK.includes(key))).map((key) => sectionLink(key))}
         </Stack>
+        </AppShell.Section>
       </AppShell.Navbar>
 
       <AppShell.Main id="main" tabIndex={-1}>
